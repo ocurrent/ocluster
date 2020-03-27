@@ -1,0 +1,4 @@
+(executable
+  (name server)
+  (public_name ocluster-server)
+  (libraries capnp-rpc-unix capnp-rpc capnp-rpc-lwt ocluster-api lwt.unix logs))
