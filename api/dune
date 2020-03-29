@@ -1,10 +1,12 @@
 (library
-  (name ocluster_api)
-  (public_name ocluster-api)
-  (flags (:standard -w -53-55))
-  (libraries capnp-rpc-lwt))
+ (name ocluster_api)
+ (public_name ocluster.api)
+ (flags
+  (:standard -w -53-55))
+ (libraries capnp-rpc-lwt lwt.unix))
 
 (rule
  (targets cluster.ml cluster.mli)
  (deps cluster.capnp)
- (action (run capnpc -o %{bin:capnpc-ocaml} %{deps})))
+ (action
+  (run capnpc -o %{bin:capnpc-ocaml} %{deps})))

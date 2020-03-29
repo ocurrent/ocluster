@@ -1,4 +1,20 @@
 (executable
-  (name server)
-  (public_name ocluster-server)
-  (libraries capnp-rpc-unix capnp-rpc capnp-rpc-lwt ocluster-api lwt.unix logs))
+ (name ocluster_server)
+ (public_name ocluster-server)
+ (modules ocluster_server)
+ (libraries capnp-rpc-unix capnp-rpc-lwt ocluster lwt.unix logs logs.fmt
+   fmt.tty))
+
+(executable
+ (name ocluster_agent)
+ (public_name ocluster-agent)
+ (modules ocluster_agent)
+ (libraries capnp-rpc-unix capnp-rpc-lwt ocluster ocluster.api lwt.unix logs
+   logs.fmt fmt.tty))
+
+(executable
+ (name ocluster_cli)
+ (public_name ocluster-cli)
+ (modules ocluster_cli)
+ (libraries capnp-rpc-unix capnp-rpc-lwt ocluster ocluster.api lwt.unix logs
+   logs.fmt fmt.tty))
