@@ -2,7 +2,7 @@ open! Lwt.Infix
 open Capnp_rpc_lwt
 module R = Ocluster_api.Raw
 
-let process_out stdout_push complete_u =
+let process_out stdout_push stderr_push complete_u =
   let module P = R.Service.ProcessOut in
   P.local
   @@ object
@@ -15,10 +15,19 @@ let process_out stdout_push complete_u =
          stdout_push (Some buf);
          Service.return @@ Service.Response.create_empty ()
 
+       method stderr_impl params release_param_caps =
+         let open P.Stderr in
+         let buf = Params.chunk_get params in
+         release_param_caps ();
+         stderr_push (Some buf);
+         Service.return @@ Service.Response.create_empty ()
+
        method complete_impl params release_param_caps =
          let open P.Complete in
          let exit_code = Params.exit_code_get params in
          release_param_caps ();
+         stdout_push None;
+         stderr_push None;
          Lwt.wakeup complete_u exit_code;
          Service.return @@ Service.Response.create_empty ()
      end
@@ -59,13 +68,11 @@ let agent =
          Service.return_lwt @@ fun () ->
          Agents.exec (binary, args) >|= function
          | Error (`Msg msg) -> Service.fail msg
-         | Ok { Ocluster_api.Client.Agent.exit_code; stdout; stderr } ->
+         | Ok exit_code ->
              let response, results =
                Service.Response.create Results.init_pointer
              in
              Results.exit_code_set results exit_code;
-             Results.stdout_set results stdout;
-             Results.stderr_set results stderr;
              Ok response
 
        method spawn_impl params release_param_caps =

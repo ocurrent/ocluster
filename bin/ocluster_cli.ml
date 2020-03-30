@@ -29,18 +29,26 @@ let reporter =
 
 let run_client cluster =
   let hostname = "alpha" in
-  let cmd = ("find", [| "/tmp/"; "-type"; "f" |]) in
+  let cmd = ("find", [| "find"; "/tmp/" |]) in
   Capability.with_ref cluster @@ fun t ->
   let agent = Client.Cluster.find ~hostname t in
-  Client.Agent.exec ~cmd agent >>= function
-  | Error (`Capnp err) ->
-      Fmt.pr "error: %a\n%!" Capnp_rpc.Error.pp err;
-      exit 1
-  | Ok r ->
-      Logs.info (fun l ->
-          l "exit: %ld\nstdout: %s\nstderr %s" r.Client.Agent.exit_code
-            r.Client.Agent.stdout r.Client.Agent.stderr);
-      Lwt.return ()
+  let stdout_s, stdout_push = Lwt_stream.create () in
+  let stderr_s, stderr_push = Lwt_stream.create () in
+  let on_complete_t, on_complete_u = Lwt.task () in
+  let pout =
+    Ocluster.Server.process_out stdout_push stderr_push on_complete_u
+  in
+  let pin = Client.Agent.spawn cmd pout agent in
+  let output_stdout_t = Lwt_stream.iter_s Lwt_io.(write stdout) stdout_s in
+  let output_stderr_t = Lwt_stream.iter_s Lwt_io.(write stderr) stderr_s in
+  let exit_t =
+    on_complete_t >>= fun exit_code ->
+    output_stdout_t >>= fun _ ->
+    Logs.info (fun l -> l "exit code %ld" exit_code);
+    Capability.dec_ref pin;
+    exit (Int32.to_int exit_code)
+  in
+  output_stdout_t <&> output_stderr_t <&> exit_t
 
 let connect uri =
   Lwt_main.run

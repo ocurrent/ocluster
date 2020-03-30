@@ -7,6 +7,9 @@ module Process : sig
     val stdout :
       chunk:string -> t -> (unit, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
 
+    val stderr :
+      chunk:string -> t -> (unit, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
+
     val complete :
       exit_code:int32 ->
       t ->
@@ -28,12 +31,10 @@ module Agent : sig
 
   type command = string * string array
 
-  type command_result = { exit_code : int32; stdout : string; stderr : string }
-
   val exec :
-    cmd:command ->
-    t ->
-    (command_result, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
+    cmd:command -> t -> (int32, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
+
+  val spawn : command -> Process.Out.t -> t -> Process.In.t
 end
 
 module Cluster : sig

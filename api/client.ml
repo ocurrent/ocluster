@@ -10,6 +10,12 @@ module Process = struct
       Params.chunk_set params chunk;
       Capability.call_for_unit t method_id request
 
+    let stderr ~chunk t =
+      let open Raw.Client.ProcessOut.Stderr in
+      let request, params = Capability.Request.create Params.init_pointer in
+      Params.chunk_set params chunk;
+      Capability.call_for_unit t method_id request
+
     let complete ~exit_code t =
       let open Raw.Client.ProcessOut.Complete in
       let request, params = Capability.Request.create Params.init_pointer in
@@ -55,8 +61,6 @@ module Agent = struct
 
   type command = string * string array
 
-  type command_result = { exit_code : int32; stdout : string; stderr : string }
-
   let exec ~cmd t =
     let open Raw.Client.Agent.Exec in
     let request, params = Capability.Request.create Params.init_pointer in
@@ -65,9 +69,15 @@ module Agent = struct
     Raw.Builder.Command.binary_set cmd_params binary;
     let _ = Raw.Builder.Command.args_set_array cmd_params args in
     Capability.call_for_value t method_id request
-    |> Lwt_result.map (fun t ->
-           let exit_code = Results.exit_code_get t in
-           let stdout = Results.stdout_get t in
-           let stderr = Results.stderr_get t in
-           { exit_code; stdout; stderr })
+    |> Lwt_result.map Results.exit_code_get
+
+  let spawn cmd pout t =
+    let open Raw.Client.Agent.Spawn in
+    let request, params = Capability.Request.create Params.init_pointer in
+    let cmd_params = Params.cmd_init params in
+    let binary, args = cmd in
+    Raw.Builder.Command.binary_set cmd_params binary;
+    let _ = Raw.Builder.Command.args_set_array cmd_params args in
+    Params.pout_set params (Some pout);
+    Capability.call_for_caps t method_id request Results.pin_get_pipelined
 end
