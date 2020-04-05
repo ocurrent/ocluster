@@ -1,0 +1,3 @@
+[submodule "osrelease"]
+	path = osrelease
+	url = https://github.com/avsm/osrelease.git
