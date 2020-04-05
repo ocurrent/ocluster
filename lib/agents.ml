@@ -3,9 +3,20 @@ open Ocluster_api
 
 open! Lwt.Infix
 
-type agent = { hostname : string; agent_cap : Client.Agent.t }
+type hostinfo = { os_version: string; os_distrib: Osrelease.Distro.t; arch: Osrelease.Arch.t }
+
+type agent = { hostname : string; agent_cap : Client.Agent.t; hostinfo: hostinfo }
 
 type cluster = { mutable agents : agent list }
+
+let hostinfo () =
+  let open Rresult.R in
+  Osrelease.Arch.v () |> fun arch ->
+  Osrelease.Distro.v () >>= fun os_distrib ->
+  Osrelease.Version.v () >>= fun os_version ->
+  match os_version with
+  | None -> Error (`Msg "Agent is unable to determine OS version")
+  | Some os_version -> Ok { arch; os_distrib; os_version }
 
 let init () =
   let agents = [] in
@@ -13,13 +24,15 @@ let init () =
   Logs.info (fun l -> l "Initialised cluster state");
   Lwt.return cluster
 
-let register ~hostname agent_cap t =
-  let agent = { hostname; agent_cap } in
-  (* TODO check dups *)
-  t.agents <- agent :: t.agents;
-  Lwt.return_ok ()
-
 let find ~hostname t = List.find_opt (fun t -> t.hostname = hostname) t.agents
+
+let register ~hostname ~hostinfo agent_cap t =
+  let agent = { hostname; agent_cap; hostinfo } in
+  match find ~hostname t with
+  | Some _ -> Error (`Msg "Hostname already exists in cluster")
+  | None ->
+     t.agents <- agent :: t.agents;
+     Ok ()
 
 let list t = t.agents
 

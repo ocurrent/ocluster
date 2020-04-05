@@ -105,19 +105,29 @@ let cluster_member t =
          let open Cluster.Register in
          let hostname = Params.hostname_get params in
          let callback = Params.callback_get params in
+         let hostinfo =
+           let hi = Params.hostinfo_get params in
+           let of_sexp_exn fn conv = Sexplib.Sexp.of_string_conv_exn (fn hi) conv in
+           try
+             let os_version = R.Reader.HostInfo.os_version_get hi in
+             if os_version = "" then raise (Failure "unable to parse OS version");
+             let os_distrib = of_sexp_exn R.Reader.HostInfo.os_distrib_get Osrelease.Distro.t_of_sexp in
+             let arch = of_sexp_exn R.Reader.HostInfo.arch_get Osrelease.Arch.t_of_sexp in
+             Ok Agents.{ os_version; os_distrib; arch }
+           with _ -> Error (`Msg "unable to parse hostinfo") in
          release_param_caps ();
-         match callback with
-         | None -> Service.fail "no callback specified"
-         | Some callback -> (
+         match callback, hostinfo with
+         | None, _ -> Service.fail "no callback specified"
+         | _, Error (`Msg m) -> Service.fail "%s" m
+         | Some callback, Ok hostinfo -> (
              Logs.info (fun l -> l "Registered %s" hostname);
-             Service.return_lwt @@ fun () ->
              Capability.inc_ref callback;
-             Agents.register ~hostname callback t >>= function
-             | Ok () -> Lwt.return_ok @@ Service.Response.create_empty ()
+             match Agents.register ~hostname ~hostinfo callback t with
+             | Ok () -> Service.return_empty ()
              | Error (`Msg msg) ->
                  Capability.dec_ref callback;
                  (* TODO add agent unregister to decr cap *)
-                 Service.fail msg )
+                 Service.fail "%s" msg ) 
   end
 
 let cluster_user t =

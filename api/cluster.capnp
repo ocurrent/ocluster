@@ -16,13 +16,19 @@ interface ProcessIn {
   cancel @1 () -> ();
 }
 
+struct HostInfo {
+   osDistrib @0 :Text;
+   osVersion @1 :Text;
+   arch @2 :Text;
+}
+
 interface Agent {
   exec @0 (cmd :Command) -> (exitCode :Int32);
   spawn @1 (cmd: Command, pout: ProcessOut) -> (pin: ProcessIn);
 }
 
 interface ClusterMember {
-  register @0 (hostname :Text, callback :Agent) -> ();
+  register @0 (hostname :Text, hostinfo :HostInfo, callback :Agent) -> ();
 }
 
 interface ClusterUser {
