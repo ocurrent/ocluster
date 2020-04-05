@@ -37,10 +37,14 @@ module Agent : sig
   val spawn : command -> Process.Out.t -> t -> Process.In.t
 end
 
-module Cluster : sig
-  type t = Raw.Client.Cluster.t Capability.t
+module ClusterMember : sig
+  type t = Raw.Client.ClusterMember.t Capability.t
 
   val register : hostname:string -> callback:Agent.t -> t -> unit Lwt.t
+end
+
+module ClusterUser : sig
+  type t = Raw.Client.ClusterUser.t Capability.t
 
   val find : hostname:string -> t -> Agent.t
 end

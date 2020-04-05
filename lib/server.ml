@@ -95,8 +95,8 @@ let agent =
              Service.return response
      end
 
-let cluster t =
-  let module Cluster = R.Service.Cluster in
+let cluster_member t =
+  let module Cluster = R.Service.ClusterMember in
   Cluster.local
   @@ object
        inherit Cluster.service
@@ -118,6 +118,13 @@ let cluster t =
                  Capability.dec_ref callback;
                  (* TODO add agent unregister to decr cap *)
                  Service.fail msg )
+  end
+
+let cluster_user t =
+  let module Cluster = R.Service.ClusterUser in
+  Cluster.local
+  @@ object
+       inherit Cluster.service
 
        method find_impl params release_param_caps =
          let open Cluster.Find in

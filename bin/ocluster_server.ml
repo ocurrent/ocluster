@@ -27,20 +27,32 @@ let reporter =
   in
   { Logs.report }
 
-let cap_file = "cluster.cap"
+let clmember_cap_file = "cluster_member.cap"
+let cluser_cap_file = "cluster_user.cap"
+
+let write_cap vat sid file =
+   match Capnp_rpc_unix.Cap_file.save_service vat sid file with
+   | Error (`Msg msg) -> Logs.err (fun l -> l "Error writing cap file: %s" msg); exit 1
+   | Ok () -> ()
 
 let serve config =
   Agents.init () >>= fun agents ->
   Lwt_main.run
-    (let service_id = Capnp_rpc_unix.Vat_config.derived_id config "main" in
-     let restore = Restorer.single service_id (Server.cluster agents) in
+    (let clmember_sid = Capnp_rpc_unix.Vat_config.derived_id config "cluster_member" in
+     let clmember_cap = Server.cluster_member agents in
+     let cluser_sid = Capnp_rpc_unix.Vat_config.derived_id config "cluster_user" in
+     let cluser_cap = Server.cluster_user agents in
+     (* TODO make_sturdy_id needs to also add hostname and fingerprint *)
+     let make_sturdy id = Uri.make ~path:(Restorer.Id.to_string id) () in
+     let table = Restorer.Table.create make_sturdy in
+     Restorer.Table.add table clmember_sid clmember_cap;
+     Restorer.Table.add table cluser_sid cluser_cap;
+     let restore = Restorer.of_table table in
      Capnp_rpc_unix.serve config ~restore >>= fun vat ->
-     match Capnp_rpc_unix.Cap_file.save_service vat service_id cap_file with
-     | Error (`Msg m) -> failwith m
-     | Ok () ->
-         Fmt.pr "Server running. Connect using %S.@." cap_file;
-         fst @@ Lwt.wait ()
-     (* Wait forever *))
+     write_cap vat clmember_sid clmember_cap_file;
+     write_cap vat cluser_sid cluser_cap_file;
+     Logs.info (fun l -> l "Server running. Connect using either %S or %S.@." clmember_cap_file cluser_cap_file);
+     fst @@ Lwt.wait ())
 
 open Cmdliner
 

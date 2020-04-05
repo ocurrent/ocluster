@@ -21,8 +21,11 @@ interface Agent {
   spawn @1 (cmd: Command, pout: ProcessOut) -> (pin: ProcessIn);
 }
 
-interface Cluster {
+interface ClusterMember {
   register @0 (hostname :Text, callback :Agent) -> ();
-  find @1 (hostname :Text) -> (callback :Agent);
-  list @2 () -> (agents :List(Agent));
+}
+
+interface ClusterUser {
+  find @0 (hostname :Text) -> (callback :Agent);
+  list @1 () -> (agents :List(Agent));
 }

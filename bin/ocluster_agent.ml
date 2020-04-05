@@ -30,7 +30,7 @@ let reporter =
 let run_client cluster =
   let hostname = "alpha" in
   Capability.with_ref Ocluster.Server.agent @@ fun callback ->
-  Client.Cluster.register ~hostname ~callback cluster >>= fun () ->
+  Client.ClusterMember.register ~hostname ~callback cluster >>= fun () ->
   let t, _ = Lwt.wait () in
   Logs.info (fun l -> l "Registered with cluster");
   (* TODO register sig handler for unregister *)

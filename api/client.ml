@@ -39,18 +39,22 @@ module Process = struct
   end
 end
 
-module Cluster = struct
-  type t = Raw.Client.Cluster.t Capability.t
+module ClusterMember = struct
+  type t = Raw.Client.ClusterMember.t Capability.t
 
   let register ~hostname ~callback t =
-    let open Raw.Client.Cluster.Register in
+    let open Raw.Client.ClusterMember.Register in
     let request, params = Capability.Request.create Params.init_pointer in
     Params.hostname_set params hostname;
     Params.callback_set params (Some callback);
     Capability.call_for_unit_exn t method_id request
+end
+
+module ClusterUser = struct
+  type t = Raw.Client.ClusterUser.t Capability.t
 
   let find ~hostname t =
-    let open Raw.Client.Cluster.Find in
+    let open Raw.Client.ClusterUser.Find in
     let request, params = Capability.Request.create Params.init_pointer in
     Params.hostname_set params hostname;
     Capability.call_for_caps t method_id request Results.callback_get_pipelined

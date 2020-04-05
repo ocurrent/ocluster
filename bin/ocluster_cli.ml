@@ -31,7 +31,7 @@ let run_client cluster =
   let hostname = "alpha" in
   let cmd = ("find", [| "find"; "/tmp/" |]) in
   Capability.with_ref cluster @@ fun t ->
-  let agent = Client.Cluster.find ~hostname t in
+  let agent = Client.ClusterUser.find ~hostname t in
   let stdout_s, stdout_push = Lwt_stream.create () in
   let stderr_s, stderr_push = Lwt_stream.create () in
   let on_complete_t, on_complete_u = Lwt.task () in
