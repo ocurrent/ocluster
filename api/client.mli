@@ -40,7 +40,14 @@ end
 module ClusterMember : sig
   type t = Raw.Client.ClusterMember.t Capability.t
 
-  val register : hostname:string -> callback:Agent.t -> t -> unit Lwt.t
+  type hostinfo = {
+    os_version : string;
+    os_distrib : Osrelease.Distro.t;
+    arch : Osrelease.Arch.t;
+  }
+
+  val register :
+    hostname:string -> callback:Agent.t -> hostinfo:hostinfo -> t -> unit Lwt.t
 end
 
 module ClusterUser : sig

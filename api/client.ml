@@ -42,11 +42,30 @@ end
 module ClusterMember = struct
   type t = Raw.Client.ClusterMember.t Capability.t
 
-  let register ~hostname ~callback t =
+  type hostinfo = {
+    os_version : string;
+    os_distrib : Osrelease.Distro.t;
+    arch : Osrelease.Arch.t;
+  }
+
+  let register ~hostname ~callback ~hostinfo t =
     let open Raw.Client.ClusterMember.Register in
     let request, params = Capability.Request.create Params.init_pointer in
     Params.hostname_set params hostname;
     Params.callback_set params (Some callback);
+    let hostinfo_params = Params.hostinfo_init params in
+    let _ =
+      Raw.Builder.HostInfo.os_distrib_set hostinfo_params
+        (Sexplib.Sexp.to_string
+           (Osrelease.Distro.sexp_of_t hostinfo.os_distrib))
+    in
+    let _ =
+      Raw.Builder.HostInfo.arch_set hostinfo_params
+        (Sexplib.Sexp.to_string (Osrelease.Arch.sexp_of_t hostinfo.arch))
+    in
+    let _ =
+      Raw.Builder.HostInfo.os_version_set hostinfo_params hostinfo.os_version
+    in
     Capability.call_for_unit_exn t method_id request
 end
 

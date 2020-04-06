@@ -28,19 +28,26 @@ let reporter =
   { Logs.report }
 
 let clmember_cap_file = "cluster_member.cap"
+
 let cluser_cap_file = "cluster_user.cap"
 
 let write_cap vat sid file =
-   match Capnp_rpc_unix.Cap_file.save_service vat sid file with
-   | Error (`Msg msg) -> Logs.err (fun l -> l "Error writing cap file: %s" msg); exit 1
-   | Ok () -> ()
+  match Capnp_rpc_unix.Cap_file.save_service vat sid file with
+  | Error (`Msg msg) ->
+      Logs.err (fun l -> l "Error writing cap file: %s" msg);
+      exit 1
+  | Ok () -> ()
 
 let serve config =
   Agents.init () >>= fun agents ->
   Lwt_main.run
-    (let clmember_sid = Capnp_rpc_unix.Vat_config.derived_id config "cluster_member" in
+    (let clmember_sid =
+       Capnp_rpc_unix.Vat_config.derived_id config "cluster_member"
+     in
      let clmember_cap = Server.cluster_member agents in
-     let cluser_sid = Capnp_rpc_unix.Vat_config.derived_id config "cluster_user" in
+     let cluser_sid =
+       Capnp_rpc_unix.Vat_config.derived_id config "cluster_user"
+     in
      let cluser_cap = Server.cluster_user agents in
      (* TODO make_sturdy_id needs to also add hostname and fingerprint *)
      let make_sturdy id = Uri.make ~path:(Restorer.Id.to_string id) () in
@@ -51,7 +58,9 @@ let serve config =
      Capnp_rpc_unix.serve config ~restore >>= fun vat ->
      write_cap vat clmember_sid clmember_cap_file;
      write_cap vat cluser_sid cluser_cap_file;
-     Logs.info (fun l -> l "Server running. Connect using either %S or %S.@." clmember_cap_file cluser_cap_file);
+     Logs.info (fun l ->
+         l "Server running. Connect using either %S or %S.@." clmember_cap_file
+           cluser_cap_file);
      fst @@ Lwt.wait ())
 
 open Cmdliner

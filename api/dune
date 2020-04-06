@@ -3,7 +3,7 @@
  (public_name ocluster.api)
  (flags
   (:standard -w -53-55))
- (libraries capnp-rpc-lwt lwt.unix))
+ (libraries capnp-rpc-lwt lwt.unix sexplib osrelease))
 
 (rule
  (targets cluster.ml cluster.mli)

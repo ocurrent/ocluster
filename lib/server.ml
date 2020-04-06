@@ -107,16 +107,33 @@ let cluster_member t =
          let callback = Params.callback_get params in
          let hostinfo =
            let hi = Params.hostinfo_get params in
-           let of_sexp_exn fn conv = Sexplib.Sexp.of_string_conv_exn (fn hi) conv in
+           let of_sexp_exn fn conv =
+             Sexplib.Sexp.of_string_conv_exn (fn hi) conv
+           in
            try
              let os_version = R.Reader.HostInfo.os_version_get hi in
-             if os_version = "" then raise (Failure "unable to parse OS version");
-             let os_distrib = of_sexp_exn R.Reader.HostInfo.os_distrib_get Osrelease.Distro.t_of_sexp in
-             let arch = of_sexp_exn R.Reader.HostInfo.arch_get Osrelease.Arch.t_of_sexp in
-             Ok Agents.{ os_version; os_distrib; arch }
-           with _ -> Error (`Msg "unable to parse hostinfo") in
+             if os_version = "" then
+               raise (Failure "unable to parse OS version");
+             let os_distrib =
+               of_sexp_exn R.Reader.HostInfo.os_distrib_get
+                 Osrelease.Distro.t_of_sexp
+             in
+             let arch =
+               of_sexp_exn R.Reader.HostInfo.arch_get Osrelease.Arch.t_of_sexp
+             in
+             Ok
+               Ocluster_api.Client.ClusterMember.
+                 { os_version; os_distrib; arch }
+           with
+           | Failure msg -> Error (`Msg msg)
+           | exn ->
+               Error
+                 (`Msg
+                   (Printf.sprintf "Unable to parse hostinfo: %s"
+                      (Printexc.to_string exn)))
+         in
          release_param_caps ();
-         match callback, hostinfo with
+         match (callback, hostinfo) with
          | None, _ -> Service.fail "no callback specified"
          | _, Error (`Msg m) -> Service.fail "%s" m
          | Some callback, Ok hostinfo -> (
@@ -127,8 +144,8 @@ let cluster_member t =
              | Error (`Msg msg) ->
                  Capability.dec_ref callback;
                  (* TODO add agent unregister to decr cap *)
-                 Service.fail "%s" msg ) 
-  end
+                 Service.fail "%s" msg )
+     end
 
 let cluster_user t =
   let module Cluster = R.Service.ClusterUser in
