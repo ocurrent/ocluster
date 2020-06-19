@@ -18,6 +18,7 @@ let local ~submit =
       let job = submit descr in
       let response, results = Service.Response.create Results.init_pointer in
       Results.job_set results (Some job);
+      Capability.dec_ref job;
       Service.return response
   end
 

@@ -29,6 +29,7 @@ module Worker_queue = struct
         match Queue.take_opt queue with
         | None -> Lwt_condition.wait cond >>= aux
         | Some { set_job; descr } ->
+          Capability.inc_ref job;
           Capability.resolve_ok set_job job;
           Lwt_result.return descr
     in

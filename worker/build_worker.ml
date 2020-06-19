@@ -1,4 +1,5 @@
 open Lwt.Infix
+open Capnp_rpc_lwt
 
 let src = Logs.Src.create "worker" ~doc:"build-scheduler worker agent"
 module Log = (val Logs.src_log src : Logs.LOG)
@@ -82,15 +83,20 @@ type child_process = <
   status : Unix.process_status Lwt.t;
   stdin : Lwt_io.output Lwt_io.channel;
   stdout : Lwt_io.input Lwt_io.channel;
+  terminate : unit;
 >
 
-let build ~docker_build ~log { Api.Queue.dockerfile; cache_hint } =
+let build ~switch ~docker_build ~log { Api.Queue.dockerfile; cache_hint } =
   Log.info (fun f -> f "Got request to build (%s):@,%s" cache_hint dockerfile);
   let proc : child_process = docker_build () in
+  Lwt_switch.add_hook_or_exec (Some switch) (fun () -> proc#terminate; Lwt.return_unit) >>= fun () ->
   let copy_thread = Log_data.copy_from_stream log proc#stdout in
   send_to proc#stdin dockerfile >>= fun stdin_result ->
   copy_thread >>= fun () -> (* Ensure all data has been copied before returning *)
   proc#status >|= function
+  | _ when not (Lwt_switch.is_on switch) ->
+    Log_data.write log (Fmt.strf "Build cancelled");
+    Error (`Msg "Build cancelled")
   | Unix.WEXITED 0 ->
     begin match stdin_result with
       | Ok () ->
@@ -107,40 +113,62 @@ let build ~docker_build ~log { Api.Queue.dockerfile; cache_hint } =
 let docker_build () =
   (Lwt_process.open_process ~stderr:(`FD_copy Unix.stdout) ("", [| "docker"; "build"; "-" |]) :> child_process)
 
-let run ?(docker_build=docker_build) ~capacity registration_service =
+let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
   let cond = Lwt_condition.create () in
   let in_use = ref 0 in
-  let queue = Api.Registration.register registration_service ~name:"worker-1" in
-  let rec loop () =
-    if !in_use >= capacity then (
-      Log.info (fun f -> f "At capacity. Waiting for a build to finish before requesting more...");
-      Lwt_condition.wait cond >>= loop
-    ) else (
-      incr in_use;
-      let outcome, set_outcome = Lwt.wait () in
-      let log = Log_data.create () in
-      Log.info (fun f -> f "Requesting a new job...");
-      let job = Api.Job.local ~outcome ~stream_log_data:(Log_data.stream log) in
-      Api.Queue.pop queue job >>= fun request ->
-      Lwt.async (fun () ->
-          Lwt.finalize
-            (fun () ->
-               Lwt.try_bind
-                 (fun () -> build ~docker_build ~log request)
-                 (fun outcome ->
-                    Log_data.close log;
-                    Lwt.wakeup set_outcome outcome;
-                    Lwt.return_unit)
-                 (fun ex ->
-                    Log.warn (fun f -> f "Build failed: %a" Fmt.exn ex);
-                    Log_data.write log (Fmt.strf "Uncaught exception: %a" Fmt.exn ex);
-                    Log_data.close log;
-                    Lwt.wakeup_exn set_outcome ex;
-                    Lwt.return_unit)
-            )
-            (fun () -> decr in_use; Lwt_condition.broadcast cond (); Lwt.return_unit)
-        );
-      loop ()
+  let pop_thread = ref None in
+  Lwt_switch.add_hook_or_exec switch (fun () ->
+      Log.info (fun f -> f "Switch turned off. Will shut down.");
+      !pop_thread |> Option.iter Lwt.cancel;
+      Lwt_condition.broadcast cond ();
+      Lwt.return_unit
     )
+  >>= fun () ->
+  Capability.with_ref (Api.Registration.register registration_service ~name:"worker-1") @@ fun queue ->
+  let rec loop () =
+    match switch with
+    | Some switch when not (Lwt_switch.is_on switch) ->
+      Log.info (fun f -> f "Builder shutting down (switch turned off)");
+      Lwt.return ()
+    | _ ->
+      if !in_use >= capacity then (
+        Log.info (fun f -> f "At capacity. Waiting for a build to finish before requesting more...");
+        Lwt_condition.wait cond >>= loop
+      ) else (
+        incr in_use;
+        let outcome, set_outcome = Lwt.wait () in
+        let log = Log_data.create () in
+        Log.info (fun f -> f "Requesting a new job...");
+        let switch = Lwt_switch.create () in
+        let pop =
+          Capability.with_ref (Api.Job.local ~switch ~outcome ~stream_log_data:(Log_data.stream log)) @@ fun job ->
+          Api.Queue.pop queue job
+        in
+        pop_thread := Some pop;
+        pop >>= fun request ->
+        Lwt.async (fun () ->
+            Lwt.finalize
+              (fun () ->
+                 Lwt.try_bind
+                   (fun () -> build ~switch ~docker_build ~log request)
+                   (fun outcome ->
+                      Log_data.close log;
+                      Lwt.wakeup set_outcome outcome;
+                      Lwt.return_unit)
+                   (fun ex ->
+                      Log.warn (fun f -> f "Build failed: %a" Fmt.exn ex);
+                      Log_data.write log (Fmt.strf "Uncaught exception: %a" Fmt.exn ex);
+                      Log_data.close log;
+                      Lwt.wakeup_exn set_outcome ex;
+                      Lwt.return_unit)
+              )
+              (fun () ->
+                 decr in_use;
+                 Lwt_switch.turn_off switch >>= fun () ->
+                 Lwt_condition.broadcast cond ();
+                 Lwt.return_unit)
+          );
+        loop ()
+      )
   in
   loop ()

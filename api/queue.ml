@@ -19,6 +19,7 @@ let local ~pop ~release =
       | None -> Service.fail "Missing job!"
       | Some job ->
         Service.return_lwt @@ fun () ->
+        Capability.with_ref job @@ fun job ->
         pop ~job |> Lwt_result.map @@ fun { dockerfile; cache_hint } ->
         let response, results = Service.Response.create Results.init_pointer in
         Results.dockerfile_set results dockerfile;
@@ -32,6 +33,8 @@ module X = Raw.Client.Queue
 
 type t = X.t Capability.t
 
+(* Note: this operation can be cancelled with `Lwt.cancel`, so make sure
+   [call_for_value_exn] is the only blocking operation. *)
 let pop t job =
   let open X.Pop in
   let request, params = Capability.Request.create Params.init_pointer in
