@@ -3,7 +3,7 @@ open Capnp_rpc_lwt
 
 type t = Raw.Service.Job.t Capability.t
 
-let local ~outcome ~stream_log_data =
+let local ~switch ~outcome ~stream_log_data =
   let module X = Raw.Service.Job in
   X.local @@ object
     inherit X.service
@@ -25,6 +25,9 @@ let local ~outcome ~stream_log_data =
       outcome >|= function
       | Ok () -> Ok (Service.Response.create_empty ())
       | Error (`Msg m) -> Error (`Capnp (`Exception (Capnp_rpc.Exception.v m)))
+
+    method! release =
+      Lwt.async (fun () -> Lwt_switch.turn_off switch)
   end
 
 module X = Raw.Client.Job

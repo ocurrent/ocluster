@@ -4,6 +4,7 @@ open Lwt.Infix
 (* Setting this to true shows log output, which is useful if the tests hang.
    However, it also hides the Alcotest diff if it fails. *)
 let verbose = false
+let log_level = Logs.Info
 
 let reporter =
   let report src level ~over k msgf =
@@ -18,7 +19,7 @@ let reporter =
 
 let () =
   Fmt_tty.setup_std_outputs ();
-  Logs.(set_level (Some Info));
+  Logs.(set_level (Some log_level));
   Logs.set_reporter reporter
 
 let read_log job =
@@ -34,19 +35,20 @@ let read_log job =
   aux 0L
 
 let submit service dockerfile =
-  let job = Api.Submission.submit service ~dockerfile ~cache_hint:"1" in
+  Capability.with_ref (Api.Submission.submit service ~dockerfile ~cache_hint:"1") @@ fun job ->
   read_log job >>= fun log ->
   Api.Job.status job >|= function
   | Ok () -> log
   | Error (`Capnp _) -> Fmt.strf "%sFAILED@." log
 
 (* Build on a single worker. *)
-let simple _ () =
+let simple () =
   let builder = Mock_builder.create () in
   let sched = Build_scheduler.create () in
   Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
   Capability.with_ref (Build_scheduler.registration_service sched) @@ fun registry ->
-  Mock_builder.run builder registry;
+  Lwt_switch.with_switch @@ fun switch ->
+  Mock_builder.run ~switch builder registry;
   let result = submit submission_service "example" in
   Mock_builder.set builder "example" (Unix.WEXITED 0);
   result >>= fun result ->
@@ -55,12 +57,13 @@ let simple _ () =
   Lwt.return_unit
 
 (* A failing build on a single worker. *)
-let fails _ () =
+let fails () =
   let builder = Mock_builder.create () in
   let sched = Build_scheduler.create () in
   Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
   Capability.with_ref (Build_scheduler.registration_service sched) @@ fun registry ->
-  Mock_builder.run builder registry;
+  Lwt_switch.with_switch @@ fun switch ->
+  Mock_builder.run ~switch builder registry;
   let result = submit submission_service "example2" in
   Mock_builder.set builder "example2" (Unix.WEXITED 1);
   result >>= fun result ->
@@ -69,13 +72,14 @@ let fails _ () =
   Lwt.return_unit
 
 (* The job is submitted before any builders are registered. *)
-let await_builder _ () =
+let await_builder () =
   let builder = Mock_builder.create () in
   let sched = Build_scheduler.create () in
   Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
   Capability.with_ref (Build_scheduler.registration_service sched) @@ fun registry ->
   let result = submit submission_service "example" in
-  Mock_builder.run builder registry;
+  Lwt_switch.with_switch @@ fun switch ->
+  Mock_builder.run ~switch builder registry;
   Mock_builder.set builder "example" (Unix.WEXITED 0);
   result >>= fun result ->
   Logs.app (fun f -> f "Result: %S" result);
@@ -83,12 +87,13 @@ let await_builder _ () =
   Lwt.return_unit
 
 (* A single builder can't do all the jobs and they queue up. *)
-let builder_capacity _ () =
+let builder_capacity () =
   let builder = Mock_builder.create () in
   let sched = Build_scheduler.create () in
   Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
   Capability.with_ref (Build_scheduler.registration_service sched) @@ fun registry ->
-  Mock_builder.run builder registry ~capacity:2;
+  Lwt_switch.with_switch @@ fun switch ->
+  Mock_builder.run ~switch builder registry ~capacity:2;
   let r1 = submit submission_service "example1" in
   let r2 = submit submission_service "example2" in
   let r3 = submit submission_service "example3" in
@@ -105,13 +110,14 @@ let builder_capacity _ () =
   Lwt.return_unit
 
 (* Test our mock network. *)
-let network _ () =
-  Lwt_switch.with_switch (fun switch ->
+let network () =
+  Lwt_switch.with_switch (fun network_switch ->
       let builder = Mock_builder.create () in
       let sched = Build_scheduler.create () in
       Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
       Capability.with_ref (Build_scheduler.registration_service sched) @@ fun registry ->
-      Mock_builder.run_remote builder ~switch registry;
+      Lwt_switch.with_switch @@ fun builder_switch ->
+      Mock_builder.run_remote builder ~network_switch ~builder_switch registry;
       let result = submit submission_service "example" in
       Mock_builder.set builder "example" (Unix.WEXITED 0);
       result >>= fun result ->
@@ -122,39 +128,77 @@ let network _ () =
   Lwt.pause ()
 
 (* The worker disconnects. *)
-let worker_disconnects _ () =
-  let switch = Lwt_switch.create () in
+let worker_disconnects () =
+  let network_switch = Lwt_switch.create () in
+  Lwt_switch.with_switch @@ fun builder_switch ->
   let builder = Mock_builder.create () in
   let sched = Build_scheduler.create () in
   Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
   Capability.with_ref (Build_scheduler.registration_service sched) @@ fun registry ->
-  Mock_builder.run_remote builder ~switch registry;
+  Mock_builder.run_remote builder ~builder_switch ~network_switch registry;
   (* Run a job to ensure it's connected. *)
   let result = submit submission_service "example" in
   Mock_builder.set builder "example" (Unix.WEXITED 0);
   result >>= fun result ->
   Alcotest.(check string) "Check job worked" "Building example\nJob succeeed\n" result;
   (* Drop network *)
-  Lwt_switch.turn_off switch >>= fun () ->
+  Logs.info (fun f -> f "Dropping worker's network connection");
+  Lwt_switch.turn_off network_switch >>= fun () ->
   Lwt.pause () >>= fun () ->
   (* Try again *)
   let result = submit submission_service "example" in
   (* Worker reconnects *)
-  let switch = Lwt_switch.create () in
-  Mock_builder.run_remote builder ~switch registry;
+  let network_switch = Lwt_switch.create () in
+  Mock_builder.run_remote builder ~builder_switch ~network_switch registry;
   Mock_builder.set builder "example" (Unix.WEXITED 0);
   result >>= fun result ->
   Alcotest.(check string) "Check job worked" "Building example\nJob succeeed\n" result;
   Lwt.return_unit
 
+(* The client gets disconnected. The job is automatically cancelled. *)
+let client_disconnects () =
+  let builder = Mock_builder.create () in
+  let sched = Build_scheduler.create () in
+  Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
+  Lwt_switch.with_switch @@ fun builder_switch ->
+  let net_switch = Lwt_switch.create () in
+  let submission_service = Mock_network.remote ~switch:net_switch submission_service in
+  Capability.with_ref (Build_scheduler.registration_service sched) @@ fun registry ->
+  Mock_builder.run builder registry ~switch:builder_switch;
+  (* Start a job: *)
+  let result = submit submission_service "example" in
+  Mock_builder.await builder "example" >>= fun job_result ->
+  (* Drop network *)
+  Lwt_switch.turn_off net_switch >>= fun () ->
+  Lwt_result.catch result >>= function
+  | Ok _ -> Alcotest.fail "Job should have failed!"
+  | Error ex ->
+    Logs.info (fun f -> f "Client got disconnected: %a" Fmt.exn ex);
+    (* Check job is cancelled. *)
+    Logs.info (fun f -> f "Wait for job to stop");
+    job_result >|= function
+    | Unix.WSIGNALED (-11) -> ()
+    | _ -> Alcotest.fail "Job should have been cancelled!"
+
+let test_case name fn =
+  Alcotest_lwt.test_case name `Quick @@ fun _ () ->
+  let problems = Logs.(warn_count () + err_count ()) in
+  fn () >>= fun () ->
+  Lwt.pause () >>= fun () ->
+  Gc.full_major ();
+  Lwt.pause () >|= fun () ->
+  let problems' = Logs.(warn_count () + err_count ()) in
+  Alcotest.(check int) "Check log for warnings" 0 (problems' - problems)
+
 let () =
   Lwt_main.run @@ Alcotest_lwt.run ~verbose "build-scheduler" [
     "main", [
-      Alcotest_lwt.test_case "simple" `Quick simple;
-      Alcotest_lwt.test_case "fails" `Quick fails;
-      Alcotest_lwt.test_case "await_builder" `Quick await_builder;
-      Alcotest_lwt.test_case "builder_capacity" `Quick builder_capacity;
-      Alcotest_lwt.test_case "network" `Quick network;
-      Alcotest_lwt.test_case "worker_disconnects" `Quick worker_disconnects;
+      test_case "simple" simple;
+      test_case "fails" fails;
+      test_case "await_builder" await_builder;
+      test_case "builder_capacity" builder_capacity;
+      test_case "network" network;
+      test_case "worker_disconnects" worker_disconnects;
+      test_case "client_disconnects" client_disconnects;
     ]
   ]
