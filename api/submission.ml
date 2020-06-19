@@ -8,13 +8,7 @@ let local ~submit =
     method submit_impl params release_param_caps =
       let open X.Submit in
       release_param_caps ();
-      let descr =
-        let r = Params.descr_get params in
-        { Queue.
-          dockerfile = Raw.Reader.JobDescr.dockerfile_get r;
-          cache_hint = Raw.Reader.JobDescr.cache_hint_get r;
-        }
-      in
+      let descr = Params.descr_get params in
       let job = submit descr in
       let response, results = Service.Response.create Results.init_pointer in
       Results.job_set results (Some job);

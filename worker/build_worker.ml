@@ -86,7 +86,10 @@ type child_process = <
   terminate : unit;
 >
 
-let build ~switch ~docker_build ~log { Api.Queue.dockerfile; cache_hint } =
+let build ~switch ~docker_build ~log descr =
+  let module R = Api.Raw.Reader.JobDescr in
+  let dockerfile = R.dockerfile_get descr in
+  let cache_hint = R.cache_hint_get descr in
   Log.info (fun f -> f "Got request to build (%s):\n%s" cache_hint (String.trim dockerfile));
   let proc : child_process = docker_build () in
   Lwt_switch.add_hook_or_exec (Some switch) (fun () ->

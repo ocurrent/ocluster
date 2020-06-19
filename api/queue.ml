@@ -1,10 +1,7 @@
 open Lwt.Infix
 open Capnp_rpc_lwt
 
-type job_desc = {
-  dockerfile : string;
-  cache_hint : string;
-}
+type job_desc = Raw.Reader.JobDescr.t
 
 let local ~pop ~release =
   let module X = Raw.Service.Queue in
@@ -20,10 +17,9 @@ let local ~pop ~release =
       | Some job ->
         Service.return_lwt @@ fun () ->
         Capability.with_ref job @@ fun job ->
-        pop ~job |> Lwt_result.map @@ fun { dockerfile; cache_hint } ->
+        pop ~job |> Lwt_result.map @@ fun descr ->
         let response, results = Service.Response.create Results.init_pointer in
-        Results.dockerfile_set results dockerfile;
-        Results.cache_hint_set results cache_hint;
+        let _ : Raw.Builder.JobDescr.t = Results.descr_set_reader results descr in
         response
 
     method! release = release ()
@@ -39,7 +35,4 @@ let pop t job =
   let open X.Pop in
   let request, params = Capability.Request.create Params.init_pointer in
   Params.job_set params (Some job);
-  Capability.call_for_value_exn t method_id request >|= fun descr ->
-  let dockerfile = Results.dockerfile_get descr in
-  let cache_hint = Results.cache_hint_get descr in
-  { dockerfile; cache_hint }
+  Capability.call_for_value_exn t method_id request >|= Results.descr_get

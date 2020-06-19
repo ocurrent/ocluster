@@ -2,6 +2,7 @@
 
 struct JobDescr {
   dockerfile @0 :Text;
+
   cacheHint @1 :Text;
   # Try to place jobs with the same cache_hint on the same node.
   # This will probably be a hash of the first few lines of the Dockerfile.
@@ -21,7 +22,7 @@ interface Job {
 }
 
 interface Queue {
-  pop @0 (job :Job) -> JobDescr;
+  pop @0 (job :Job) -> (descr :JobDescr);
 }
 
 interface Registration {
