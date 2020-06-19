@@ -35,7 +35,7 @@ let read_log job =
   aux 0L
 
 let submit service dockerfile =
-  Capability.with_ref (Api.Submission.submit service ~dockerfile ~cache_hint:"1") @@ fun job ->
+  Capability.with_ref (Api.Submission.submit service ~dockerfile ~cache_hint:"1" ?src:None) @@ fun job ->
   read_log job >>= fun log ->
   Api.Job.status job >|= function
   | Ok () -> log

@@ -1,3 +1,3 @@
 (library
  (name build_worker)
- (libraries api logs capnp-rpc-lwt lwt.unix))
+ (libraries api logs capnp-rpc-lwt lwt.unix git-unix))

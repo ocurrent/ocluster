@@ -31,7 +31,7 @@ let rec await t id =
     Lwt_condition.wait t.cond >>= fun () ->
     await t id
 
-let docker_build t ~switch ~log dockerfile =
+let docker_build t ~switch ~log ~src:_ dockerfile =
   Logs.info (fun f -> f "Mock build got %S" dockerfile);
   Build_worker.Log_data.write log (Fmt.strf "Building %s@." dockerfile);
   let reply = get t dockerfile in

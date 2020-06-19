@@ -12,6 +12,7 @@ depends: [
   "logs"
   "fmt"
   "conf-libev"
+  "git-unix"
   "ocaml" {>= "4.08.0"}
   "alcotest" {>= "1.0.0" & with-test}
   "alcotest-lwt" {>= "1.0.1" & with-test}

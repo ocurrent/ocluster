@@ -9,7 +9,11 @@ let build ~switch ~docker_build ~log descr =
   let dockerfile = R.dockerfile_get descr in
   let cache_hint = R.cache_hint_get descr in
   Log.info (fun f -> f "Got request to build (%s):\n%s" cache_hint (String.trim dockerfile));
-  docker_build ~switch ~log dockerfile >|= function
+  begin
+    Context.with_build_context ~switch ~log descr @@ fun src ->
+    docker_build ~switch ~log ~src dockerfile
+  end
+  >|= function
   | Error `Cancelled ->
     Log_data.write log (Fmt.strf "Job cancelled");
     Log.info (fun f -> f "Job cancelled");
@@ -27,8 +31,8 @@ let build ~switch ~docker_build ~log descr =
     Log.info (fun f -> f "Job failed: %s" msg);
     Error (`Msg "Build failed")
 
-let docker_build ~switch ~log dockerfile =
-  Process.exec ~switch ~log ~stdin:dockerfile ["docker"; "build"]
+let docker_build ~switch ~log ~src dockerfile =
+  Process.exec ~switch ~log ~stdin:dockerfile ["docker"; "build"; src]
 
 let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
   let cond = Lwt_condition.create () in

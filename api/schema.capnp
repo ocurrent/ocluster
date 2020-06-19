@@ -6,6 +6,13 @@ struct JobDescr {
   cacheHint @1 :Text;
   # Try to place jobs with the same cache_hint on the same node.
   # This will probably be a hash of the first few lines of the Dockerfile.
+
+  repository @2 :Text;
+  # The URL of a Git repository with the commit(s) to use as the context.
+
+  commits @3 :List(Text);
+  # The commit(s) to use as the context. If the list is empty, there will be no context.
+  # If there are multiple items, they will be merged.
 }
 
 interface Job {

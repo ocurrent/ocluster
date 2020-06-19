@@ -17,6 +17,7 @@
   logs
   fmt
   conf-libev
+  git-unix
   (ocaml (>= 4.08.0))
   (alcotest (and (>= 1.0.0) :with-test))
   (alcotest-lwt (and (>= 1.0.1) :with-test))

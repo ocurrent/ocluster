@@ -57,3 +57,6 @@ let close t =
     Lwt_condition.broadcast cond ()
   | `Finished ->
     Fmt.failwith "Log already closed!"
+
+let info t fmt =
+  Fmt.kstrf (write t) (fmt ^^ "@.")
