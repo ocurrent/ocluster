@@ -87,25 +87,35 @@ type child_process = <
 >
 
 let build ~switch ~docker_build ~log { Api.Queue.dockerfile; cache_hint } =
-  Log.info (fun f -> f "Got request to build (%s):@,%s" cache_hint dockerfile);
+  Log.info (fun f -> f "Got request to build (%s):\n%s" cache_hint (String.trim dockerfile));
   let proc : child_process = docker_build () in
-  Lwt_switch.add_hook_or_exec (Some switch) (fun () -> proc#terminate; Lwt.return_unit) >>= fun () ->
+  Lwt_switch.add_hook_or_exec (Some switch) (fun () ->
+      if Lwt.state proc#status = Lwt.Sleep then (
+        Log.info (fun f -> f "Asking docker build to terminate");
+        proc#terminate;
+      );
+      Lwt.return_unit
+    )
+  >>= fun () ->
   let copy_thread = Log_data.copy_from_stream log proc#stdout in
   send_to proc#stdin dockerfile >>= fun stdin_result ->
   copy_thread >>= fun () -> (* Ensure all data has been copied before returning *)
   proc#status >|= function
   | _ when not (Lwt_switch.is_on switch) ->
-    Log_data.write log (Fmt.strf "Build cancelled");
+    Log_data.write log (Fmt.strf "Job cancelled");
+    Log.info (fun f -> f "Job cancelled");
     Error (`Msg "Build cancelled")
   | Unix.WEXITED 0 ->
     begin match stdin_result with
       | Ok () ->
-        Log_data.write log "Job succeeed\n";
+        Log_data.write log "Job succeeded\n";
+        Log.info (fun f -> f "Job succeeded");
         Ok ()
       | Error (`Msg msg) -> Fmt.failwith "Failed sending Dockerfile to process: %s" msg
     end
   | Unix.WEXITED x ->
     Log_data.write log (Fmt.strf "Docker build exited with status %d@." x);
+    Log.info (fun f -> f "Job failed");
     Error (`Msg "Build failed")
   | Unix.WSIGNALED x -> Fmt.failwith "Docker build failed with signal %d" x
   | Unix.WSTOPPED x -> Fmt.failwith "Docker build stopped with signal %a" pp_signal x

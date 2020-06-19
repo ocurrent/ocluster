@@ -53,7 +53,7 @@ let simple () =
   Mock_builder.set builder "example" (Unix.WEXITED 0);
   result >>= fun result ->
   Logs.app (fun f -> f "Result: %S" result);
-  Alcotest.(check string) "Check job worked" "Building example\nJob succeeed\n" result;
+  Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
   Lwt.return_unit
 
 (* A failing build on a single worker. *)
@@ -83,7 +83,7 @@ let await_builder () =
   Mock_builder.set builder "example" (Unix.WEXITED 0);
   result >>= fun result ->
   Logs.app (fun f -> f "Result: %S" result);
-  Alcotest.(check string) "Check job worked" "Building example\nJob succeeed\n" result;
+  Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
   Lwt.return_unit
 
 (* A single builder can't do all the jobs and they queue up. *)
@@ -102,11 +102,11 @@ let builder_capacity () =
   Mock_builder.set builder "example2" (Unix.WEXITED 0);
   Mock_builder.set builder "example3" (Unix.WEXITED 0);
   r1 >>= fun result ->
-  Alcotest.(check string) "Check job worked" "Building example1\nJob succeeed\n" result;
+  Alcotest.(check string) "Check job worked" "Building example1\nJob succeeded\n" result;
   r2 >>= fun result ->
-  Alcotest.(check string) "Check job worked" "Building example2\nJob succeeed\n" result;
+  Alcotest.(check string) "Check job worked" "Building example2\nJob succeeded\n" result;
   r3 >>= fun result ->
-  Alcotest.(check string) "Check job worked" "Building example3\nJob succeeed\n" result;
+  Alcotest.(check string) "Check job worked" "Building example3\nJob succeeded\n" result;
   Lwt.return_unit
 
 (* Test our mock network. *)
@@ -122,7 +122,7 @@ let network () =
       Mock_builder.set builder "example" (Unix.WEXITED 0);
       result >>= fun result ->
       Logs.app (fun f -> f "Result: %S" result);
-      Alcotest.(check string) "Check job worked" "Building example\nJob succeeed\n" result;
+      Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
       Lwt.return_unit
     ) >>= fun () ->
   Lwt.pause ()
@@ -140,7 +140,7 @@ let worker_disconnects () =
   let result = submit submission_service "example" in
   Mock_builder.set builder "example" (Unix.WEXITED 0);
   result >>= fun result ->
-  Alcotest.(check string) "Check job worked" "Building example\nJob succeeed\n" result;
+  Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
   (* Drop network *)
   Logs.info (fun f -> f "Dropping worker's network connection");
   Lwt_switch.turn_off network_switch >>= fun () ->
@@ -152,7 +152,7 @@ let worker_disconnects () =
   Mock_builder.run_remote builder ~builder_switch ~network_switch registry;
   Mock_builder.set builder "example" (Unix.WEXITED 0);
   result >>= fun result ->
-  Alcotest.(check string) "Check job worked" "Building example\nJob succeeed\n" result;
+  Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
   Lwt.return_unit
 
 (* The client gets disconnected. The job is automatically cancelled. *)
