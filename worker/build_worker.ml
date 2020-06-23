@@ -4,14 +4,23 @@ open Capnp_rpc_lwt
 module Log_data = Log_data
 module Process = Process
 
-let build ~switch ~docker_build ~log descr =
+type t = {
+  registration_service : Api.Raw.Client.Registration.t Sturdy_ref.t;
+  capacity : int;
+  build : switch:Lwt_switch.t -> log:Log_data.t -> src:string -> string -> (unit, Process.error) Lwt_result.t;
+  mutable in_use : int;                (* Number of active builds *)
+  cond : unit Lwt_condition.t;         (* Fires when a build finishes *)
+  mutable cancel : unit -> unit;       (* Called if switch is turned off *)
+}
+
+let build ~switch ~log t descr =
   let module R = Api.Raw.Reader.JobDescr in
   let dockerfile = R.dockerfile_get descr in
   let cache_hint = R.cache_hint_get descr in
   Log.info (fun f -> f "Got request to build (%s):\n%s" cache_hint (String.trim dockerfile));
   begin
     Context.with_build_context ~switch ~log descr @@ fun src ->
-    docker_build ~switch ~log ~src dockerfile
+    t.build ~switch ~log ~src dockerfile
   end
   >|= function
   | Error `Cancelled ->
@@ -31,22 +40,9 @@ let build ~switch ~docker_build ~log descr =
     Log.info (fun f -> f "Job failed: %s" msg);
     Error (`Msg "Build failed")
 
-let docker_build ~switch ~log ~src dockerfile =
-  Process.exec ~switch ~log ~stdin:dockerfile ["docker"; "build"; src]
-
-let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
-  Sturdy_ref.connect_exn registration_service >>= fun reg ->
+let loop ~switch t =
+  Sturdy_ref.connect_exn t.registration_service >>= fun reg ->
   Capability.with_ref reg @@ fun reg ->
-  let cond = Lwt_condition.create () in
-  let in_use = ref 0 in
-  let pop_thread = ref None in
-  Lwt_switch.add_hook_or_exec switch (fun () ->
-      Log.info (fun f -> f "Switch turned off. Will shut down.");
-      !pop_thread |> Option.iter Lwt.cancel;
-      Lwt_condition.broadcast cond ();
-      Lwt.return_unit
-    )
-  >>= fun () ->
   Capability.with_ref (Api.Registration.register reg ~name:"worker-1") @@ fun queue ->
   let rec loop () =
     match switch with
@@ -54,11 +50,11 @@ let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
       Log.info (fun f -> f "Builder shutting down (switch turned off)");
       Lwt.return ()
     | _ ->
-      if !in_use >= capacity then (
+      if t.in_use >= t.capacity then (
         Log.info (fun f -> f "At capacity. Waiting for a build to finish before requesting more...");
-        Lwt_condition.wait cond >>= loop
+        Lwt_condition.wait t.cond >>= loop
       ) else (
-        incr in_use;
+        t.in_use <- t.in_use + 1;
         let outcome, set_outcome = Lwt.wait () in
         let log = Log_data.create () in
         Log.info (fun f -> f "Requesting a new job...");
@@ -67,13 +63,13 @@ let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
           Capability.with_ref (Api.Job.local ~switch ~outcome ~stream_log_data:(Log_data.stream log)) @@ fun job ->
           Api.Queue.pop queue job
         in
-        pop_thread := Some pop;
+        t.cancel <- (fun () -> Lwt.cancel pop);
         pop >>= fun request ->
         Lwt.async (fun () ->
             Lwt.finalize
               (fun () ->
                  Lwt.try_bind
-                   (fun () -> build ~switch ~docker_build ~log request)
+                   (fun () -> build ~switch ~log t request)
                    (fun outcome ->
                       Log_data.close log;
                       Lwt.wakeup set_outcome outcome;
@@ -86,12 +82,33 @@ let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
                       Lwt.return_unit)
               )
               (fun () ->
-                 decr in_use;
+                 t.in_use <- t.in_use - 1;
                  Lwt_switch.turn_off switch >>= fun () ->
-                 Lwt_condition.broadcast cond ();
+                 Lwt_condition.broadcast t.cond ();
                  Lwt.return_unit)
           );
         loop ()
       )
   in
   loop ()
+
+let docker_build ~switch ~log ~src dockerfile =
+  Process.exec ~switch ~log ~stdin:dockerfile ["docker"; "build"; src]
+
+let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
+  let t = {
+    registration_service;
+    build = docker_build;
+    cond = Lwt_condition.create ();
+    capacity;
+    in_use = 0;
+    cancel = ignore;
+  } in
+  Lwt_switch.add_hook_or_exec switch (fun () ->
+      Log.info (fun f -> f "Switch turned off. Will shut down.");
+      t.cancel ();
+      Lwt_condition.broadcast t.cond ();
+      Lwt.return_unit
+    )
+  >>= fun () ->
+  loop ~switch t
