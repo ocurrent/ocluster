@@ -1,8 +1,10 @@
 open Lwt.Infix
 open Capnp_rpc_lwt
 
+type outcome = (unit, Build_worker.Process.error) result
+
 type t = {
-  replies : (string, (Unix.process_status Lwt.t * Unix.process_status Lwt.u)) Hashtbl.t;
+  replies : (string, (outcome Lwt.t * outcome Lwt.u)) Hashtbl.t;
   cond : unit Lwt_condition.t;
 }
 
@@ -29,36 +31,18 @@ let rec await t id =
     Lwt_condition.wait t.cond >>= fun () ->
     await t id
 
-let build t ~switch ~stdin ~stdout =
-  Lwt_io.read stdin >>= fun dockerfile ->
+let docker_build t ~switch ~log ~src:_ dockerfile =
   Logs.info (fun f -> f "Mock build got %S" dockerfile);
-  Lwt_io.close stdin >>= fun () ->
-  Lwt_io.write stdout (Fmt.strf "Building %s@." dockerfile) >>= fun () ->
+  Build_worker.Log_data.write log (Fmt.strf "Building %s@." dockerfile);
+  let reply = get t dockerfile in
   Lwt_switch.add_hook_or_exec (Some switch) (fun () ->
-      set t dockerfile (Unix.WSIGNALED (-11));
+      if Lwt.state reply = Lwt.Sleep then
+        set t dockerfile @@ Error `Cancelled;
       Lwt.return_unit
     ) >>= fun () ->
-  get t dockerfile >>= fun reply ->
+  reply >|= fun reply ->
   Hashtbl.remove t.replies dockerfile;
-  Lwt_io.close stdout >|= fun () ->
   reply
-
-let docker_build t () =
-  let status, set_status = Lwt.wait () in
-  let from_stdin, to_stdin = Lwt_io.pipe () in
-  let from_stdout, to_stdout = Lwt_io.pipe () in
-  let switch = Lwt_switch.create () in
-  Lwt.async (fun () -> build t ~switch ~stdin:from_stdin ~stdout:to_stdout >|= Lwt.wakeup set_status);
-  object
-    method status = status
-    method stdin = to_stdin
-    method stdout = from_stdout
-    method terminate =
-      if Lwt.state status = Lwt.Sleep then (
-        Logs.info (fun f -> f "Cancelling job");
-        Lwt.async (fun () -> Lwt_switch.turn_off switch)
-      )
-  end
 
 let run ?(capacity=1) ~switch t registration_service =
   let thread = Build_worker.run ~switch ~capacity ~docker_build:(docker_build t) registration_service in

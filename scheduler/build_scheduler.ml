@@ -89,7 +89,7 @@ let registration_service t =
 
 let submit t (descr : Api.Queue.job_desc) : Api.Job.t =
   let job, set_job = Capability.promise () in
-  Log.info (fun f -> f "Received new job request:\n%s" (String.trim descr.dockerfile));
+  Log.info (fun f -> f "Received new job request");
   let item = { Item.descr; set_job } in
   Queue.add item t.incoming;
   assign t;

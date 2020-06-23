@@ -35,7 +35,7 @@ let read_log job =
   aux 0L
 
 let submit service dockerfile =
-  Capability.with_ref (Api.Submission.submit service ~dockerfile ~cache_hint:"1") @@ fun job ->
+  Capability.with_ref (Api.Submission.submit service ~dockerfile ~cache_hint:"1" ?src:None) @@ fun job ->
   read_log job >>= fun log ->
   Api.Job.status job >|= function
   | Ok () -> log
@@ -50,7 +50,7 @@ let simple () =
   Lwt_switch.with_switch @@ fun switch ->
   Mock_builder.run ~switch builder registry;
   let result = submit submission_service "example" in
-  Mock_builder.set builder "example" (Unix.WEXITED 0);
+  Mock_builder.set builder "example" @@ Ok ();
   result >>= fun result ->
   Logs.app (fun f -> f "Result: %S" result);
   Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
@@ -65,7 +65,7 @@ let fails () =
   Lwt_switch.with_switch @@ fun switch ->
   Mock_builder.run ~switch builder registry;
   let result = submit submission_service "example2" in
-  Mock_builder.set builder "example2" (Unix.WEXITED 1);
+  Mock_builder.set builder "example2" @@ Error (`Exit_code 1);
   result >>= fun result ->
   Logs.app (fun f -> f "Result: %S" result);
   Alcotest.(check string) "Check job worked" "Building example2\nDocker build exited with status 1\nFAILED\n" result;
@@ -80,7 +80,7 @@ let await_builder () =
   let result = submit submission_service "example" in
   Lwt_switch.with_switch @@ fun switch ->
   Mock_builder.run ~switch builder registry;
-  Mock_builder.set builder "example" (Unix.WEXITED 0);
+  Mock_builder.set builder "example" @@ Ok ();
   result >>= fun result ->
   Logs.app (fun f -> f "Result: %S" result);
   Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
@@ -98,9 +98,9 @@ let builder_capacity () =
   let r2 = submit submission_service "example2" in
   let r3 = submit submission_service "example3" in
   Lwt.pause () >>= fun () ->
-  Mock_builder.set builder "example1" (Unix.WEXITED 0);
-  Mock_builder.set builder "example2" (Unix.WEXITED 0);
-  Mock_builder.set builder "example3" (Unix.WEXITED 0);
+  Mock_builder.set builder "example1" @@ Ok ();
+  Mock_builder.set builder "example2" @@ Ok ();
+  Mock_builder.set builder "example3" @@ Ok ();
   r1 >>= fun result ->
   Alcotest.(check string) "Check job worked" "Building example1\nJob succeeded\n" result;
   r2 >>= fun result ->
@@ -119,7 +119,7 @@ let network () =
       Lwt_switch.with_switch @@ fun builder_switch ->
       Mock_builder.run_remote builder ~network_switch ~builder_switch registry;
       let result = submit submission_service "example" in
-      Mock_builder.set builder "example" (Unix.WEXITED 0);
+      Mock_builder.set builder "example" @@ Ok ();
       result >>= fun result ->
       Logs.app (fun f -> f "Result: %S" result);
       Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
@@ -138,7 +138,7 @@ let worker_disconnects () =
   Mock_builder.run_remote builder ~builder_switch ~network_switch registry;
   (* Run a job to ensure it's connected. *)
   let result = submit submission_service "example" in
-  Mock_builder.set builder "example" (Unix.WEXITED 0);
+  Mock_builder.set builder "example" @@ Ok ();
   result >>= fun result ->
   Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
   (* Drop network *)
@@ -150,7 +150,7 @@ let worker_disconnects () =
   (* Worker reconnects *)
   let network_switch = Lwt_switch.create () in
   Mock_builder.run_remote builder ~builder_switch ~network_switch registry;
-  Mock_builder.set builder "example" (Unix.WEXITED 0);
+  Mock_builder.set builder "example" @@ Ok ();
   result >>= fun result ->
   Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
   Lwt.return_unit
@@ -177,7 +177,7 @@ let client_disconnects () =
     (* Check job is cancelled. *)
     Logs.info (fun f -> f "Wait for job to stop");
     job_result >|= function
-    | Unix.WSIGNALED (-11) -> ()
+    | Error `Cancelled -> ()
     | _ -> Alcotest.fail "Job should have been cancelled!"
 
 let test_case name fn =
