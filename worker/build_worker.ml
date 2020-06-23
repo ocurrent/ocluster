@@ -4,12 +4,14 @@ open Capnp_rpc_lwt
 module Log_data = Log_data
 module Process = Process
 
+let min_reconnect_time = 10.0   (* Don't try to connect more than once per 10 seconds *)
+
 type t = {
+  build : switch:Lwt_switch.t -> log:Log_data.t -> src:string -> string -> (unit, Process.error) Lwt_result.t;
   registration_service : Api.Raw.Client.Registration.t Sturdy_ref.t;
   capacity : int;
-  build : switch:Lwt_switch.t -> log:Log_data.t -> src:string -> string -> (unit, Process.error) Lwt_result.t;
   mutable in_use : int;                (* Number of active builds *)
-  cond : unit Lwt_condition.t;         (* Fires when a build finishes *)
+  cond : unit Lwt_condition.t;         (* Fires when a build finishes (or switch turned off) *)
   mutable cancel : unit -> unit;       (* Called if switch is turned off *)
 }
 
@@ -40,15 +42,12 @@ let build ~switch ~log t descr =
     Log.info (fun f -> f "Job failed: %s" msg);
     Error (`Msg "Build failed")
 
-let loop ~switch t =
-  Sturdy_ref.connect_exn t.registration_service >>= fun reg ->
-  Capability.with_ref reg @@ fun reg ->
-  Capability.with_ref (Api.Registration.register reg ~name:"worker-1") @@ fun queue ->
+let loop ~switch t queue =
   let rec loop () =
     match switch with
     | Some switch when not (Lwt_switch.is_on switch) ->
       Log.info (fun f -> f "Builder shutting down (switch turned off)");
-      Lwt.return ()
+      Lwt.return `Cancelled
     | _ ->
       if t.in_use >= t.capacity then (
         Log.info (fun f -> f "At capacity. Waiting for a build to finish before requesting more...");
@@ -111,4 +110,32 @@ let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
       Lwt.return_unit
     )
   >>= fun () ->
-  loop ~switch t
+  let rec reconnect () =
+    let connect_time = Unix.gettimeofday () in
+    Lwt.catch
+      (fun () ->
+         Sturdy_ref.connect_exn t.registration_service >>= fun reg ->
+         Capability.with_ref reg @@ fun reg ->
+         Capability.with_ref (Api.Registration.register reg ~name:"worker-1") @@ fun queue ->
+         Lwt.catch
+           (fun () -> loop ~switch t queue)
+           (fun ex ->
+              Lwt.pause () >>= fun () ->
+              match Capability.problem queue, switch with
+              | _, Some switch when not (Lwt_switch.is_on switch) -> Lwt.return `Cancelled
+              | Some problem, _ ->
+                Log.info (fun f -> f "Worker loop failed (probably because queue connection failed): %a" Fmt.exn ex);
+                Lwt.fail (Failure (Fmt.to_to_string Capnp_rpc.Exception.pp problem))    (* Will retry *)
+              | None, _ ->
+                Lwt.return (`Crash ex)
+           )
+      )
+      (fun ex ->
+         let delay = max 0.0 (connect_time +. min_reconnect_time -. Unix.gettimeofday ()) in
+         Log.info (fun f -> f "Lost connection to scheduler (%a). Will retry in %.1fs..." Fmt.exn ex delay);
+         Lwt_unix.sleep delay >>= reconnect
+      )
+  in
+  reconnect () >>= function
+  | `Cancelled -> Lwt.return_unit
+  | `Crash ex -> Lwt.fail ex
