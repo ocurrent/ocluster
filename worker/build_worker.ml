@@ -35,6 +35,8 @@ let docker_build ~switch ~log ~src dockerfile =
   Process.exec ~switch ~log ~stdin:dockerfile ["docker"; "build"; src]
 
 let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
+  Sturdy_ref.connect_exn registration_service >>= fun reg ->
+  Capability.with_ref reg @@ fun reg ->
   let cond = Lwt_condition.create () in
   let in_use = ref 0 in
   let pop_thread = ref None in
@@ -45,7 +47,7 @@ let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
       Lwt.return_unit
     )
   >>= fun () ->
-  Capability.with_ref (Api.Registration.register registration_service ~name:"worker-1") @@ fun queue ->
+  Capability.with_ref (Api.Registration.register reg ~name:"worker-1") @@ fun queue ->
   let rec loop () =
     match switch with
     | Some switch when not (Lwt_switch.is_on switch) ->

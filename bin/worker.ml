@@ -1,5 +1,3 @@
-open Lwt.Infix
-
 let () =
   Logging.init ()
 
@@ -11,8 +9,7 @@ let main registration_path capacity =
   Lwt_main.run begin
     let vat = Capnp_rpc_unix.client_only_vat () in
     let sr = Capnp_rpc_unix.Cap_file.load vat registration_path |> or_die in
-    Capnp_rpc_lwt.Sturdy_ref.connect_exn sr >>= fun registration_service ->
-    Build_worker.run ~capacity registration_service
+    Build_worker.run ~capacity sr
   end
 
 (* Command-line parsing *)
