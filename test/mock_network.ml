@@ -1,3 +1,4 @@
+open Capnp_rpc_lwt
 open Lwt.Infix
 
 let ( >>!= ) = Lwt_result.bind
@@ -52,12 +53,30 @@ module Net = Capnp_rpc_net.Networking(Capnp_rpc_net.Two_party_network)(Flow)
 
 let id = Capnp_rpc_net.Restorer.Id.public "x"
 
+let sturdy (cap : 'a Capability.t) : 'a Sturdy_ref.t =
+  Capnp_rpc_lwt.Cast.sturdy_of_raw @@ object
+    method connect =
+      Capability.inc_ref cap;
+      Lwt_result.return (Capnp_rpc_lwt.Cast.cap_to_raw cap)
+
+    method to_uri_with_secrets = Uri.of_string "mock sturdy-ref"
+  end
+
 (* Stretch our local reference to [x] over a fake network link. *)
-let remote ~switch x =
+let remote ~switch (x : 'a Capability.t) : 'a Sturdy_ref.t =
   let local, remote = Flow.pair () in
   let peer_id = Capnp_rpc_net.Auth.Digest.insecure in
   let local_ep = Capnp_rpc_net.Endpoint.of_flow ~switch (module Flow) local ~peer_id in
   let remote_ep = Capnp_rpc_net.Endpoint.of_flow ~switch (module Flow) remote ~peer_id in
   let local_captp = Net.CapTP.connect local_ep ~restore:Capnp_rpc_net.Restorer.none in
   let _remote_captp = Net.CapTP.connect remote_ep ~restore:(Capnp_rpc_net.Restorer.single id x) in
-  Net.CapTP.bootstrap local_captp id
+  let cap = lazy (Net.CapTP.bootstrap local_captp id) in
+  Lwt_switch.add_hook (Some switch) (fun () -> Capability.dec_ref (Lazy.force cap); Lwt.return_unit);
+  Capnp_rpc_lwt.Cast.sturdy_of_raw @@ object
+    method connect =
+      let cap = Lazy.force cap in
+      Capability.inc_ref cap;
+      Lwt_result.return (Capnp_rpc_lwt.Cast.cap_to_raw cap)
+
+    method to_uri_with_secrets = Uri.of_string "mock sturdy-ref"
+  end

@@ -48,7 +48,7 @@ let simple () =
   Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
   Capability.with_ref (Build_scheduler.registration_service sched) @@ fun registry ->
   Lwt_switch.with_switch @@ fun switch ->
-  Mock_builder.run ~switch builder registry;
+  Mock_builder.run ~switch builder (Mock_network.sturdy registry);
   let result = submit submission_service "example" in
   Mock_builder.set builder "example" @@ Ok ();
   result >>= fun result ->
@@ -63,7 +63,7 @@ let fails () =
   Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
   Capability.with_ref (Build_scheduler.registration_service sched) @@ fun registry ->
   Lwt_switch.with_switch @@ fun switch ->
-  Mock_builder.run ~switch builder registry;
+  Mock_builder.run ~switch builder (Mock_network.sturdy registry);
   let result = submit submission_service "example2" in
   Mock_builder.set builder "example2" @@ Error (`Exit_code 1);
   result >>= fun result ->
@@ -79,7 +79,7 @@ let await_builder () =
   Capability.with_ref (Build_scheduler.registration_service sched) @@ fun registry ->
   let result = submit submission_service "example" in
   Lwt_switch.with_switch @@ fun switch ->
-  Mock_builder.run ~switch builder registry;
+  Mock_builder.run ~switch builder (Mock_network.sturdy registry);
   Mock_builder.set builder "example" @@ Ok ();
   result >>= fun result ->
   Logs.app (fun f -> f "Result: %S" result);
@@ -93,7 +93,7 @@ let builder_capacity () =
   Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
   Capability.with_ref (Build_scheduler.registration_service sched) @@ fun registry ->
   Lwt_switch.with_switch @@ fun switch ->
-  Mock_builder.run ~switch builder registry ~capacity:2;
+  Mock_builder.run ~switch builder (Mock_network.sturdy registry) ~capacity:2;
   let r1 = submit submission_service "example1" in
   let r2 = submit submission_service "example2" in
   let r3 = submit submission_service "example3" in
@@ -162,9 +162,9 @@ let client_disconnects () =
   Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
   Lwt_switch.with_switch @@ fun builder_switch ->
   let net_switch = Lwt_switch.create () in
-  let submission_service = Mock_network.remote ~switch:net_switch submission_service in
+  Sturdy_ref.connect_exn (Mock_network.remote ~switch:net_switch submission_service) >>= fun submission_service ->
   Capability.with_ref (Build_scheduler.registration_service sched) @@ fun registry ->
-  Mock_builder.run builder registry ~switch:builder_switch;
+  Mock_builder.run builder (Mock_network.sturdy registry) ~switch:builder_switch;
   (* Start a job: *)
   let result = submit submission_service "example" in
   Mock_builder.await builder "example" >>= fun job_result ->

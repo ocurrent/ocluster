@@ -1,5 +1,4 @@
 open Lwt.Infix
-open Capnp_rpc_lwt
 
 type outcome = (unit, Build_worker.Process.error) result
 
@@ -51,7 +50,7 @@ let run ?(capacity=1) ~switch t registration_service =
 
 let run_remote ~builder_switch ~network_switch ?(capacity=1) t registration_service =
   let thread =
-    Capability.with_ref (Mock_network.remote ~switch:network_switch registration_service) @@ fun registration_service ->
+    let registration_service = Mock_network.remote ~switch:network_switch registration_service in
     Build_worker.run ~switch:builder_switch ~capacity ~docker_build:(docker_build t) registration_service
   in
   Lwt.on_failure thread

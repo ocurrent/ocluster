@@ -5,7 +5,7 @@ val run :
                  src:string ->
                  string -> (unit, Process.error) Lwt_result.t) ->
   capacity:int ->
-  Api.Registration.t ->
+  Api.Raw.Client.Registration.t Capnp_rpc_lwt.Sturdy_ref.t ->
   unit Lwt.t
 (** [run ~capacity registry] runs a builder that connects to registry and runs up to [capacity] jobs at once.
     @param switch Turning this off causes the builder to exit (for unit-tests)
