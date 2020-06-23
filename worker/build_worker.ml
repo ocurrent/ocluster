@@ -92,7 +92,7 @@ let loop ~switch t queue =
   loop ()
 
 let docker_build ~switch ~log ~src dockerfile =
-  Process.exec ~switch ~log ~stdin:dockerfile ["docker"; "build"; src]
+  Process.exec ~switch ~log ~stdin:dockerfile ["docker"; "build"; "-f"; "-"; src]
 
 let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
   let t = {
