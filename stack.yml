@@ -1,0 +1,16 @@
+version: '3.7'
+volumes:
+  data:
+  capnp-secrets:
+services:
+  scheduler:
+    image: ocurrent/build-scheduler
+    command: --secrets-dir /capnp-secrets --capnp-secret-key-file /capnp-secrets/key.pem --capnp-listen-address tcp:0.0.0.0:9000 --capnp-public-address=tcp:ci.ocamllabs.io:8103
+    init: true
+    ports:
+      - '8103:9000'
+    volumes:
+      - 'data:/var/lib/build-scheduler'
+      - 'capnp-secrets:/capnp-secrets'
+    sysctls:
+      - 'net.ipv4.tcp_keepalive_time=60'

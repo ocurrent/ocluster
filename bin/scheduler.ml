@@ -1,6 +1,8 @@
 open Lwt.Infix
 module Restorer = Capnp_rpc_net.Restorer
 
+let ( / ) = Filename.concat
+
 let () =
   Logging.init ()
 
@@ -8,12 +10,12 @@ let or_die = function
   | Ok x -> x
   | Error `Msg m -> failwith m
 
-let export ~vat ~name id =
-  let path = Printf.sprintf "./capnp-secrets/%s.cap" name in
+let export ~secrets_dir ~vat ~name id =
+  let path = secrets_dir / (name ^ ".cap") in
   Capnp_rpc_unix.Cap_file.save_service vat id path |> or_die;
   Logs.app (fun f -> f "Wrote capability reference to %S" path)
 
-let main capnp =
+let main capnp secrets_dir =
   Lwt_main.run begin
     let make_sturdy = Capnp_rpc_unix.Vat_config.sturdy_uri capnp in
     let services = Restorer.Table.create make_sturdy in
@@ -24,8 +26,8 @@ let main capnp =
     Restorer.Table.add services submission_id (Build_scheduler.submission_service sched);
     let restore = Restorer.of_table services in
     Capnp_rpc_unix.serve capnp ~restore >>= fun vat ->
-    export ~vat ~name:"register" register_id;
-    export ~vat ~name:"submission" submission_id;
+    export ~secrets_dir ~vat ~name:"register" register_id;
+    export ~secrets_dir ~vat ~name:"submission" submission_id;
     fst @@ Lwt.wait ()  (* Wait forever *)
   end
 
@@ -41,9 +43,17 @@ let capnp_address =
     ~docv:"ADDR"
     ["capnp-address"]
 
+let secrets_dir =
+  Arg.required @@
+  Arg.(opt (some dir)) (Some "./capnp-secrets") @@
+  Arg.info
+    ~doc:"Directory in which to store the Cap'n Proto secrets"
+    ~docv:"DIR"
+    ["secrets-dir"]
+
 let cmd =
   let doc = "Manage build workers" in
-  Term.(const main $ Capnp_rpc_unix.Vat_config.cmd),
+  Term.(const main $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir),
   Term.info "build-scheduler" ~doc
 
 let () = Term.(exit @@ eval cmd)

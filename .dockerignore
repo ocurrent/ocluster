@@ -1,0 +1,4 @@
+_build
+.git
+var
+capnp-secrets

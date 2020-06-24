@@ -92,9 +92,9 @@ let loop ~switch t queue =
   loop ()
 
 let docker_build ~switch ~log ~src dockerfile =
-  Process.exec ~switch ~log ~stdin:dockerfile ["docker"; "build"; src]
+  Process.exec ~switch ~log ~stdin:dockerfile ["docker"; "build"; "-f"; "-"; src]
 
-let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
+let run ?switch ?(docker_build=docker_build) ~capacity ~name registration_service =
   let t = {
     registration_service;
     build = docker_build;
@@ -116,7 +116,7 @@ let run ?switch ?(docker_build=docker_build) ~capacity registration_service =
       (fun () ->
          Sturdy_ref.connect_exn t.registration_service >>= fun reg ->
          Capability.with_ref reg @@ fun reg ->
-         Capability.with_ref (Api.Registration.register reg ~name:"worker-1") @@ fun queue ->
+         Capability.with_ref (Api.Registration.register reg ~name) @@ fun queue ->
          Lwt.catch
            (fun () -> loop ~switch t queue)
            (fun ex ->
