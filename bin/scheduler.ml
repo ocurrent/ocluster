@@ -15,25 +15,39 @@ let export ~secrets_dir ~vat ~name id =
   Capnp_rpc_unix.Cap_file.save_service vat id path |> or_die;
   Logs.app (fun f -> f "Wrote capability reference to %S" path)
 
-let main capnp secrets_dir =
+let main capnp secrets_dir pools =
   Lwt_main.run begin
     let make_sturdy = Capnp_rpc_unix.Vat_config.sturdy_uri capnp in
     let services = Restorer.Table.create make_sturdy in
     let submission_id = Capnp_rpc_unix.Vat_config.derived_id capnp "submission" in
-    let register_id = Capnp_rpc_unix.Vat_config.derived_id capnp "register" in
-    let sched = Build_scheduler.create () in
-    Restorer.Table.add services register_id (Build_scheduler.registration_service sched);
+    let sched = Build_scheduler.create pools in
     Restorer.Table.add services submission_id (Build_scheduler.submission_service sched);
+    let exports =
+      Build_scheduler.registration_services sched |> List.map (fun (id, service) ->
+          let name = "pool-" ^ id in
+          let id = Capnp_rpc_unix.Vat_config.derived_id capnp name in
+          Restorer.Table.add services id service;
+          export ~secrets_dir ~name id
+        )
+    in
     let restore = Restorer.of_table services in
     Capnp_rpc_unix.serve capnp ~restore >>= fun vat ->
-    export ~secrets_dir ~vat ~name:"register" register_id;
     export ~secrets_dir ~vat ~name:"submission" submission_id;
+    exports |> List.iter (fun f -> f ~vat);
     fst @@ Lwt.wait ()  (* Wait forever *)
   end
 
 (* Command-line parsing *)
 
 open Cmdliner
+
+let pools =
+  Arg.non_empty @@
+  Arg.opt Arg.(list string) [] @@
+  Arg.info
+    ~doc:"Names of pools to create (e.g. linux-arm32,linux-ppc64)"
+    ~docv:"POOLS"
+    ["pools"]
 
 let capnp_address =
   Arg.value @@
@@ -53,7 +67,7 @@ let secrets_dir =
 
 let cmd =
   let doc = "Manage build workers" in
-  Term.(const main $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir),
+  Term.(const main $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir $ pools),
   Term.info "build-scheduler" ~doc
 
 let () = Term.(exit @@ eval cmd)

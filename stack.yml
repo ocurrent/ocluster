@@ -5,7 +5,7 @@ volumes:
 services:
   scheduler:
     image: ocurrent/build-scheduler
-    command: --secrets-dir /capnp-secrets --capnp-secret-key-file /capnp-secrets/key.pem --capnp-listen-address tcp:0.0.0.0:9000 --capnp-public-address=tcp:ci.ocamllabs.io:8103
+    command: --secrets-dir /capnp-secrets --capnp-secret-key-file /capnp-secrets/key.pem --capnp-listen-address tcp:0.0.0.0:9000 --capnp-public-address=tcp:ci.ocamllabs.io:8103 --pools=linux-x86_64
     init: true
     ports:
       - '8103:9000'

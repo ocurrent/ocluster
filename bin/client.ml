@@ -16,7 +16,7 @@ let rec tail job start =
     flush stdout;
     tail job next
 
-let main submission_path dockerfile repository commits =
+let main submission_path pool dockerfile repository commits =
   let src =
     match repository, commits with
     | None, [] -> None
@@ -24,19 +24,23 @@ let main submission_path dockerfile repository commits =
     | Some repo, [] -> Fmt.failwith "No commits requested from repository %S!" repo
     | Some repo, commits -> Some (repo, commits)
   in
-  Lwt_main.run begin
-    Lwt_io.(with_file ~mode:input) dockerfile (Lwt_io.read ?count:None) >>= fun dockerfile ->
-    let vat = Capnp_rpc_unix.client_only_vat () in
-    let sr = Capnp_rpc_unix.Cap_file.load vat submission_path |> or_die in
-    Capnp_rpc_lwt.Sturdy_ref.connect_exn sr >>= fun submission_service ->
-    let cache_hint = "TODO" in
-    let job = Api.Submission.submit submission_service ~dockerfile ~cache_hint ?src in
-    (*     let status = Api.Job.exit_status job in *)
-    Fmt.pr "Tailing log:@.";
-    tail job 0L >>= fun () ->
-    Fmt.pr "Job complete.@.";
-    Lwt.return_unit
-  end
+  try
+    Lwt_main.run begin
+      Lwt_io.(with_file ~mode:input) dockerfile (Lwt_io.read ?count:None) >>= fun dockerfile ->
+      let vat = Capnp_rpc_unix.client_only_vat () in
+      let sr = Capnp_rpc_unix.Cap_file.load vat submission_path |> or_die in
+      Capnp_rpc_lwt.Sturdy_ref.connect_exn sr >>= fun submission_service ->
+      let cache_hint = "TODO" in
+      let job = Api.Submission.submit submission_service ~pool ~dockerfile ~cache_hint ?src in
+      (*     let status = Api.Job.exit_status job in *)
+      Fmt.pr "Tailing log:@.";
+      tail job 0L >>= fun () ->
+      Fmt.pr "Job complete.@.";
+      Lwt.return_unit
+    end
+  with Failure msg ->
+    Printf.eprintf "%s\n%!" msg;
+    exit 1
 
 (* Command-line parsing *)
 
@@ -74,9 +78,17 @@ let commits =
     ~docv:"HASH"
     []
 
+let pool =
+  Arg.required @@
+  Arg.(opt (some string)) None @@
+  Arg.info
+    ~doc:"Pool to use"
+    ~docv:"ID"
+    ["pool"]
+
 let cmd =
   let doc = "Submit a build to the scheduler" in
-  Term.(const main $ connect_addr $ dockerfile $ repo $ commits),
+  Term.(const main $ connect_addr $ pool $ dockerfile $ repo $ commits),
   Term.info "build-client" ~doc
 
 let () = Term.(exit @@ eval cmd)
