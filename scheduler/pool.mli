@@ -1,4 +1,4 @@
-module Make (Item : sig type t end) : sig
+module Make (Item : S.ITEM) : sig
   type t
   (** A pool of workers and queued jobs. *)
 
@@ -16,7 +16,9 @@ module Make (Item : sig type t end) : sig
   val pop : worker -> (Item.t, [> `Finished]) Lwt_result.t
   (** [pop worker] gets the next item for [worker]. *)
 
-  val release : t -> worker -> unit
-  (** [release t worker] marks [worker] as disconnected.
-      It cannot be used again after this (use [register] to get a new one). *)
+  val release : worker -> unit
+  (** [release worker] marks [worker] as disconnected.
+      [worker] cannot be used again after this (use [register] to get a new one). *)
+
+  val dump : t Fmt.t
 end

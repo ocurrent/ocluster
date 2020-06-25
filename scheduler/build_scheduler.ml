@@ -7,6 +7,20 @@ module Item = struct
     descr : Api.Queue.job_desc;
     set_job : Api.Raw.Service.Job.t Capability.resolver;
   }
+
+  type cache_hint = string
+
+  let default_estimate = S.{
+      cached = 10;                (* A build with cached dependencies usually only takes about 10 seconds. *)
+      non_cached = 600;           (* If we have to install dependencies, it'll probably take about 10 minutes. *)
+  }
+
+  let cost_estimate _t = default_estimate
+
+  let cache_hint t =
+    Api.Raw.Reader.JobDescr.cache_hint_get t.descr
+
+  let pp f t = Fmt.string f (cache_hint t)
 end
 
 module Pool_api = struct
@@ -23,8 +37,7 @@ module Pool_api = struct
     Pool.submit t item;
     job
 
-  let pop q ~name ~job =
-    Log.info (fun f -> f "Worker %S ready" name);
+  let pop q ~job =
     Pool.pop q >|= function
     | Error `Finished -> Error (`Capnp (Capnp_rpc.Error.exn "Worker disconnected"))
     | Ok { set_job; descr } ->
@@ -38,7 +51,7 @@ module Pool_api = struct
       Fmt.failwith "Worker already registered!";
     | Ok q ->
       Log.info (fun f -> f "Registered new worker %S" name);
-      Api.Queue.local ~pop:(pop q ~name) ~release:(fun () -> Pool.release t q)
+      Api.Queue.local ~pop:(pop q) ~release:(fun () -> Pool.release q)
 
   let registration_service t =
     let register = register t in
@@ -72,3 +85,6 @@ let create pools =
       String.Map.empty pools
   in
   { pools }
+
+module S = S
+module Pool = Pool
