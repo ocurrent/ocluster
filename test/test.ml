@@ -6,6 +6,9 @@ open Lwt.Infix
 let verbose = false
 let log_level = Logs.Info
 
+let () =
+  Printexc.record_backtrace true
+
 let reporter =
   let report src level ~over k msgf =
     let k _ = over (); k () in
@@ -196,5 +199,6 @@ let () =
       test_case "network" network;
       test_case "worker_disconnects" worker_disconnects;
       test_case "client_disconnects" client_disconnects;
-    ]
+    ];
+    "scheduling", Test_scheduling.suite;
   ]
