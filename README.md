@@ -41,6 +41,8 @@ plus one for the job submission endpoint (for clients).
 
 [Dockerfile](./Dockerfile) can be used to run the scheduler service in a Docker container.
 
+You can also use `--listen-prometheus=PORT` to expose Prometheus metrics on the given port.
+
 ## Workers
 
 Each worker needs access to the `.cap` file for its pool. This tells it how to connect, and

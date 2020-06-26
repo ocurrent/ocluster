@@ -81,7 +81,7 @@ let submission_service t =
 let create pools =
   let pools =
     List.fold_left
-      (fun acc name -> String.Map.add name (Pool_api.create ()) acc)
+      (fun acc name -> String.Map.add name (Pool_api.create ~name) acc)
       String.Map.empty pools
   in
   { pools }
