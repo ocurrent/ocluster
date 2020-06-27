@@ -5,7 +5,8 @@ module Make (Item : S.ITEM) : sig
   type worker
   (** A connected worker. *)
 
-  val create : unit -> t
+  val create : name:string -> t
+  (** [create ~name] is a pool that reports metrics tagged with [name]. *)
 
   val register : t -> name:string -> (worker, [> `Name_taken]) result
   (** [register t ~name] returns a queue for worker [name]. *)

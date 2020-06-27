@@ -15,7 +15,12 @@ let export ~secrets_dir ~vat ~name id =
   Capnp_rpc_unix.Cap_file.save_service vat id path |> or_die;
   Logs.app (fun f -> f "Wrote capability reference to %S" path)
 
-let main capnp secrets_dir pools =
+(* [Lwt.choose] crashes if given an empty list. *)
+let lwt_choose_safely = function
+  | [] -> fst @@ Lwt.wait ()
+  | xs -> Lwt.choose xs
+
+let main capnp secrets_dir pools prometheus_config =
   Lwt_main.run begin
     let make_sturdy = Capnp_rpc_unix.Vat_config.sturdy_uri capnp in
     let services = Restorer.Table.create make_sturdy in
@@ -34,7 +39,7 @@ let main capnp secrets_dir pools =
     Capnp_rpc_unix.serve capnp ~restore >>= fun vat ->
     export ~secrets_dir ~vat ~name:"submission" submission_id;
     exports |> List.iter (fun f -> f ~vat);
-    fst @@ Lwt.wait ()  (* Wait forever *)
+    lwt_choose_safely (Prometheus_unix.serve prometheus_config)  (* Wait forever *)
   end
 
 (* Command-line parsing *)
@@ -67,7 +72,7 @@ let secrets_dir =
 
 let cmd =
   let doc = "Manage build workers" in
-  Term.(const main $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir $ pools),
+  Term.(const main $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir $ pools $ Prometheus_unix.opts),
   Term.info "build-scheduler" ~doc
 
 let () = Term.(exit @@ eval cmd)

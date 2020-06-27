@@ -1,9 +1,33 @@
 open Lwt.Infix
 
+module Metrics = struct
+  open Prometheus
+
+  let namespace = "scheduler"
+  let subsystem = "pool"
+
+  let workers_connected =
+    let help = "Number of connected workers" in
+    Gauge.v_label ~label_name:"pool" ~help ~namespace ~subsystem "workers_connected"
+
+  let incoming_queue_length =
+    let help = "Items in the main queue (i.e. unassigned)" in
+    Gauge.v_label ~label_name:"pool" ~help ~namespace ~subsystem "incoming_queue_length"
+
+  let assigned_items =
+    let help = "Number of items assigned to a particular worker" in
+    Gauge.v_label ~label_name:"worker" ~help ~namespace ~subsystem "assigned_items"
+
+  let workers_ready =
+    let help = "Number of workers ready to accept a new job" in
+    Gauge.v_label ~label_name:"pool" ~help ~namespace ~subsystem "workers_ready"
+end
+
 module Make (Item : S.ITEM) = struct
   type worker_id = string
 
   type t = {
+    pool : string;                        (* For metrics reporting *)
     mutable main : [
       | `Backlog of Item.t Lwt_dllist.t   (* No workers are ready *)
       | `Ready of worker Lwt_dllist.t     (* No work is available. *)
@@ -17,6 +41,27 @@ module Make (Item : S.ITEM) = struct
     mutable state : [ `Running of (int * Item.t) Lwt_dllist.t * unit Lwt_condition.t | `Finished ];
     mutable workload : int;     (* Total cost of items in worker's queue. *)
   }
+
+  let enqueue_node item queue metric =
+    let node = Lwt_dllist.add_l item queue in
+    Prometheus.Gauge.inc_one metric;
+    node
+
+  let enqueue item queue metric =
+    let _ : _ Lwt_dllist.node = enqueue_node item queue metric in
+    ()
+
+  let dequeue queue metric =
+    let item = Lwt_dllist.take_r queue in
+    Prometheus.Gauge.dec_one metric;
+    item
+
+  let dequeue_opt queue metric =
+    match Lwt_dllist.take_opt_r queue with
+    | None -> None
+    | Some _ as item ->
+      Prometheus.Gauge.dec_one metric;
+      item
 
   (* Return the worker in [workers] with the lowest workload. *)
   let best_worker ~max_workload t workers =
@@ -56,7 +101,7 @@ module Make (Item : S.ITEM) = struct
       | None -> false   (* No workers will have this cached. *)
       | Some (worker, worker_q, cond) ->
         Log.info (fun f -> f "Assigning %a to %S (preferred)" Item.pp item worker.name);
-        let _ : _ Lwt_dllist.node = Lwt_dllist.add_l (cost.cached, item) worker_q in
+        enqueue (cost.cached, item) worker_q (Metrics.assigned_items worker.name);
         worker.workload <- worker.workload + cost.cached;
         Lwt_condition.broadcast cond ();
         true
@@ -87,7 +132,7 @@ module Make (Item : S.ITEM) = struct
       | `Finished -> Lwt_result.fail `Finished
       | `Running (queue, cond) ->
         (* Check our local queue, in case something has already been assigned to us. *)
-        match Lwt_dllist.take_opt_r queue with
+        match dequeue_opt queue (Metrics.assigned_items worker.name) with
         | Some (cost, item) ->
           Log.info (fun f -> f "%S takes %a from its local queue" worker.name Item.pp item);
           worker.workload <- worker.workload - cost;
@@ -99,12 +144,13 @@ module Make (Item : S.ITEM) = struct
           | `Ready q ->
             (* No work available. Wait until something arrives. *)
             Log.info (fun f -> f "%S is waiting for more work" worker.name);
-            let node = Lwt_dllist.add_l worker q in
+            let node = enqueue_node worker q (Metrics.workers_ready t.pool) in
             Lwt_condition.wait cond >>= fun () ->
+            Prometheus.Gauge.dec_one (Metrics.workers_ready t.pool);
             Lwt_dllist.remove node; (* In case the wake-up was due to exiting. *)
             aux ()
           | `Backlog q ->
-            match Lwt_dllist.take_opt_r q with
+            match dequeue_opt q (Metrics.incoming_queue_length t.pool) with
             | None ->
               (* Backlog is actually empty. Flip to ready mode and retry
                  (this will add us to the new queue). *)
@@ -120,7 +166,8 @@ module Make (Item : S.ITEM) = struct
     in
     aux ()
 
-  (* Worker is leaving and system is backlogged. Move the worker's items to the backlog. *)
+  (* Worker is leaving and system is backlogged. Move the worker's items to the backlog.
+     Metrics have already been updated. *)
   let rec push_back worker worker_q q =
     match Lwt_dllist.take_opt_l worker_q with
     | Some (_cost, item) ->
@@ -140,6 +187,7 @@ module Make (Item : S.ITEM) = struct
         workload = 0;
       } in
       Hashtbl.add t.workers name q;
+      Prometheus.Gauge.inc_one (Metrics.workers_connected t.pool);
       Ok q
     )
 
@@ -147,7 +195,7 @@ module Make (Item : S.ITEM) = struct
     match t.main with
     | `Backlog q ->
       (* No workers are ready. Add to the backlog. *)
-      let _ : _ Lwt_dllist.node = Lwt_dllist.add_l item q in
+      enqueue item q (Metrics.incoming_queue_length t.pool);
       Log.info (fun f -> f "Adding %a to the backlog" Item.pp item);
       ()
     | `Ready q when Lwt_dllist.is_empty q ->
@@ -156,6 +204,7 @@ module Make (Item : S.ITEM) = struct
       submit t item
     | `Ready q ->
       if not (assign_preferred t item) then (
+        (* Don't decrement [Metrics.workers_ready] here. That happens when it wakes up. *)
         let worker = Lwt_dllist.take_r q in
         match worker.state with
         | `Finished -> submit t item    (* Stale queue item. Retry. *)
@@ -167,7 +216,7 @@ module Make (Item : S.ITEM) = struct
           let cache_hint = Item.cache_hint item in
           let prev = Hashtbl.find_opt t.will_cache cache_hint |> Option.value ~default:[] in
           Hashtbl.replace t.will_cache cache_hint (worker.name :: prev);
-          let _ : _ Lwt_dllist.node = Lwt_dllist.add_l (cost.non_cached, item) worker_q in
+          enqueue (cost.non_cached, item) worker_q (Metrics.assigned_items worker.name);
           worker.workload <- worker.workload + cost.non_cached;
           Lwt_condition.broadcast cond ()
       )
@@ -175,20 +224,25 @@ module Make (Item : S.ITEM) = struct
   (* Worker [w] has disconnected. *)
   let release w =
     let t = w.parent in
+    let assigned_items = Metrics.assigned_items w.name in
     match w.state with
     | `Finished -> failwith "Queue already closed!"
     | `Running (worker_q, cond) ->
       w.state <- `Finished;
       Hashtbl.remove t.workers w.name;
+      Prometheus.Gauge.dec_one (Metrics.workers_connected t.pool);
       let rec reassign () =
         if Lwt_dllist.is_empty worker_q then ()
         else match t.main with
           | `Backlog q ->
             (* Push our items back onto the existing backlog. *)
+            let n = float_of_int (Lwt_dllist.length worker_q) in
+            Prometheus.Gauge.dec assigned_items n;
+            Prometheus.Gauge.inc (Metrics.incoming_queue_length t.pool) n;
             push_back w worker_q q
           | `Ready _ ->
             (* The main queue is empty, so just add the items as normal. *)
-            let (_old_cost, item) = Lwt_dllist.take_r worker_q in
+            let (_old_cost, item) = dequeue worker_q assigned_items in
             submit t item;
             reassign ()
       in
@@ -197,8 +251,9 @@ module Make (Item : S.ITEM) = struct
       reassign ();
       Lwt_condition.broadcast cond ()   (* Wake the worker's pop thread. *)
 
-  let create () =
+  let create ~name =
     {
+      pool = name;
       main = `Backlog (Lwt_dllist.create ());
       workers = Hashtbl.create 10;
       cached = Hashtbl.create 1000;
@@ -240,7 +295,7 @@ module Make (Item : S.ITEM) = struct
     | `Backlog q -> Fmt.pf f "(backlog) %a" (dump_queue ~sep:Fmt.sp Item.pp) q
     | `Ready q -> Fmt.pf f "(ready) %a" (dump_queue pp_worker) q
 
-  let dump f {main; workers; cached; will_cache} =
+  let dump f {pool = _; main; workers; cached; will_cache} =
     Fmt.pf f "@[<v>queue: @[%a@]@,@[<v2>registered:%a@]@,cached: @[%a@]@,will_cache: @[%a@]@]@."
       dump_main main
       dump_workers workers

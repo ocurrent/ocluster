@@ -28,9 +28,20 @@ let job_state x =
 
 let pop_result = Alcotest.(result string string)
 
+let flush_queue w ~expect =
+  let rec aux = function
+    | [] -> Pool.release w; Lwt.return_unit
+    | x :: xs ->
+      let job = Pool.pop w in
+      Lwt.pause () >>= fun () ->
+      Alcotest.(check pop_result) ("Flush " ^ x) (Ok x) (job_state job);
+      aux xs
+  in
+  aux expect
+
 (* Assign three jobs to two workers. *)
 let simple () =
-  let pool = Pool.create () in
+  let pool = Pool.create ~name:"simple" in
   let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
   let w2 = Pool.register pool ~name:"worker-2" |> Result.get_ok in
   let w1a = Pool.pop w1 in
@@ -41,13 +52,12 @@ let simple () =
   Lwt.pause () >>= fun () ->
   Alcotest.(check pop_result) "Worker 1 / job 1" (Ok "job1") (job_state w1a);
   Alcotest.(check pop_result) "Worker 2 / job 1" (Ok "job2") (job_state w2a);
-  let w1b = Pool.pop w1 in
-  Alcotest.(check pop_result) "Worker 1 / job 2" (Ok "job3") (job_state w1b);
-  Lwt.return_unit
+  Pool.release w2;
+  flush_queue w1 ~expect:["job3"]
 
 (* Bias assignment towards workers that have things cached. *)
 let cached_scheduling () =
-  let pool = Pool.create () in
+  let pool = Pool.create ~name:"cached_scheduling" in
   let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
   let w2 = Pool.register pool ~name:"worker-2" |> Result.get_ok in
   let w1a = Pool.pop w1 in
@@ -109,7 +119,7 @@ let cached_scheduling () =
 
 (* Bias assignment towards workers that have things cached, but not so much that it takes longer. *)
 let unbalanced () =
-  let pool = Pool.create () in
+  let pool = Pool.create ~name:"unbalanced" in
   let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
   let w2 = Pool.register pool ~name:"worker-2" |> Result.get_ok in
   Pool.submit pool @@ job "job1" ~cache_hint:"a";
@@ -132,13 +142,11 @@ let unbalanced () =
     will_cache: \n" (Fmt.to_to_string Pool.dump pool);
   Alcotest.(check pop_result) "Worker 2 / job 1" (Ok "job8") (job_state w2a);
   Pool.release w1;
-  let w2b = Pool.pop w2 in
-  Alcotest.(check pop_result) "Worker 2 / job 1" (Ok "job2") (job_state w2b);
-  Lwt.return_unit
+  flush_queue w2 ~expect:["job2"; "job3"; "job4"; "job5"; "job6"; "job7"]
 
 (* There are no workers available sometimes. *)
 let no_workers () =
-  let pool = Pool.create () in
+  let pool = Pool.create ~name:"no_workers" in
   Pool.submit pool @@ job "job1" ~cache_hint:"a";
   Pool.submit pool @@ job "job2" ~cache_hint:"a";
   let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
@@ -151,12 +159,22 @@ let no_workers () =
     cached: a: [worker-1]\n\
     will_cache: \n" (Fmt.to_to_string Pool.dump pool);
   let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
-  let w1b = Pool.pop w1 in
-  Alcotest.(check pop_result) "Worker 1 / job 2" (Ok "job2") (job_state w1b);
-  Lwt.return_unit
+  flush_queue w1 ~expect:["job2"]
 
 let test_case name fn =
-  Alcotest_lwt.test_case name `Quick @@ fun _ () -> fn ()
+  Alcotest_lwt.test_case name `Quick @@ fun _ () ->
+  fn () >|= fun () ->
+  Prometheus.CollectorRegistry.(collect default)
+  |> Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output
+  |> String.split_on_char '\n'
+  |> List.iter (fun line ->
+      if Astring.String.is_prefix ~affix:"scheduler_pool_" line then
+        match Astring.String.cut ~sep:" " line with
+        | None -> Fmt.failwith "Bad metrics line: %S" line
+        | Some (key, value) ->
+          if float_of_string value <> 0.0 then
+            Fmt.failwith "Non-zero metric after test: %s=%s" key value
+    )
 
 let suite = [
   test_case "scheduling" simple;
