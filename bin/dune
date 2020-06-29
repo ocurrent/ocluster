@@ -1,4 +1,4 @@
 (executables
  (public_names build-scheduler build-client build-worker)
  (names scheduler client worker)
- (libraries api logs.fmt fmt.tty capnp-rpc-unix build_scheduler build_worker prometheus-app.unix))
+ (libraries api logs.fmt fmt.tty capnp-rpc-unix build_scheduler build_worker prometheus-app.unix db))

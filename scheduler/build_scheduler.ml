@@ -81,10 +81,11 @@ let submission_service t =
   in
   Api.Submission.local ~submit
 
-let create pools =
+let create ~db pools =
+  let db = Pool.Dao.init db in
   let pools =
     List.fold_left
-      (fun acc name -> String.Map.add name (Pool_api.create ~name) acc)
+      (fun acc name -> String.Map.add name (Pool_api.create ~name ~db) acc)
       String.Map.empty pools
   in
   { pools }
