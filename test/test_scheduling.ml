@@ -39,9 +39,16 @@ let flush_queue w ~expect =
   in
   aux expect
 
+let with_test_db fn =
+  let db = Sqlite3.db_open ":memory:" in
+  Lwt.finalize
+    (fun () -> fn (Build_scheduler.Pool.Dao.init db))
+    (fun () -> if Sqlite3.db_close db then Lwt.return_unit else failwith "close: DB busy!")
+
 (* Assign three jobs to two workers. *)
 let simple () =
-  let pool = Pool.create ~name:"simple" in
+  with_test_db @@ fun db ->
+  let pool = Pool.create ~db ~name:"simple" in
   let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
   let w2 = Pool.register pool ~name:"worker-2" |> Result.get_ok in
   let w1a = Pool.pop w1 in
@@ -57,7 +64,8 @@ let simple () =
 
 (* Bias assignment towards workers that have things cached. *)
 let cached_scheduling () =
-  let pool = Pool.create ~name:"cached_scheduling" in
+  with_test_db @@ fun db ->
+  let pool = Pool.create ~db ~name:"cached_scheduling" in
   let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
   let w2 = Pool.register pool ~name:"worker-2" |> Result.get_ok in
   let w1a = Pool.pop w1 in
@@ -119,7 +127,8 @@ let cached_scheduling () =
 
 (* Bias assignment towards workers that have things cached, but not so much that it takes longer. *)
 let unbalanced () =
-  let pool = Pool.create ~name:"unbalanced" in
+  with_test_db @@ fun db ->
+  let pool = Pool.create ~db ~name:"unbalanced" in
   let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
   let w2 = Pool.register pool ~name:"worker-2" |> Result.get_ok in
   Pool.submit pool @@ job "job1" ~cache_hint:"a";
@@ -146,7 +155,8 @@ let unbalanced () =
 
 (* There are no workers available sometimes. *)
 let no_workers () =
-  let pool = Pool.create ~name:"no_workers" in
+  with_test_db @@ fun db ->
+  let pool = Pool.create ~db ~name:"no_workers" in
   Pool.submit pool @@ job "job1" ~cache_hint:"a";
   Pool.submit pool @@ job "job2" ~cache_hint:"a";
   let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
@@ -160,6 +170,31 @@ let no_workers () =
     will_cache: \n" (Fmt.to_to_string Pool.dump pool);
   let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
   flush_queue w1 ~expect:["job2"]
+
+(* We remember cached locations across restarts. *)
+let persist () =
+  with_test_db @@ fun db ->
+  let pool = Pool.create ~db ~name:"persist" in
+  (* worker-1 handles job1 *)
+  let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
+  Pool.submit pool @@ job "job1" ~cache_hint:"a";
+  let _ = Pool.pop w1 in
+  Pool.release w1;
+  (* Create a new instance of the scheduler with the same db. *)
+  let pool = Pool.create ~db ~name:"persist" in
+  (* Worker 2 registers first, and so would normally get the first job: *)
+  let w2 = Pool.register pool ~name:"worker-2" |> Result.get_ok in
+  let w2a = Pool.pop w2 in
+  let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
+  let w1a = Pool.pop w1 in
+  Pool.submit pool @@ job "job2" ~cache_hint:"a";
+  Lwt.pause () >>= fun () ->
+  Alcotest.(check pop_result) "Worker 1 gets the job" (Ok "job2") (job_state w1a);
+  Alcotest.(check pop_result) "Worker 2 doesn't" (Error "pending") (job_state w2a);
+  Pool.release w1;
+  Pool.release w2;
+  Lwt.pause () >>= fun () ->
+  Lwt.return_unit
 
 let test_case name fn =
   Alcotest_lwt.test_case name `Quick @@ fun _ () ->
@@ -181,4 +216,5 @@ let suite = [
   test_case "cached_scheduling" cached_scheduling;
   test_case "unbalanced" unbalanced;
   test_case "no_workers" no_workers;
+  test_case "persist" persist;
 ]

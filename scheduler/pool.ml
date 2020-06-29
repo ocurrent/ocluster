@@ -23,17 +23,62 @@ module Metrics = struct
     Gauge.v_label ~label_name:"pool" ~help ~namespace ~subsystem "workers_ready"
 end
 
+module Dao = struct
+  type t = {
+    query_cache : Sqlite3.stmt;
+    mark_cached : Sqlite3.stmt;
+    dump_cache : Sqlite3.stmt;
+  }
+
+  let dump f (db, pool) =
+    let pp_workers f = function
+      | Sqlite3.Data.[ TEXT worker ] -> Fmt.string f worker
+      | row -> Fmt.failwith "Bad row from DB: %a" Db.dump_row row
+    in
+    let first = ref true in
+    Db.query db.dump_cache [ TEXT pool ]
+    |> List.iter (function
+        | Sqlite3.Data.[ TEXT cache_hint ] ->
+          if !first then first := false else Fmt.comma f ();
+          let workers = Db.query db.query_cache Sqlite3.Data.[ TEXT pool; TEXT cache_hint ] in
+          Fmt.pf f "%s: %a" cache_hint (Fmt.Dump.list pp_workers) workers
+        | row -> Fmt.failwith "Bad row from DB: %a" Db.dump_row row
+      )
+
+  let query_cache t ~pool ~hint =
+    Db.query t.query_cache Sqlite3.Data.[ TEXT pool; TEXT hint ]
+    |> List.map (function
+        | Sqlite3.Data.[ TEXT worker ] -> worker
+        | row -> Fmt.failwith "Bad row from DB: %a" Db.dump_row row
+      )
+
+  let mark_cached t ~pool ~hint ~worker =
+    Db.exec t.mark_cached Sqlite3.Data.[ TEXT pool; TEXT hint; TEXT worker ]
+
+  let init db =
+    Sqlite3.exec db "CREATE TABLE IF NOT EXISTS cached ( \
+                     pool       TEXT NOT NULL, \
+                     cache_hint TEXT NOT NULL, \
+                     worker     TEXT NOT NULL, \
+                     created    DATETIME NOT NULL, \
+                     PRIMARY KEY (pool, cache_hint, worker))" |> Db.or_fail ~cmd:"create table";
+    let query_cache = Sqlite3.prepare db "SELECT worker FROM cached WHERE pool = ? AND cache_hint = ? ORDER BY worker" in
+    let mark_cached = Sqlite3.prepare db "INSERT OR REPLACE INTO cached (pool, cache_hint, worker, created) VALUES (?, ?, ?, date('now'))" in
+    let dump_cache = Sqlite3.prepare db "SELECT DISTINCT cache_hint FROM cached WHERE pool = ? ORDER BY cache_hint" in
+    { query_cache; mark_cached; dump_cache }
+end
+
 module Make (Item : S.ITEM) = struct
   type worker_id = string
 
   type t = {
-    pool : string;                        (* For metrics reporting *)
+    pool : string;                        (* For metrics reporting and DB *)
+    db : Dao.t;
     mutable main : [
       | `Backlog of Item.t Lwt_dllist.t   (* No workers are ready *)
       | `Ready of worker Lwt_dllist.t     (* No work is available. *)
     ];
     workers : (worker_id, worker) Hashtbl.t;
-    cached : (Item.cache_hint, worker_id list) Hashtbl.t;     (* todo: this should go in a database *)
     will_cache : (Item.cache_hint, worker_id list) Hashtbl.t; (* Which workers will soon have cached this? *)
   } and worker = {
     parent : t;
@@ -91,7 +136,9 @@ module Make (Item : S.ITEM) = struct
     else (
       let best =
         (* If a worker already has this cached, send it there: *)
-        match Option.bind (Hashtbl.find_opt t.cached hint) (best_worker t ~max_workload:cost.non_cached) with
+        Dao.query_cache t.db ~pool:t.pool ~hint:(hint :> string)
+        |> best_worker t ~max_workload:cost.non_cached
+        |> function
         | Some best -> Some best
         | None ->
           (* If not, maybe some worker will have it cached soon: *)
@@ -121,9 +168,7 @@ module Make (Item : S.ITEM) = struct
     clear_will_cache item worker;
     let t = worker.parent in
     let hint = Item.cache_hint item in
-    let prev = Hashtbl.find_opt t.cached hint |> Option.value ~default:[] in
-    if not (List.mem worker.name prev) then
-      Hashtbl.replace t.cached hint (worker.name :: prev)
+    Dao.mark_cached t.db ~pool:t.pool ~hint:(hint :> string) ~worker:worker.name
 
   let pop worker =
     let t = worker.parent in
@@ -251,12 +296,12 @@ module Make (Item : S.ITEM) = struct
       reassign ();
       Lwt_condition.broadcast cond ()   (* Wake the worker's pop thread. *)
 
-  let create ~name =
+  let create ~name ~db =
     {
       pool = name;
+      db;
       main = `Backlog (Lwt_dllist.create ());
       workers = Hashtbl.create 10;
-      cached = Hashtbl.create 1000;
       will_cache = Hashtbl.create 1000;
     }
 
@@ -291,7 +336,7 @@ module Make (Item : S.ITEM) = struct
     let pp_item f (id, workers) =
       Fmt.pf f "%s: %a"
         (id : Item.cache_hint :> string)
-        Fmt.(Dump.list string) (List.sort String.compare workers) in
+        Fmt.(Dump.list string) workers in
     Hashtbl.to_seq tbl
     |> List.of_seq
     |> List.sort compare
@@ -301,10 +346,10 @@ module Make (Item : S.ITEM) = struct
     | `Backlog q -> Fmt.pf f "(backlog) %a" (dump_queue ~sep:Fmt.sp Item.pp) q
     | `Ready q -> Fmt.pf f "(ready) %a" (dump_queue pp_worker) q
 
-  let dump f {pool = _; main; workers; cached; will_cache} =
+  let dump f {pool; db; main; workers; will_cache} =
     Fmt.pf f "@[<v>queue: @[%a@]@,@[<v2>registered:%a@]@,cached: @[%a@]@,will_cache: @[%a@]@]@."
       dump_main main
       dump_workers workers
-      dump_cache cached
+      Dao.dump (db, pool)
       dump_cache will_cache
 end

@@ -20,12 +20,23 @@ let lwt_choose_safely = function
   | [] -> fst @@ Lwt.wait ()
   | xs -> Lwt.choose xs
 
-let main capnp secrets_dir pools prometheus_config =
+let dir_exists d =
+  match Unix.lstat d with
+  | Unix.{ st_kind = S_DIR; _ } -> true
+  | _ -> false
+  | exception Unix.Unix_error(Unix.ENOENT, _, _) -> false
+
+let main capnp secrets_dir pools prometheus_config state_dir =
+  if not (dir_exists state_dir) then Unix.mkdir state_dir 0o755;
+  let db = Sqlite3.db_open (state_dir / "scheduler.db") in
+  Sqlite3.busy_timeout db 1000;
+  Db.exec_literal db "PRAGMA journal_mode=WAL";
+  Db.exec_literal db "PRAGMA synchronous=NORMAL";
   Lwt_main.run begin
     let make_sturdy = Capnp_rpc_unix.Vat_config.sturdy_uri capnp in
     let services = Restorer.Table.create make_sturdy in
     let submission_id = Capnp_rpc_unix.Vat_config.derived_id capnp "submission" in
-    let sched = Build_scheduler.create pools in
+    let sched = Build_scheduler.create ~db pools in
     Restorer.Table.add services submission_id (Build_scheduler.submission_service sched);
     let exports =
       Build_scheduler.registration_services sched |> List.map (fun (id, service) ->
@@ -70,9 +81,17 @@ let secrets_dir =
     ~docv:"DIR"
     ["secrets-dir"]
 
+let state_dir =
+  Arg.required @@
+  Arg.(opt (some string)) None @@
+  Arg.info
+    ~doc:"Directory in which to store the service's state"
+    ~docv:"DIR"
+    ["state-dir"]
+
 let cmd =
   let doc = "Manage build workers" in
-  Term.(const main $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir $ pools $ Prometheus_unix.opts),
+  Term.(const main $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir $ pools $ Prometheus_unix.opts $ state_dir),
   Term.info "build-scheduler" ~doc
 
 let () = Term.(exit @@ eval cmd)

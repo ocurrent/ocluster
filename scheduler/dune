@@ -1,3 +1,3 @@
 (library
  (name build_scheduler)
- (libraries api logs capnp-rpc-lwt lwt-dllist prometheus))
+ (libraries api logs capnp-rpc-lwt lwt-dllist prometheus db))

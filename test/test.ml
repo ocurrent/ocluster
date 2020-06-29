@@ -45,14 +45,19 @@ let submit service dockerfile =
   | Error (`Capnp _) -> Fmt.strf "%sFAILED@." log
 
 let with_sched fn =
-  let sched = Build_scheduler.create ["pool"] in
-  let pools = Build_scheduler.registration_services sched in
-  match pools with
-  | ["pool", registration_service] ->
-    Capability.with_ref registration_service @@ fun registry ->
-    Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
-    fn ~submission_service ~registry
-  | _ -> failwith "Missing pool!"
+  let db = Sqlite3.db_open ":memory:" in
+  Lwt.finalize
+    (fun () ->
+       let sched = Build_scheduler.create ~db ["pool"] in
+       let pools = Build_scheduler.registration_services sched in
+       match pools with
+       | ["pool", registration_service] ->
+         Capability.with_ref registration_service @@ fun registry ->
+         Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
+         fn ~submission_service ~registry
+       | _ -> failwith "Missing pool!"
+    )
+    (fun () -> if Sqlite3.db_close db then Lwt.return_unit else failwith "close: DB busy!")
 
 (* Build on a single worker. *)
 let simple () =
