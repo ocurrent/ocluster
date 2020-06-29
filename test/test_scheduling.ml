@@ -104,7 +104,7 @@ let cached_scheduling () =
     queue: (backlog) [job4]\n\
     registered:\n\
     \  worker-2 (0): []\n\
-    cached: a: [worker-2; worker-1], b: [worker-2], c: [worker-2]\n\
+    cached: a: [worker-1; worker-2], b: [worker-2], c: [worker-2]\n\
     will_cache: \n" (Fmt.to_to_string Pool.dump pool);
   Alcotest.(check pop_result) "Worker 2 / job 3" (Ok "job3") (job_state w2c);
   let w2d = Pool.pop w2 in
@@ -113,7 +113,7 @@ let cached_scheduling () =
   Alcotest.(check string) "Idle" "\
     queue: (backlog) []\n\
     registered:\n\
-    cached: a: [worker-2; worker-1], b: [worker-2], c: [worker-2]\n\
+    cached: a: [worker-1; worker-2], b: [worker-2], c: [worker-2]\n\
     will_cache: \n" (Fmt.to_to_string Pool.dump pool);
   Lwt.return_unit
 
@@ -138,7 +138,7 @@ let unbalanced () =
     registered:\n\
     \  worker-1 (6): [job7(1) job6(1) job5(1) job4(1) job3(1) job2(1)]\n\
     \  worker-2 (0): []\n\
-    cached: a: [worker-2; worker-1]\n\
+    cached: a: [worker-1; worker-2]\n\
     will_cache: \n" (Fmt.to_to_string Pool.dump pool);
   Alcotest.(check pop_result) "Worker 2 / job 1" (Ok "job8") (job_state w2a);
   Pool.release w1;

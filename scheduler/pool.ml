@@ -279,17 +279,23 @@ module Make (Item : S.ITEM) = struct
     | `Finished -> Fmt.string f "(finished)"
     | `Running (q, _) -> dump_queue ~sep:Fmt.sp pp_cost_item f q
 
-  let dump_workers =
+  let dump_workers f tbl =
     let pp_item f (id, w) =
       Fmt.pf f "@,%s (%d): @[%a@]" id w.workload pp_state w.state in
-    Fmt.(hashtbl ~sep:nop) pp_item
+    Hashtbl.to_seq tbl
+    |> List.of_seq
+    |> List.sort compare
+    |> Fmt.(list ~sep:nop) pp_item f
 
-  let dump_cache =
+  let dump_cache f tbl =
     let pp_item f (id, workers) =
       Fmt.pf f "%s: %a"
         (id : Item.cache_hint :> string)
-        Fmt.(Dump.list string) workers in
-    Fmt.(hashtbl ~sep:comma) pp_item
+        Fmt.(Dump.list string) (List.sort String.compare workers) in
+    Hashtbl.to_seq tbl
+    |> List.of_seq
+    |> List.sort compare
+    |> Fmt.(list ~sep:comma) pp_item f
 
   let dump_main f = function
     | `Backlog q -> Fmt.pf f "(backlog) %a" (dump_queue ~sep:Fmt.sp Item.pp) q
