@@ -4,6 +4,17 @@ open Capnp_rpc_lwt
 module Log_data = Log_data
 module Process = Process
 
+module Metrics = struct
+  open Prometheus
+
+  let namespace = "scheduler"
+  let subsystem = "worker"
+
+  let running_jobs =
+    let help = "Number of jobs currently running" in
+    Gauge.v ~help ~namespace ~subsystem "running_jobs"
+end
+
 let min_reconnect_time = 10.0   (* Don't try to connect more than once per 10 seconds *)
 
 type t = {
@@ -53,7 +64,6 @@ let loop ~switch t queue =
         Log.info (fun f -> f "At capacity. Waiting for a build to finish before requesting more...");
         Lwt_condition.wait t.cond >>= loop
       ) else (
-        t.in_use <- t.in_use + 1;
         let outcome, set_outcome = Lwt.wait () in
         let log = Log_data.create () in
         Log.info (fun f -> f "Requesting a new job...");
@@ -64,6 +74,8 @@ let loop ~switch t queue =
         in
         t.cancel <- (fun () -> Lwt.cancel pop);
         pop >>= fun request ->
+        t.in_use <- t.in_use + 1;
+        Prometheus.Gauge.set Metrics.running_jobs (float_of_int t.in_use);
         Lwt.async (fun () ->
             Lwt.finalize
               (fun () ->
@@ -82,6 +94,7 @@ let loop ~switch t queue =
               )
               (fun () ->
                  t.in_use <- t.in_use - 1;
+                 Prometheus.Gauge.set Metrics.running_jobs (float_of_int t.in_use);
                  Lwt_switch.turn_off switch >>= fun () ->
                  Lwt_condition.broadcast t.cond ();
                  Lwt.return_unit)
@@ -93,6 +106,10 @@ let loop ~switch t queue =
 
 let docker_build ~switch ~log ~src dockerfile =
   Process.exec ~switch ~log ~stdin:dockerfile ["docker"; "build"; "-f"; "-"; src]
+
+let metrics () =
+  let data = Prometheus.CollectorRegistry.(collect default) in
+  "0.0.4", Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data
 
 let run ?switch ?(docker_build=docker_build) ~capacity ~name registration_service =
   let t = {
@@ -116,7 +133,13 @@ let run ?switch ?(docker_build=docker_build) ~capacity ~name registration_servic
       (fun () ->
          Sturdy_ref.connect_exn t.registration_service >>= fun reg ->
          Capability.with_ref reg @@ fun reg ->
-         Capability.with_ref (Api.Registration.register reg ~name) @@ fun queue ->
+         let queue =
+           let api = Api.Worker.local ~metrics in
+           let queue = Api.Registration.register reg ~name api in
+           Capability.dec_ref api;
+           queue
+         in
+         Capability.with_ref queue @@ fun queue ->
          Lwt.catch
            (fun () -> loop ~switch t queue)
            (fun ex ->

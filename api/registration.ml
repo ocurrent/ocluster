@@ -1,5 +1,7 @@
 open Capnp_rpc_lwt
 
+let no_worker = Capability.broken (Capnp_rpc.Exception.v "No worker object")
+
 let local ~register =
   let module X = Raw.Service.Registration in
   X.local @@ object
@@ -8,9 +10,10 @@ let local ~register =
     method register_impl params release_param_caps =
       let open X.Register in
       let name = Params.name_get params in
+      let worker = Params.worker_get params |> Option.value ~default:no_worker in
       release_param_caps ();
       let response, results = Service.Response.create Results.init_pointer in
-      let queue = register ~name in
+      let queue = register ~name worker in
       Results.queue_set results (Some queue);
       Capability.dec_ref queue;
       Service.return response
@@ -20,8 +23,9 @@ module X = Raw.Client.Registration
 
 type t = X.t Capability.t
 
-let register t ~name =
+let register t ~name worker =
   let open X.Register in
   let request, params = Capability.Request.create Params.init_pointer in
   Params.name_set params name;
+  Params.worker_set params (Some worker);
   Capability.call_for_caps t method_id request Results.queue_get_pipelined
