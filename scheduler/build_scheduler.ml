@@ -20,7 +20,10 @@ module Item = struct
   let cache_hint t =
     Api.Raw.Reader.JobDescr.cache_hint_get t.descr
 
-  let pp f t = Fmt.string f (cache_hint t)
+  let pp f t =
+    match cache_hint t with
+    | "" -> Fmt.string f "(no cache hint)"
+    | x -> Fmt.string f x
 end
 
 module Pool_api = struct

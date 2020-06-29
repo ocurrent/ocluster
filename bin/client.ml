@@ -1,4 +1,5 @@
 open Lwt.Infix
+open Capnp_rpc_lwt
 
 let () =
   Logging.init ()
@@ -16,7 +17,7 @@ let rec tail job start =
     flush stdout;
     tail job next
 
-let main submission_path pool dockerfile repository commits =
+let main submission_path pool dockerfile repository commits cache_hint =
   let src =
     match repository, commits with
     | None, [] -> None
@@ -29,9 +30,9 @@ let main submission_path pool dockerfile repository commits =
       Lwt_io.(with_file ~mode:input) dockerfile (Lwt_io.read ?count:None) >>= fun dockerfile ->
       let vat = Capnp_rpc_unix.client_only_vat () in
       let sr = Capnp_rpc_unix.Cap_file.load vat submission_path |> or_die in
-      Capnp_rpc_lwt.Sturdy_ref.connect_exn sr >>= fun submission_service ->
-      let cache_hint = "TODO" in
+      Sturdy_ref.connect_exn sr >>= fun submission_service ->
       let job = Api.Submission.submit submission_service ~pool ~dockerfile ~cache_hint ?src in
+      Capability.dec_ref submission_service;
       (*     let status = Api.Job.exit_status job in *)
       Fmt.pr "Tailing log:@.";
       tail job 0L >>= fun () ->
@@ -86,9 +87,17 @@ let pool =
     ~docv:"ID"
     ["pool"]
 
+let cache_hint =
+  Arg.value @@
+  Arg.(opt string) "" @@
+  Arg.info
+    ~doc:"Hint used to group similar builds to improve caching"
+    ~docv:"STRING"
+    ["cache-hint"]
+
 let cmd =
   let doc = "Submit a build to the scheduler" in
-  Term.(const main $ connect_addr $ pool $ dockerfile $ repo $ commits),
+  Term.(const main $ connect_addr $ pool $ dockerfile $ repo $ commits $ cache_hint),
   Term.info "build-client" ~doc
 
 let () = Term.(exit @@ eval cmd)
