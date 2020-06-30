@@ -39,11 +39,11 @@ module Pool_api = struct
     let workers = Hashtbl.create 10 in
     { pool; workers }
 
-  let submit t (descr : Api.Queue.job_desc) : Api.Job.t =
+  let submit t ~urgent (descr : Api.Queue.job_desc) : Api.Job.t =
     let job, set_job = Capability.promise () in
-    Log.info (fun f -> f "Received new job request");
+    Log.info (fun f -> f "Received new job request (urgent=%b)" urgent);
     let item = { Item.descr; set_job } in
-    Pool.submit t.pool item;
+    Pool.submit ~urgent t.pool item;
     job
 
   let pop q ~job =
@@ -89,13 +89,13 @@ let registration_services t =
 let pp_pool_name f (name, _) = Fmt.string f name
 
 let submission_service t =
-  let submit ~pool descr =
+  let submit ~pool ~urgent descr =
     match String.Map.find_opt pool t.pools with
     | None ->
       let msg = Fmt.strf "Pool ID %S not one of @[<h>{%a}@]" pool (String.Map.pp ~sep:Fmt.comma pp_pool_name) t.pools in
       Capability.broken (Capnp_rpc.Exception.v msg)
     | Some pool ->
-      Pool_api.submit pool descr
+      Pool_api.submit ~urgent pool descr
   in
   Api.Submission.local ~submit
 
