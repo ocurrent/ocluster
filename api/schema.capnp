@@ -42,5 +42,5 @@ interface Registration {
 }
 
 interface Submission {
-  submit @0 (pool :Text, descr :JobDescr) -> (job :Job);
+  submit @0 (pool :Text, descr :JobDescr, urgent :Bool) -> (job :Job);
 }

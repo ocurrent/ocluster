@@ -17,7 +17,7 @@ let rec tail job start =
     flush stdout;
     tail job next
 
-let main submission_path pool dockerfile repository commits cache_hint =
+let main submission_path pool dockerfile repository commits cache_hint urgent =
   let src =
     match repository, commits with
     | None, [] -> None
@@ -31,7 +31,7 @@ let main submission_path pool dockerfile repository commits cache_hint =
       let vat = Capnp_rpc_unix.client_only_vat () in
       let sr = Capnp_rpc_unix.Cap_file.load vat submission_path |> or_die in
       Sturdy_ref.connect_exn sr >>= fun submission_service ->
-      let job = Api.Submission.submit submission_service ~pool ~dockerfile ~cache_hint ?src in
+      let job = Api.Submission.submit submission_service ~urgent ~pool ~dockerfile ~cache_hint ?src in
       Capability.dec_ref submission_service;
       (*     let status = Api.Job.exit_status job in *)
       Fmt.pr "Tailing log:@.";
@@ -95,9 +95,16 @@ let cache_hint =
     ~docv:"STRING"
     ["cache-hint"]
 
+let urgent =
+  Arg.value @@
+  Arg.flag @@
+  Arg.info
+    ~doc:"Add job to the urgent queue"
+    ["urgent"]
+
 let cmd =
   let doc = "Submit a build to the scheduler" in
-  Term.(const main $ connect_addr $ pool $ dockerfile $ repo $ commits $ cache_hint),
+  Term.(const main $ connect_addr $ pool $ dockerfile $ repo $ commits $ cache_hint $ urgent),
   Term.info "build-client" ~doc
 
 let () = Term.(exit @@ eval cmd)

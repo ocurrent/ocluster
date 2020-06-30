@@ -19,8 +19,9 @@ module Make (Item : S.ITEM) : sig
   val register : t -> name:string -> (worker, [> `Name_taken]) result
   (** [register t ~name] returns a queue for worker [name]. *)
 
-  val submit : t -> Item.t -> unit
-  (** [submit t item] adds [item] to the incoming queue. *)
+  val submit : urgent:bool -> t -> Item.t -> unit
+  (** [submit ~urgent t item] adds [item] to the incoming queue.
+      [urgent] items will be processed before non-urgent ones. *)
 
   val pop : worker -> (Item.t, [> `Finished]) Lwt_result.t
   (** [pop worker] gets the next item for [worker]. *)
