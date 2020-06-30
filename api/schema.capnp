@@ -32,8 +32,13 @@ interface Queue {
   pop @0 (job :Job) -> (descr :JobDescr);
 }
 
+interface Worker {
+  metrics @0 () -> (version :Text, data :Text);
+  # Return the worker's Prometheus metrics.
+}
+
 interface Registration {
-  register @0 (name :Text) -> (queue :Queue);
+  register @0 (name :Text, worker :Worker) -> (queue :Queue);
 }
 
 interface Submission {

@@ -29,15 +29,21 @@ end
 module Pool_api = struct
   module Pool = Pool.Make(Item)
 
-  type t = Pool.t
+  type t = {
+    pool : Pool.t;
+    workers : (string, Api.Worker.t) Hashtbl.t;
+  }
 
-  let create = Pool.create
+  let create ~name ~db =
+    let pool = Pool.create ~name ~db in
+    let workers = Hashtbl.create 10 in
+    { pool; workers }
 
   let submit t (descr : Api.Queue.job_desc) : Api.Job.t =
     let job, set_job = Capability.promise () in
     Log.info (fun f -> f "Received new job request");
     let item = { Item.descr; set_job } in
-    Pool.submit t item;
+    Pool.submit t.pool item;
     job
 
   let pop q ~job =
@@ -48,17 +54,29 @@ module Pool_api = struct
       Capability.resolve_ok set_job job;
       Ok descr
 
-  let register t ~name =
-    match Pool.register t ~name with
+  let register t ~name worker =
+    match Pool.register t.pool ~name with
     | Error `Name_taken ->
       Fmt.failwith "Worker already registered!";
     | Ok q ->
       Log.info (fun f -> f "Registered new worker %S" name);
-      Api.Queue.local ~pop:(pop q) ~release:(fun () -> Pool.release q)
+      Hashtbl.add t.workers name worker;
+      Api.Queue.local ~pop:(pop q) ~release:(fun () ->
+          Hashtbl.remove t.workers name;
+          Capability.dec_ref worker;
+          Pool.release q
+        )
 
   let registration_service t =
     let register = register t in
     Api.Registration.local ~register
+
+  let worker t name =
+    match Hashtbl.find_opt t.workers name with
+    | None -> None
+    | Some w ->
+      Capability.inc_ref w;
+      Some w
 end
 
 type t = {
@@ -80,6 +98,9 @@ let submission_service t =
       Pool_api.submit pool descr
   in
   Api.Submission.local ~submit
+
+let pool t name =
+  String.Map.find_opt name t.pools
 
 let create ~db pools =
   let db = Pool.Dao.init db in
