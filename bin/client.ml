@@ -33,11 +33,14 @@ let main submission_path pool dockerfile repository commits cache_hint urgent =
       Sturdy_ref.connect_exn sr >>= fun submission_service ->
       let job = Api.Submission.submit submission_service ~urgent ~pool ~dockerfile ~cache_hint ?src in
       Capability.dec_ref submission_service;
-      (*     let status = Api.Job.exit_status job in *)
+      let status = Api.Job.status job in
       Fmt.pr "Tailing log:@.";
       tail job 0L >>= fun () ->
-      Fmt.pr "Job complete.@.";
-      Lwt.return_unit
+      status >|= function
+      | Ok () -> ()
+      | Error (`Capnp e) ->
+        Fmt.pr "%a.@." Capnp_rpc.Error.pp e;
+        exit 1
     end
   with Failure msg ->
     Printf.eprintf "%s\n%!" msg;
