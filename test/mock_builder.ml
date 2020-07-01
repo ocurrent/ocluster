@@ -1,6 +1,6 @@
 open Lwt.Infix
 
-type outcome = (unit, Build_worker.Process.error) result
+type outcome = (string, Build_worker.Process.error) result
 
 type t = {
   replies : (string, (outcome Lwt.t * outcome Lwt.u)) Hashtbl.t;

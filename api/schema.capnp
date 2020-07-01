@@ -1,7 +1,25 @@
 @0x8378b104cef5b2eb;
 
+struct DockerBuild {
+  dockerfile   @0 :Text;
+  # The contents of the Dockerfile to build.
+
+  pushTarget   @1 :Text;
+  # If set, the builder will "docker push" to this target on success.
+  # The format is "repo:tag". The tag is not optional.
+  # You'll need to provide pushUser and pushPassword too when using this.
+  # To avoid sharing important credentials, you can create a new Docker Hub
+  # user for this and push to a staging repository. Then use the returned
+  # RepoId hash to tag it in the final repository yourself.
+  # Example value: "myorg/staging:job-123"
+
+  pushUser     @2 :Text;
+  pushPassword @3: Text;
+}
+
 struct JobDescr {
-  dockerfile @0 :Text;
+  dockerBuild @0 :DockerBuild;
+  # Note: wrap this field in "action :union { }" to add more action types later.
 
   cacheHint @1 :Text;
   # Try to place jobs with the same cache_hint on the same node.
@@ -24,8 +42,10 @@ interface Job {
   # it waits until something changes before returning.
   # If "start" is negative then it is relative to the end of the log.
 
-  status @1 () -> ();
+  result @1 () -> (output :Text);
   # Waits for the job to finish. Resolves to an error if the job fails.
+  # The output depends on the job type. For a "docker push", it is the RepoId of
+  # the pushed image.
 }
 
 interface Queue {
