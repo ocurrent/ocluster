@@ -98,6 +98,29 @@ dune exec -- build-client \
 If you list multiple commit hashes then the builder will merge them together.
 This is useful for e.g. testing a pull request merged with the master branch's head.
 
+### Publishing the result
+
+You can ask the builder to push the resulting image somewhere. The client provides three options for this:
+
+```
+build-client ... \
+  --push-to org/staging:build-1 \
+  --push-user=builder \
+  --push-password ~/.builder-password
+```
+
+You should not give the builders access to your main password or repositories. Instead, create a new user
+and a "staging" repository on Docker Hub for this purpose. The builder will return the RepoId of the newly
+pushed image, which you can then download, or republish under its final name. You can also combine images
+from several builders to create a single multi-arch image using `docker manifest`.
+
+For now, you must also start the builders with `--allow-push org/staging`. This
+is because the `docker push` command requires the builder to tag the image
+locally before pushing, and it would be unfortunate if a user asked it to tag
+an image as e.g. `ocurrent/build-worker:latest`.
+
+The client is responsible for deleting the image once it is no longer needed.
+
 ## API
 
 To write your own clients or builders:

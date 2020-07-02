@@ -3,6 +3,8 @@ open Capnp_rpc_lwt
 
 type t = Raw.Service.Job.t Capability.t
 
+let ( >>!= ) = Lwt_result.bind
+
 let local ~switch ~outcome ~stream_log_data =
   let module X = Raw.Service.Job in
   X.local @@ object
@@ -19,12 +21,16 @@ let local ~switch ~outcome ~stream_log_data =
       Results.next_set results next;
       Ok response
 
-    method status_impl _params release_param_caps =
+    method result_impl _params release_param_caps =
+      let open X.Result in
       release_param_caps ();
       Service.return_lwt @@ fun () ->
       outcome >|= function
-      | Ok () -> Ok (Service.Response.create_empty ())
       | Error (`Msg m) -> Error (`Capnp (`Exception (Capnp_rpc.Exception.v m)))
+      | Ok output ->
+        let response, results = Service.Response.create Results.init_pointer in
+        Results.output_set results output;
+        Ok response
 
     method! release =
       Lwt.async (fun () -> Lwt_switch.turn_off switch)
@@ -39,7 +45,8 @@ let log t start =
   Capability.call_for_value t method_id request |> Lwt_result.map @@ fun x ->
   (Results.log_get x, Results.next_get x)
 
-let status t =
-  let open X.Status in
+let result t =
+  let open X.Result in
   let request = Capability.Request.create_no_args () in
-  Capability.call_for_unit t method_id request
+  Capability.call_for_value t method_id request >>!= fun response ->
+  Lwt_result.return (Results.output_get response)

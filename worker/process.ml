@@ -21,9 +21,9 @@ let pp_signal f x =
   else if x = sigterm then Fmt.string f "term"
   else Fmt.int f x
 
-let exec ~log ~switch ?(stdin="") cmd =
+let exec ~log ~switch ?(stdin="") ?(stderr=`FD_copy Unix.stdout) cmd =
   let cmd = "", Array.of_list cmd in
-  let proc = Lwt_process.open_process ~stderr:(`FD_copy Unix.stdout) cmd in
+  let proc = Lwt_process.open_process ~stderr cmd in
   Lwt_switch.add_hook_or_exec (Some switch) (fun () ->
       if Lwt.state proc#status = Lwt.Sleep then (
         Log.info (fun f -> f "Cancelling job...");
