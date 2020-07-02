@@ -1,6 +1,8 @@
 open Lwt.Infix
 open Capnp_rpc_lwt
 
+module Api = Build_scheduler_api
+
 let () =
   Logging.init ()
 
@@ -113,7 +115,7 @@ let urgent =
     ["urgent"]
 
 let push_to =
-  let target_conv = Arg.conv Api.Submission.Target.(of_string, pp) in
+  let target_conv = Arg.conv Api.Docker.Image_id.(of_string, pp) in
   Arg.value @@
   Arg.(opt (some target_conv)) None @@
   Arg.info
@@ -143,7 +145,7 @@ let push_to =
     | None, _, _ -> None
     | Some target, Some user, Some password_file ->
       let password = read_first_line password_file in
-      Some { Api.Submission.Docker_build.target; user; password }
+      Some { Api.Docker.Spec.target; user; password }
     | Some _, None, _ -> Fmt.failwith "Must use --push-user with --push-to"
     | Some _, Some _, None -> Fmt.failwith "Must use --push-password with --push-to"
   in

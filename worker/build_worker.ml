@@ -4,6 +4,8 @@ open Capnp_rpc_lwt
 module Log_data = Log_data
 module Process = Process
 
+module Api = Build_scheduler_api
+
 module Metrics = struct
   open Prometheus
 
@@ -39,9 +41,9 @@ type t = {
   allow_push : string list;            (* Repositories users can push to *)
 }
 
-let docker_push ~switch ~log t hash { Api.Submission.Docker_build.target; user; password } =
-  let repo = Api.Submission.Target.repo target in
-  let target = Api.Submission.Target.to_string target in
+let docker_push ~switch ~log t hash { Api.Docker.Spec.target; user; password } =
+  let repo = Api.Docker.Image_id.repo target in
+  let target = Api.Docker.Image_id.to_string target in
   Log.info (fun f -> f "Push %S to %S as user %S" hash target user);
   Log_data.info log "Pushing %S to %S as user %S" hash target user;
   (* "docker push" rather stupidly requires us to tag the image locally with the same

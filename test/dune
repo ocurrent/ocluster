@@ -1,3 +1,4 @@
 (test
   (name test)
+  (package build-scheduler)
   (libraries logs.fmt fmt.tty build_worker build_scheduler alcotest-lwt lwt.unix capnp-rpc-net prometheus-app db))

@@ -9,9 +9,20 @@
 (maintainers "talex5@gmail.com")
 
 (package
+ (name build-scheduler-api)
+ (synopsis "Cap'n Proto API for build-scheduler")
+ (depends
+  lwt
+  (capnp-rpc-lwt (>= 0.7.0))
+  fmt
+  (ocaml (>= 4.08.0))
+))
+
+(package
  (name build-scheduler)
  (synopsis "Distribute build jobs to workers")
  (depends
+  (build-scheduler-api (= :version))
   lwt
   (capnp-rpc-unix (>= 0.7.0))
   logs
