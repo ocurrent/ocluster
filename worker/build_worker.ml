@@ -157,7 +157,10 @@ let docker_build ~switch ~log ~src dockerfile =
        Process.exec ~switch ~log ~stdin:dockerfile ["docker"; "build"; "--iidfile"; iid_file; "-f"; "-"; src] >>!= fun () ->
        Lwt_result.return (String.trim (read_file iid_file))
     )
-    (fun () -> Lwt_unix.unlink iid_file)
+    (fun () ->
+       if Sys.file_exists iid_file then Lwt_unix.unlink iid_file
+       else Lwt.return_unit
+    )
 
 let metrics () =
   let data = Prometheus.CollectorRegistry.(collect default) in
