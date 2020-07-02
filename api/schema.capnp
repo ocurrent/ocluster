@@ -46,6 +46,10 @@ interface Job {
   # Waits for the job to finish. Resolves to an error if the job fails.
   # The output depends on the job type. For a "docker push", it is the RepoId of
   # the pushed image.
+
+  cancel @2 () -> ();
+  # Request that the job be cancelled.
+  # Note: jobs will be also cancelled if their reference count reaches zero.
 }
 
 interface Queue {

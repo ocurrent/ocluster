@@ -83,7 +83,7 @@ let build ~switch ~log t descr =
   end
   >|= function
   | Error `Cancelled ->
-    Log_data.write log (Fmt.strf "Job cancelled");
+    Log_data.write log "Job cancelled\n";
     Log.info (fun f -> f "Job cancelled");
     Error (`Msg "Build cancelled")
   | Ok output ->

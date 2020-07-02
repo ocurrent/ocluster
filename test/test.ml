@@ -186,6 +186,25 @@ let client_disconnects () =
     | Error `Cancelled -> ()
     | _ -> Alcotest.fail "Job should have been cancelled!"
 
+(* The client cancels the job explicitly. *)
+let cancel () =
+  with_sched @@ fun ~submission_service ~registry ->
+  let builder = Mock_builder.create () in
+  Lwt_switch.with_switch @@ fun switch ->
+  Mock_builder.run ~switch builder (Mock_network.sturdy registry);
+  let action = Api.Submission.docker_build "example" in
+  Capability.with_ref (Api.Submission.submit submission_service ~pool:"pool" ~action ~cache_hint:"1" ?src:None) @@ fun job ->
+  let log = read_log job in
+  Mock_builder.await builder "example" >>= fun _ ->
+  Api.Job.cancel job >>= fun cancel_result ->
+  Alcotest.(check (result unit reject)) "Cancel succeeds" (Ok ()) cancel_result;
+  log >>= fun log ->
+  Alcotest.(check string) "Check log" "Building example\nJob cancelled\n" log;
+  Api.Job.result job >>= fun result ->
+  let result = Result.map_error (fun (`Capnp e) -> Fmt.to_to_string Capnp_rpc.Error.pp e) result in
+  Alcotest.(check (result reject string)) "Check job failed" (Error "Failed: Build cancelled") result;
+  Lwt.return_unit
+
 let test_case name fn =
   Alcotest_lwt.test_case name `Quick @@ fun _ () ->
   let problems = Logs.(warn_count () + err_count ()) in
@@ -206,6 +225,7 @@ let () =
       test_case "network" network;
       test_case "worker_disconnects" worker_disconnects;
       test_case "client_disconnects" client_disconnects;
+      test_case "cancel" cancel;
     ];
     "scheduling", Test_scheduling.suite;
   ]

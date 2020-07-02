@@ -5,6 +5,7 @@ type t = Raw.Service.Job.t Capability.t
 
 let ( >>!= ) = Lwt_result.bind
 
+(* Turns off [switch] if [cancel] is called or the job is released. *)
 let local ~switch ~outcome ~stream_log_data =
   let module X = Raw.Service.Job in
   X.local @@ object
@@ -34,6 +35,12 @@ let local ~switch ~outcome ~stream_log_data =
 
     method! release =
       Lwt.async (fun () -> Lwt_switch.turn_off switch)
+
+    method cancel_impl _params release_param_caps =
+      release_param_caps ();
+      Lwt.async (fun () -> Lwt_switch.turn_off switch);
+      let response = Service.Response.create_empty () in
+      Service.return response
   end
 
 module X = Raw.Client.Job
@@ -50,3 +57,8 @@ let result t =
   let request = Capability.Request.create_no_args () in
   Capability.call_for_value t method_id request >>!= fun response ->
   Lwt_result.return (Results.output_get response)
+
+let cancel t =
+  let open X.Cancel in
+  let request = Capability.Request.create_no_args () in
+  Capability.call_for_unit t method_id request
