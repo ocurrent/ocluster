@@ -66,9 +66,16 @@ let docker_push ~switch ~log t hash { Api.Docker.Spec.target; user; password } =
     | Ok () ->
       Process.exec ~switch ~log @@ docker ["tag"; "--"; hash; target] >>!= fun () ->
       Process.exec ~switch ~log @@ docker ["push"; "--"; target] >>!= fun () ->
-      Lwt_process.pread_line ("", [| "docker"; "image"; "inspect"; "-f"; "{{index .RepoDigests 0}}"; "--"; target |]) >>= function
+      Lwt_process.pread_line ("", [| "docker"; "image"; "inspect"; "-f"; "{{ range index .RepoDigests}}{{ . }} {{ end }}"; "--"; target |]) >>= function
       | "" -> Lwt_result.fail (`Msg "Failed to read RepoDigests for newly-pushed image!")
-      | repo_id -> Lwt_result.return repo_id
+      | ids ->
+        let open Astring in
+        (* Sometimes this mysteriously includes multi-arch manifests from other repositories. Possibly it happens when
+           the image is something we're also running locally (e.g. our image has the same hash as "ocurrent/build-worker:live").
+           We don't want to return a multi-arch image here, because "docker manifest" would reject that. *)
+        match List.find_opt (String.is_prefix ~affix:(repo ^ "@")) (String.cuts ~sep:" " ids) with
+        | Some repo_id -> Lwt_result.return repo_id
+        | None -> Lwt_result.fail (`Msg (Fmt.strf "Can't find target repository '%s@...' in list %S!" repo ids))
   )
 
 let build ~switch ~log t descr =
