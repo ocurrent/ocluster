@@ -2,6 +2,8 @@ open Astring
 open Lwt.Infix
 open Capnp_rpc_lwt
 
+module Api = Build_scheduler_api
+
 module Item = struct
   type t = {
     descr : Api.Queue.job_desc;

@@ -19,7 +19,7 @@
 val with_build_context :
   switch:Lwt_switch.t ->
   log:Log_data.t ->
-  Api.Raw.Reader.JobDescr.t ->
+  Build_scheduler_api.Raw.Reader.JobDescr.t ->
   (string -> ('a, Process.error) Lwt_result.t) ->
   ('a, Process.error) Lwt_result.t
 (** [with_build_context ~switch ~log descr fn] runs [fn dir], where [dir] is a

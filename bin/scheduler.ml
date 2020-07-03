@@ -1,5 +1,6 @@
 open Lwt.Infix
 module Restorer = Capnp_rpc_net.Restorer
+module Api = Build_scheduler_api
 
 let ( / ) = Filename.concat
 

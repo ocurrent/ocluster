@@ -1,6 +1,8 @@
 open Capnp_rpc_lwt
 open Lwt.Infix
 
+module Api = Build_scheduler_api
+
 (* Setting this to true shows log output, which is useful if the tests hang.
    However, it also hides the Alcotest diff if it fails. *)
 let verbose = false

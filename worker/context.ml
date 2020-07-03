@@ -1,6 +1,7 @@
 open Lwt.Infix
 
 module Store = Git_unix.Store
+module Api = Build_scheduler_api
 
 let ( / ) = Filename.concat
 let ( >>!= ) = Lwt_result.bind

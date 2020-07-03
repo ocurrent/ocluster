@@ -1,5 +1,6 @@
 (library
-  (name api)
+  (name build_scheduler_api)
+  (public_name build-scheduler-api)
   (flags (:standard -w -53-55))
   (libraries capnp-rpc-lwt))
 
