@@ -31,6 +31,7 @@
   git-unix
   lwt-dllist
   prometheus-app
+  cohttp-lwt-unix
   sqlite3
   (ocaml (>= 4.08.0))
   (alcotest (and (>= 1.0.0) :with-test))

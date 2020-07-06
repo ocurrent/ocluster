@@ -31,6 +31,24 @@ module Web = struct
   (* Provide metrics over HTTP. *)
 
   module Server = Cohttp_lwt_unix.Server
+
+  let get_metrics ~sched ~pool ~worker ~source =
+    match Build_scheduler.pool sched pool with
+    | None ->
+      Server.respond_error ~status:`Bad_request ~body:"No such pool" ()
+    | Some pool_api ->
+      match Build_scheduler.Pool_api.worker pool_api worker with
+      | None -> Server.respond_error ~status:`Bad_request ~body:"Worker not connected" ()
+      | Some worker_api ->
+        Capnp_rpc_lwt.Capability.with_ref worker_api @@ fun worker_api ->
+        Api.Worker.metrics worker_api ~source >>= function
+        | Error (`Capnp e) ->
+          Logs.warn (fun f -> f "Error getting metrics for %S/%S: %a" pool worker Capnp_rpc.Error.pp e);
+          Server.respond_error ~status:`Internal_server_error ~body:"Worker metrics collection failed" ()
+        | Ok (content_type, data) ->
+          let headers = Cohttp.Header.init_with "Content-Type" content_type in
+          Server.respond_string ~status:`OK ~headers ~body:data ()
+
   let callback sched _conn req _body =
     let open Cohttp in
     let uri = Request.uri req in
@@ -40,23 +58,8 @@ module Web = struct
       let body = Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data in
       let headers = Header.init_with "Content-Type" "text/plain; version=0.0.4" in
       Server.respond_string ~status:`OK ~headers ~body ()
-    | `GET, ["pool"; pool; "worker"; worker; "metrics"] ->
-      begin match Build_scheduler.pool sched pool with
-        | None ->
-          Server.respond_error ~status:`Bad_request ~body:"No such pool" ()
-        | Some pool_api ->
-          match Build_scheduler.Pool_api.worker pool_api worker with
-          | None -> Server.respond_error ~status:`Bad_request ~body:"Worker not connected" ()
-          | Some worker_api ->
-            Capnp_rpc_lwt.Capability.with_ref worker_api @@ fun worker_api ->
-            Api.Worker.metrics worker_api >>= function
-            | Error (`Capnp e) ->
-              Logs.warn (fun f -> f "Error getting metrics for %S/%S: %a" pool worker Capnp_rpc.Error.pp e);
-              Server.respond_error ~status:`Internal_server_error ~body:"Worker metrics collection failed" ()
-            | Ok (version, data) ->
-              let headers = Header.init_with "Content-Type" ("text/plain; version=" ^ version) in
-              Server.respond_string ~status:`OK ~headers ~body:data ()
-      end
+    | `GET, ["pool"; pool; "worker"; worker; "metrics"] -> get_metrics ~sched ~pool ~worker ~source:`Agent
+    | `GET, ["pool"; pool; "worker"; worker; "host-metrics"] -> get_metrics ~sched ~pool ~worker ~source:`Host
     | _ -> Server.respond_error ~status:`Bad_request ~body:"Bad request" ()
 
   let serve ~sched = function
