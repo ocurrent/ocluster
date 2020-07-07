@@ -73,3 +73,12 @@ interface Registration {
 interface Submission {
   submit @0 (pool :Text, descr :JobDescr, urgent :Bool) -> (job :Job);
 }
+
+interface PoolAdmin {
+  dump @0 () -> (state :Text);
+}
+
+interface Admin {
+  pools @0 () -> (names :List(Text));
+  pool  @1 (name :Text) -> (pool :PoolAdmin);
+}

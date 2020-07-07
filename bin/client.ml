@@ -24,7 +24,19 @@ let rec tail job start =
     flush stdout;
     tail job next
 
-let main submission_path pool dockerfile repository commits cache_hint urgent push_to =
+let run cap_path fn =
+  try
+    Lwt_main.run begin
+      let vat = Capnp_rpc_unix.client_only_vat () in
+      let sr = Capnp_rpc_unix.Cap_file.load vat cap_path |> or_die in
+      Sturdy_ref.connect_exn sr >>= fun service ->
+      Capability.with_ref service fn
+    end
+  with Failure msg ->
+    Printf.eprintf "%s\n%!" msg;
+    exit 1
+
+let submit submission_path pool dockerfile repository commits cache_hint urgent push_to =
   let src =
     match repository, commits with
     | None, [] -> None
@@ -32,44 +44,47 @@ let main submission_path pool dockerfile repository commits cache_hint urgent pu
     | Some repo, [] -> Fmt.failwith "No commits requested from repository %S!" repo
     | Some repo, commits -> Some (repo, commits)
   in
-  try
-    Lwt_main.run begin
-      Lwt_io.(with_file ~mode:input) dockerfile (Lwt_io.read ?count:None) >>= fun dockerfile ->
-      let vat = Capnp_rpc_unix.client_only_vat () in
-      let sr = Capnp_rpc_unix.Cap_file.load vat submission_path |> or_die in
-      Sturdy_ref.connect_exn sr >>= fun submission_service ->
-      let action = Api.Submission.docker_build ?push_to dockerfile in
-      let job = Api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ?src in
-      Capability.dec_ref submission_service;
-      let result = Api.Job.result job in
-      Fmt.pr "Tailing log:@.";
-      tail job 0L >>= fun () ->
-      result >|= function
-      | Ok "" -> ()
-      | Ok x -> Fmt.pr "Result: %S@." x
-      | Error (`Capnp e) ->
-        Fmt.pr "%a.@." Capnp_rpc.Error.pp e;
-        exit 1
-    end
-  with Failure msg ->
-    Printf.eprintf "%s\n%!" msg;
+  run submission_path @@ fun submission_service ->
+  Lwt_io.(with_file ~mode:input) dockerfile (Lwt_io.read ?count:None) >>= fun dockerfile ->
+  let action = Api.Submission.docker_build ?push_to dockerfile in
+  let job = Api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ?src in
+  Capability.dec_ref submission_service;
+  let result = Api.Job.result job in
+  Fmt.pr "Tailing log:@.";
+  tail job 0L >>= fun () ->
+  result >|= function
+  | Ok "" -> ()
+  | Ok x -> Fmt.pr "Result: %S@." x
+  | Error (`Capnp e) ->
+    Fmt.pr "%a.@." Capnp_rpc.Error.pp e;
     exit 1
+
+let show cap_path pool =
+  run cap_path @@ fun admin_service ->
+  match pool with
+  | None ->
+    Api.Admin.pools admin_service >|= fun pools ->
+    List.iter print_endline pools
+  | Some pool ->
+    Capability.with_ref (Api.Admin.pool admin_service pool) @@ fun pool ->
+    Api.Pool_admin.dump pool >|= fun status ->
+    print_endline (String.trim status)
 
 (* Command-line parsing *)
 
 open Cmdliner
 
 let connect_addr =
-  Arg.value @@
-  Arg.opt Arg.file "./capnp-secrets/submission.cap" @@
+  Arg.required @@
+  Arg.pos 0 Arg.(some file) None @@
   Arg.info
-    ~doc:"Path of submission.cap from build-scheduler"
+    ~doc:"Path of .cap file from build-scheduler"
     ~docv:"ADDR"
-    ["submission-service"]
+    []
 
 let dockerfile =
   Arg.required @@
-  Arg.pos 0 Arg.(some file) None @@
+  Arg.pos 1 Arg.(some file) None @@
   Arg.info
     ~doc:"Path of the Dockerfile to build"
     ~docv:"PATH"
@@ -77,7 +92,7 @@ let dockerfile =
 
 let repo =
   Arg.value @@
-  Arg.pos 1 Arg.(some string) None @@
+  Arg.pos 2 Arg.(some string) None @@
   Arg.info
     ~doc:"URL of the source Git repository"
     ~docv:"URL"
@@ -85,7 +100,7 @@ let repo =
 
 let commits =
   Arg.value @@
-  Arg.(pos_right 1 string) [] @@
+  Arg.(pos_right 2 string) [] @@
   Arg.info
     ~doc:"Git commit to use as context (full commit hash)"
     ~docv:"HASH"
@@ -151,9 +166,30 @@ let push_to =
   in
   Term.(pure make $ push_to $ push_user $ push_password_file)
 
-let cmd =
+let submit =
   let doc = "Submit a build to the scheduler" in
-  Term.(const main $ connect_addr $ pool $ dockerfile $ repo $ commits $ cache_hint $ urgent $ push_to),
-  Term.info "build-client" ~doc
+  Term.(const submit $ connect_addr $ pool $ dockerfile $ repo $ commits $ cache_hint $ urgent $ push_to),
+  Term.info "submit" ~doc
 
-let () = Term.(exit @@ eval cmd)
+let pool_pos =
+  Arg.value @@
+  Arg.pos 1 Arg.(some string) None @@
+  Arg.info
+    ~doc:"Pool to use"
+    ~docv:"ID"
+    []
+
+let show =
+  let doc = "Show information about a service, pool or worker" in
+  Term.(const show $ connect_addr $ pool_pos),
+  Term.info "show" ~doc
+
+let cmds = [submit; show]
+
+let default_cmd =
+  let doc = "a command-lint client for the build-scheduler" in
+  let sdocs = Manpage.s_common_options in
+  Term.(ret (const (`Help (`Pager, None)))),
+  Term.info "build-client" ~doc ~sdocs
+
+let () = Term.(exit @@ eval_choice default_cmd cmds)

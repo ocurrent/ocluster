@@ -70,6 +70,13 @@ let cached_scheduling () =
   let w2 = Pool.register pool ~name:"worker-2" |> Result.get_ok in
   let w1a = Pool.pop w1 in
   let w2a = Pool.pop w2 in
+  Alcotest.(check string) "Workers ready" "\
+    queue: (ready) [worker-2 worker-1]\n\
+    registered:\n\
+    \  worker-1 (0): []\n\
+    \  worker-2 (0): []\n\
+    cached: \n\
+    will_cache: \n" (Fmt.to_to_string Pool.dump pool);
   Pool.submit pool ~urgent:false @@ job "job1" ~cache_hint:"a";
   Pool.submit pool ~urgent:false @@ job "job2" ~cache_hint:"b";
   Pool.submit pool ~urgent:false @@ job "job3" ~cache_hint:"a";

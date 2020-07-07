@@ -81,8 +81,10 @@ let main capnp secrets_dir pools prometheus_config state_dir =
     let make_sturdy = Capnp_rpc_unix.Vat_config.sturdy_uri capnp in
     let services = Restorer.Table.create make_sturdy in
     let submission_id = Capnp_rpc_unix.Vat_config.derived_id capnp "submission" in
+    let admin_id = Capnp_rpc_unix.Vat_config.derived_id capnp "admin" in
     let sched = Build_scheduler.create ~db pools in
     Restorer.Table.add services submission_id (Build_scheduler.submission_service sched);
+    Restorer.Table.add services admin_id (Build_scheduler.admin_service sched);
     let exports =
       Build_scheduler.registration_services sched |> List.map (fun (id, service) ->
           let name = "pool-" ^ id in
@@ -94,6 +96,7 @@ let main capnp secrets_dir pools prometheus_config state_dir =
     let restore = Restorer.of_table services in
     Capnp_rpc_unix.serve capnp ~restore >>= fun vat ->
     export ~secrets_dir ~vat ~name:"submission" submission_id;
+    export ~secrets_dir ~vat ~name:"admin" admin_id;
     exports |> List.iter (fun f -> f ~vat);
     lwt_choose_safely (Web.serve ~sched prometheus_config)  (* Wait forever *)
   end

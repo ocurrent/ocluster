@@ -123,6 +123,17 @@ let builder_capacity () =
   Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example3\nJob succeeded\n" result;
   Lwt.return_unit
 
+let admin () =
+  let db = Sqlite3.db_open ":memory:" in
+  let sched = Build_scheduler.create ~db ["pool"] in
+  Capability.with_ref (Build_scheduler.admin_service sched) @@ fun admin ->
+  Api.Admin.pools admin >>= fun pools ->
+  Alcotest.(check (list string)) "Check pools" ["pool"] pools;
+  Capability.with_ref (Api.Admin.pool admin "pool") @@ fun pool ->
+  Api.Pool_admin.dump pool >>= fun state ->
+  Logs.info (fun f -> f "Pool state:\n%s" state);
+  Lwt.return_unit
+
 (* Test our mock network. *)
 let network () =
   Lwt_switch.with_switch (fun network_switch ->
@@ -228,6 +239,7 @@ let () =
       test_case "worker_disconnects" worker_disconnects;
       test_case "client_disconnects" client_disconnects;
       test_case "cancel" cancel;
+      test_case "admin" admin;
     ];
     "scheduling", Test_scheduling.suite;
   ]

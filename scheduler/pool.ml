@@ -347,7 +347,7 @@ module Make (Item : S.ITEM) = struct
       will_cache = Hashtbl.create 1000;
     }
 
-  let dump_queue ?(sep=Fmt.cut) pp f q =
+  let dump_queue ?(sep=Fmt.sp) pp f q =
     let first = ref true in
     Fmt.string f "[";
     q |> Lwt_dllist.iter_l (fun item ->
@@ -365,7 +365,7 @@ module Make (Item : S.ITEM) = struct
 
   let pp_state f = function
     | `Finished -> Fmt.string f "(finished)"
-    | `Running (q, _) -> dump_queue ~sep:Fmt.sp pp_cost_item f q
+    | `Running (q, _) -> dump_queue pp_cost_item f q
 
   let dump_workers f tbl =
     let pp_item f (id, w) =
@@ -388,8 +388,8 @@ module Make (Item : S.ITEM) = struct
   let dump_main f = function
     | `Backlog (q : Backlog.t) ->
       Fmt.pf f "(backlog) %a : %a"
-        (dump_queue ~sep:Fmt.sp Item.pp) q.low
-        (dump_queue ~sep:Fmt.sp Item.pp) q.high
+        (dump_queue Item.pp) q.low
+        (dump_queue Item.pp) q.high
     | `Ready q ->
       Fmt.pf f "(ready) %a" (dump_queue pp_worker) q
 
