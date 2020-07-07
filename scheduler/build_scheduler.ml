@@ -73,6 +73,10 @@ module Pool_api = struct
     let register = register t in
     Api.Registration.local ~register
 
+  let admin_service t =
+    let dump () = Fmt.to_to_string Pool.dump t.pool in
+    Api.Pool_admin.local ~dump
+
   let worker t name =
     match Hashtbl.find_opt t.workers name with
     | None -> None
@@ -103,6 +107,15 @@ let submission_service t =
 
 let pool t name =
   String.Map.find_opt name t.pools
+
+let admin_service t =
+  let pools () = String.Map.bindings t.pools |> List.map fst in
+  let pool name =
+    match String.Map.find_opt name t.pools with
+    | None -> Capability.broken (Capnp_rpc.Exception.v "No such pool")
+    | Some pool_api -> Pool_api.admin_service pool_api
+  in
+  Api.Admin.local ~pools ~pool
 
 let create ~db pools =
   let db = Pool.Dao.init db in

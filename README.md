@@ -15,6 +15,7 @@ dune exec -- build-scheduler \
   --capnp-secret-key-file=./capnp-secrets/key.pem \
   --capnp-listen-address=tcp:0.0.0.0:9000 \
   --capnp-public-address=tcp:127.0.0.1:9000 \
+  --state-dir=/var/lib/build-scheduler \
   --pools=linux-arm32,linux-x86_64
 ```
 
@@ -26,18 +27,20 @@ given in the `listen` address. e.g. change `127.0.0.1` to a public IP address.
 You should see output something like this:
 
 ```
-2020-06-24 12:11.29      capnp-rpc [INFO] Generating new secret key to store in "./capnp-secrets/key.pem"
-2020-06-24 12:11.29      capnp-rpc [INFO] Generating new private key...
-2020-06-24 12:11.29      capnp-rpc [INFO] Generated key with hash sha-256@ZlpBveNWZU-9JVd6aZaxtMvXJROIxjcbETfLZVNcVVo
-2020-06-24 12:11.29      capnp-rpc [INFO] Waiting for (encrypted) connections on tcp:0.0.0.0:9000
-2020-06-24 12:11.29    application  Wrote capability reference to "./capnp-secrets/submission.cap"
-2020-06-24 12:11.29    application  Wrote capability reference to "./capnp-secrets/pool-linux-arm32.cap"
-2020-06-24 12:11.29    application  Wrote capability reference to "./capnp-secrets/pool-linux-x86_64.cap"
+2020-07-07 16:24.28      capnp-rpc [INFO] Generating new secret key to store in "./capnp-secrets/key.pem"
+2020-07-07 16:24.28      capnp-rpc [INFO] Generating new private key...
+2020-07-07 16:24.28      capnp-rpc [INFO] Generated key with hash sha-256@gTYMtfvMQJJCRrdqzmBxB-fyJYDmB7oXpMuQd6eGoZw
+2020-07-07 16:24.28      capnp-rpc [INFO] Waiting for (encrypted) connections on tcp:0.0.0.0:9000
+2020-07-07 16:24.28    application  Wrote capability reference to "./capnp-secrets/submission.cap"
+2020-07-07 16:24.28    application  Wrote capability reference to "./capnp-secrets/admin.cap"
+2020-07-07 16:24.28    application  Wrote capability reference to "./capnp-secrets/pool-linux-arm32.cap"
+2020-07-07 16:24.28    application  Wrote capability reference to "./capnp-secrets/pool-linux-x86_64.cap"
 ```
 
 The service creates `.cap` files in `./capnp-secrets/` that can be used to connect to the service.
 There is one for each named pool (that workers use to register themselves),
-plus one for the job submission endpoint (for clients).
+`submission.cap` for the job submission endpoint (for clients), and
+`admin.cap` for managing the service.
 
 [Dockerfile](./Dockerfile) can be used to run the scheduler service in a Docker container.
 
@@ -76,7 +79,7 @@ You can run a job like this:
 ```
 echo -e "FROM busybox\nRUN date\n" > Dockerfile.test
 dune exec -- build-client \
-  --submission-service=./capnp-secrets/submission.cap \
+  submit ./capnp-secrets/submission.cap \
   --pool=linux-x86_64 \
   Dockerfile.test
 ```
@@ -89,7 +92,7 @@ and checkout the commit, using that as the Docker build context. e.g.
 
 ```
 dune exec -- build-client \
-  --submission-service=./capnp-secrets/submission.cap \
+  submit ./capnp-secrets/submission.cap \
   --pool=linux-x86_64 \
   Dockerfile \
   https://github.com/ocurrent/build-scheduler.git cf4b43be2739b0d41924890a63e7a1fa5a2f1e3c
@@ -97,6 +100,21 @@ dune exec -- build-client \
 
 If you list multiple commit hashes then the builder will merge them together.
 This is useful for e.g. testing a pull request merged with the master branch's head.
+
+The client executable can also be used to manage the service using `admin.cap`.
+To get a list of the available pools:
+
+```
+dune exec -- build-client \
+  show ./capnp-secrets/admin.cap
+```
+
+To show the state of one pool:
+
+```
+dune exec -- build-client \
+  show ./capnp-secrets/admin.cap linux-x86_64
+```
 
 ### Publishing the result
 
@@ -157,5 +175,11 @@ There is no attempt at DoS protection from malicious clients or services.
 ## Prometheus metrics
 
 You can run the scheduler with `--listen-prometheus=PORT` to expose Prometheus metrics on the given port.
-Then `http://...:PORT/metrics` provides the metrics for the scheduler itself,
-while `/pool/{pool}/worker/{worker}/metrics` provides the metrics for the given worker (which are fetched over capnp).
+The endpoints available are:
+
+- `http://...:PORT/metrics` provides the metrics for the scheduler itself,
+- `http://...:PORT/pool/{pool}/worker/{worker}/metrics` provides the metrics for the given worker
+- `http://...:PORT/pool/{pool}/worker/{worker}/host-metrics` gets the worker's prometheus-node-exporter metrics
+
+The worker agent and worker host metrics are fetched over the workers Cap'n Proto connection, so there is no need
+to allow incoming network connections to the workers for this.
