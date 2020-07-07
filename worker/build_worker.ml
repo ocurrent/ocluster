@@ -32,6 +32,7 @@ let read_file path =
 let min_reconnect_time = 10.0   (* Don't try to connect more than once per 10 seconds *)
 
 type t = {
+  name : string;
   build : switch:Lwt_switch.t -> log:Log_data.t -> src:string -> string -> (string, Process.error) Lwt_result.t;
   registration_service : Api.Raw.Client.Registration.t Sturdy_ref.t;
   capacity : int;
@@ -135,7 +136,10 @@ let loop ~switch t queue =
             Lwt.finalize
               (fun () ->
                  Lwt.try_bind
-                   (fun () -> build ~switch ~log t request)
+                   (fun () ->
+                      Log_data.info log "Building on %s" t.name;
+                      build ~switch ~log t request
+                   )
                    (fun outcome ->
                       Log_data.close log;
                       Lwt.wakeup set_outcome outcome;
@@ -200,6 +204,7 @@ let metrics = function
 
 let run ?switch ?(docker_build=docker_build) ?(allow_push=[]) ~capacity ~name registration_service =
   let t = {
+    name;
     registration_service;
     build = docker_build;
     cond = Lwt_condition.create ();
