@@ -171,9 +171,32 @@ let docker_build ~switch ~log ~src dockerfile =
        else Lwt.return_unit
     )
 
-let metrics () =
-  let data = Prometheus.CollectorRegistry.(collect default) in
-  "0.0.4", Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data
+let metrics = function
+  | `Agent ->
+    let data = Prometheus.CollectorRegistry.(collect default) in
+    let content_type = "text/plain; version=0.0.4; charset=utf-8" in
+    Lwt_result.return (content_type, Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data)
+  | `Host ->
+    Lwt.catch
+      (fun () ->
+         Cohttp_lwt_unix.Client.get (Uri.of_string "http://127.0.0.1:9100/metrics") >>= fun (resp, body) ->
+         match Cohttp.Response.status resp with
+         | `OK ->
+           begin match Cohttp.Header.get (Cohttp.Response.headers resp) "content-type" with
+             | Some content_type ->
+               body |> Cohttp_lwt.Body.to_string >|= fun body ->
+               Ok (content_type, body)
+             | None ->
+               Lwt.return @@ Fmt.error_msg "Missing Content-Type in HTTP response from prometheus-node-exporter"
+           end
+         | code ->
+           Log.warn (fun f -> f "prometheus-node-exporter: %s" (Cohttp.Code.string_of_status code));
+           Lwt.return @@ Fmt.error_msg "prometheus-node-exporter: %s" (Cohttp.Code.string_of_status code)
+      )
+      (fun ex ->
+         Log.warn (fun f -> f "Failed to connect to prometheus-node-exporter: %a" Fmt.exn ex);
+         Lwt.return @@ Fmt.error_msg "Failed to connect to prometheus-node-exporter"
+      )
 
 let run ?switch ?(docker_build=docker_build) ?(allow_push=[]) ~capacity ~name registration_service =
   let t = {

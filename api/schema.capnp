@@ -57,8 +57,13 @@ interface Queue {
 }
 
 interface Worker {
-  metrics @0 () -> (version :Text, data :Text);
-  # Return the worker's Prometheus metrics.
+  enum MetricsSource {
+    agent @0;   # Report the agent's own metrics
+    host  @1;   # Get the metrics from the prometheus-node-exporter service
+  }
+
+  metrics @0 (source :MetricsSource) -> (contentType :Text, data :Text);
+  # Get Prometheus metrics.
 }
 
 interface Registration {
