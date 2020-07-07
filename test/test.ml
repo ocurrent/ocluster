@@ -73,7 +73,7 @@ let simple () =
   Mock_builder.set builder "example" @@ Ok "hash";
   result >>= fun result ->
   Logs.app (fun f -> f "Result: %S" result);
-  Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
+  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example\nJob succeeded\n" result;
   Lwt.return_unit
 
 (* A failing build on a single worker. *)
@@ -86,7 +86,7 @@ let fails () =
   Mock_builder.set builder "example2" @@ Error (`Exit_code 1);
   result >>= fun result ->
   Logs.app (fun f -> f "Result: %S" result);
-  Alcotest.(check string) "Check job worked" "Building example2\nDocker build exited with status 1\nFAILED\n" result;
+  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example2\nDocker build exited with status 1\nFAILED\n" result;
   Lwt.return_unit
 
 (* The job is submitted before any builders are registered. *)
@@ -99,7 +99,7 @@ let await_builder () =
   Mock_builder.set builder "example" @@ Ok "hash";
   result >>= fun result ->
   Logs.app (fun f -> f "Result: %S" result);
-  Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
+  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example\nJob succeeded\n" result;
   Lwt.return_unit
 
 (* A single builder can't do all the jobs and they queue up. *)
@@ -116,11 +116,11 @@ let builder_capacity () =
   Mock_builder.set builder "example2" @@ Ok "hash";
   Mock_builder.set builder "example3" @@ Ok "hash";
   r1 >>= fun result ->
-  Alcotest.(check string) "Check job worked" "Building example1\nJob succeeded\n" result;
+  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example1\nJob succeeded\n" result;
   r2 >>= fun result ->
-  Alcotest.(check string) "Check job worked" "Building example2\nJob succeeded\n" result;
+  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example2\nJob succeeded\n" result;
   r3 >>= fun result ->
-  Alcotest.(check string) "Check job worked" "Building example3\nJob succeeded\n" result;
+  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example3\nJob succeeded\n" result;
   Lwt.return_unit
 
 (* Test our mock network. *)
@@ -134,7 +134,7 @@ let network () =
       Mock_builder.set builder "example" @@ Ok "hash";
       result >>= fun result ->
       Logs.app (fun f -> f "Result: %S" result);
-      Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
+      Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example\nJob succeeded\n" result;
       Lwt.return_unit
     ) >>= fun () ->
   Lwt.pause ()
@@ -150,7 +150,7 @@ let worker_disconnects () =
   let result = submit submission_service "example" in
   Mock_builder.set builder "example" @@ Ok "hash";
   result >>= fun result ->
-  Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
+  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example\nJob succeeded\n" result;
   (* Drop network *)
   Logs.info (fun f -> f "Dropping worker's network connection");
   Lwt_switch.turn_off network_switch >>= fun () ->
@@ -162,7 +162,7 @@ let worker_disconnects () =
   Mock_builder.run_remote builder ~builder_switch ~network_switch registry;
   Mock_builder.set builder "example" @@ Ok "hash";
   result >>= fun result ->
-  Alcotest.(check string) "Check job worked" "Building example\nJob succeeded\n" result;
+  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example\nJob succeeded\n" result;
   Lwt.return_unit
 
 (* The client gets disconnected. The job is automatically cancelled. *)
@@ -201,7 +201,7 @@ let cancel () =
   Api.Job.cancel job >>= fun cancel_result ->
   Alcotest.(check (result unit reject)) "Cancel succeeds" (Ok ()) cancel_result;
   log >>= fun log ->
-  Alcotest.(check string) "Check log" "Building example\nJob cancelled\n" log;
+  Alcotest.(check string) "Check log" "Building on worker-1\nBuilding example\nJob cancelled\n" log;
   Api.Job.result job >>= fun result ->
   let result = Result.map_error (fun (`Capnp e) -> Fmt.to_to_string Capnp_rpc.Error.pp e) result in
   Alcotest.(check (result reject string)) "Check job failed" (Error "Failed: Build cancelled") result;
