@@ -5,13 +5,13 @@ COPY --chown=opam *.opam /src/
 WORKDIR /src
 RUN opam install -y --deps-only .
 ADD --chown=opam . .
-RUN opam config exec -- dune build ./_build/install/default/bin/build-worker
+RUN opam config exec -- dune build ./_build/install/default/bin/ocluster-worker
 
 FROM debian:10
 RUN apt-get update && apt-get install libev4 curl gnupg2 git libsqlite3-dev ca-certificates netbase -y --no-install-recommends
 RUN curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add -
 RUN echo 'deb https://download.docker.com/linux/debian buster stable' >> /etc/apt/sources.list
 RUN apt-get update && apt-get install docker-ce -y --no-install-recommends
-WORKDIR /var/lib/build-worker
-ENTRYPOINT ["/usr/local/bin/build-worker"]
-COPY --from=build /src/_build/install/default/bin/build-worker /usr/local/bin/
+WORKDIR /var/lib/ocluster-worker
+ENTRYPOINT ["/usr/local/bin/ocluster-worker"]
+COPY --from=build /src/_build/install/default/bin/ocluster-worker /usr/local/bin/
