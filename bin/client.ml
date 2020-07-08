@@ -36,7 +36,7 @@ let run cap_path fn =
     Printf.eprintf "%s\n%!" msg;
     exit 1
 
-let submit submission_path pool dockerfile repository commits cache_hint urgent push_to =
+let submit submission_path pool dockerfile repository commits cache_hint urgent push_to build_args =
   let src =
     match repository, commits with
     | None, [] -> None
@@ -46,9 +46,8 @@ let submit submission_path pool dockerfile repository commits cache_hint urgent 
   in
   run submission_path @@ fun submission_service ->
   Lwt_io.(with_file ~mode:input) dockerfile (Lwt_io.read ?count:None) >>= fun dockerfile ->
-  let action = Api.Submission.docker_build ?push_to dockerfile in
+  let action = Api.Submission.docker_build ?push_to ~build_args dockerfile in
   let job = Api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ?src in
-  Capability.dec_ref submission_service;
   let result = Api.Job.result job in
   Fmt.pr "Tailing log:@.";
   tail job 0L >>= fun () ->
@@ -154,6 +153,14 @@ let push_password_file =
     ~docv:"PATH"
     ["push-password"]
 
+let build_args =
+  Arg.value @@
+  Arg.(opt_all string) [] @@
+  Arg.info
+    ~doc:"Docker build argument"
+    ~docv:"ARG"
+    ["build-arg"]
+
 let push_to =
   let make target user password =
     match target, user, password with
@@ -168,7 +175,7 @@ let push_to =
 
 let submit =
   let doc = "Submit a build to the scheduler" in
-  Term.(const submit $ connect_addr $ pool $ dockerfile $ repo $ commits $ cache_hint $ urgent $ push_to),
+  Term.(const submit $ connect_addr $ pool $ dockerfile $ repo $ commits $ cache_hint $ urgent $ push_to $ build_args),
   Term.info "submit" ~doc
 
 let pool_pos =

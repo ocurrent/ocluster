@@ -15,6 +15,9 @@ struct DockerBuild {
 
   pushUser     @2 :Text;
   pushPassword @3: Text;
+
+  buildArgs    @4: List(Text);
+  # Options to pass to `docker build` using `--build-arg`.
 }
 
 struct JobDescr {

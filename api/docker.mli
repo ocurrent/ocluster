@@ -20,6 +20,7 @@ module Spec : sig
 
   type t = {
     dockerfile : string;       (** The contents of a Dockerfile to build. *)
+    build_args : string list;  (** "--build-arg" arguments. *)
     push_to : push option;     (** Where to upload the resulting image. *)
   }
 

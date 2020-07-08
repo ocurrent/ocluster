@@ -33,7 +33,13 @@ let min_reconnect_time = 10.0   (* Don't try to connect more than once per 10 se
 
 type t = {
   name : string;
-  build : switch:Lwt_switch.t -> log:Log_data.t -> src:string -> string -> (string, Process.error) Lwt_result.t;
+  build :
+    switch:Lwt_switch.t ->
+    log:Log_data.t ->
+    src:string ->
+    build_args:string list ->
+    string ->
+    (string, Process.error) Lwt_result.t;
   registration_service : Api.Raw.Client.Registration.t Sturdy_ref.t;
   capacity : int;
   mutable in_use : int;                (* Number of active builds *)
@@ -82,11 +88,11 @@ let docker_push ~switch ~log t hash { Api.Docker.Spec.target; user; password } =
 let build ~switch ~log t descr =
   let module R = Api.Raw.Reader.JobDescr in
   let cache_hint = R.cache_hint_get descr in
-  let Docker_build { dockerfile; push_to } = Api.Submission.get_action descr in
+  let Docker_build { dockerfile; build_args; push_to } = Api.Submission.get_action descr in
   Log.info (fun f -> f "Got request to build (%s):\n%s" cache_hint (String.trim dockerfile));
   begin
     Context.with_build_context ~switch ~log descr @@ fun src ->
-    t.build ~switch ~log ~src dockerfile >>!= fun hash ->
+    t.build ~switch ~log ~src ~build_args dockerfile >>!= fun hash ->
     match push_to with
     | None -> Lwt_result.return ""
     | Some target -> docker_push ~switch ~log t hash target
@@ -163,11 +169,16 @@ let loop ~switch t queue =
   in
   loop ()
 
-let docker_build ~switch ~log ~src dockerfile =
+let docker_build ~switch ~log ~src ~build_args dockerfile =
   let iid_file = Filename.temp_file "build-worker-" ".iid" in
   Lwt.finalize
     (fun () ->
-       Process.exec ~switch ~log ~stdin:dockerfile ["docker"; "build"; "--iidfile"; iid_file; "-f"; "-"; src] >>!= fun () ->
+       let args =
+         List.concat_map (fun x -> ["--build-arg"; x]) build_args
+         @ ["--pull"; "--iidfile"; iid_file; "-f"; "-"; src]
+       in
+       Logs.info (fun f -> f "docker build @[%a@]" Fmt.(list ~sep:sp (quote string)) args);
+       Process.exec ~switch ~log ~stdin:dockerfile ("docker" :: "build" :: args) >>!= fun () ->
        Lwt_result.return (String.trim (read_file iid_file))
     )
     (fun () ->

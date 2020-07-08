@@ -10,7 +10,7 @@ depends: [
   "lwt"
   "capnp-rpc-lwt" {>= "0.7.0"}
   "fmt"
-  "ocaml" {>= "4.08.0"}
+  "ocaml" {>= "4.10.0"}
 ]
 build: [
   ["dune" "subst"] {pinned}
