@@ -9,7 +9,7 @@ let main registration_path capacity name allow_push =
   Lwt_main.run begin
     let vat = Capnp_rpc_unix.client_only_vat () in
     let sr = Capnp_rpc_unix.Cap_file.load vat registration_path |> or_die in
-    Build_worker.run ~capacity ~name ~allow_push sr
+    Cluster_worker.run ~capacity ~name ~allow_push sr
   end
 
 (* Command-line parsing *)

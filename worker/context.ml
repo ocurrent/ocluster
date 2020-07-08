@@ -1,7 +1,6 @@
 open Lwt.Infix
 
 module Store = Git_unix.Store
-module Api = Build_scheduler_api
 
 let ( / ) = Filename.concat
 let ( >>!= ) = Lwt_result.bind
@@ -92,11 +91,11 @@ let rec lwt_result_list_iter_s f = function
     lwt_result_list_iter_s f xs
 
 let build_context ~switch ~log ~tmpdir descr =
-  match Api.Raw.Reader.JobDescr.commits_get_list descr |> List.map Store.Hash.of_hex with
+  match Cluster_api.Raw.Reader.JobDescr.commits_get_list descr |> List.map Store.Hash.of_hex with
   | [] ->
     Lwt_result.return ()
   | (c :: cs) as commits ->
-    let repository = repo (Api.Raw.Reader.JobDescr.repository_get descr) in
+    let repository = repo (Cluster_api.Raw.Reader.JobDescr.repository_get descr) in
     Lwt_mutex.with_lock repository.lock (fun () ->
         begin
           Repo.has_commits repository commits >>!= function

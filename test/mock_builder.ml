@@ -1,6 +1,6 @@
 open Lwt.Infix
 
-type outcome = (string, Build_worker.Process.error) result
+type outcome = (string, Cluster_worker.Process.error) result
 
 type t = {
   replies : (string, (outcome Lwt.t * outcome Lwt.u)) Hashtbl.t;
@@ -32,7 +32,7 @@ let rec await t id =
 
 let docker_build t ~switch ~log ~src:_ ~build_args:_ dockerfile =
   Logs.info (fun f -> f "Mock build got %S" dockerfile);
-  Build_worker.Log_data.write log (Fmt.strf "Building %s@." dockerfile);
+  Cluster_worker.Log_data.write log (Fmt.strf "Building %s@." dockerfile);
   let reply = get t dockerfile in
   Lwt_switch.add_hook_or_exec (Some switch) (fun () ->
       if Lwt.state reply = Lwt.Sleep then
@@ -44,14 +44,14 @@ let docker_build t ~switch ~log ~src:_ ~build_args:_ dockerfile =
   reply
 
 let run ?(capacity=1) ?(name="worker-1") ~switch t registration_service =
-  let thread = Build_worker.run ~switch ~capacity ~name ~docker_build:(docker_build t) registration_service in
+  let thread = Cluster_worker.run ~switch ~capacity ~name ~docker_build:(docker_build t) registration_service in
   Lwt.on_failure thread
     (fun ex -> if Lwt_switch.is_on switch then raise ex)
 
 let run_remote ~builder_switch ~network_switch ?(capacity=1) ?(name="worker-1") t registration_service =
   let thread =
     let registration_service = Mock_network.remote ~switch:network_switch registration_service in
-    Build_worker.run ~switch:builder_switch ~capacity ~name ~docker_build:(docker_build t) registration_service
+    Cluster_worker.run ~switch:builder_switch ~capacity ~name ~docker_build:(docker_build t) registration_service
   in
   Lwt.on_failure thread
     (fun ex ->

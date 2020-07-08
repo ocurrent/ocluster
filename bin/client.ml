@@ -1,8 +1,6 @@
 open Lwt.Infix
 open Capnp_rpc_lwt
 
-module Api = Build_scheduler_api
-
 let () =
   Logging.init ()
 
@@ -16,7 +14,7 @@ let read_first_line path =
     ~finally:(fun () -> close_in ch)
 
 let rec tail job start =
-  Api.Job.log job start >>= function
+  Cluster_api.Job.log job start >>= function
   | Error (`Capnp e) -> Fmt.failwith "Error tailing logs: %a" Capnp_rpc.Error.pp e
   | Ok ("", _) -> Lwt.return_unit
   | Ok (data, next) ->
@@ -46,9 +44,9 @@ let submit submission_path pool dockerfile repository commits cache_hint urgent 
   in
   run submission_path @@ fun submission_service ->
   Lwt_io.(with_file ~mode:input) dockerfile (Lwt_io.read ?count:None) >>= fun dockerfile ->
-  let action = Api.Submission.docker_build ?push_to ~build_args dockerfile in
-  let job = Api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ?src in
-  let result = Api.Job.result job in
+  let action = Cluster_api.Submission.docker_build ?push_to ~build_args dockerfile in
+  let job = Cluster_api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ?src in
+  let result = Cluster_api.Job.result job in
   Fmt.pr "Tailing log:@.";
   tail job 0L >>= fun () ->
   result >|= function
@@ -62,11 +60,11 @@ let show cap_path pool =
   run cap_path @@ fun admin_service ->
   match pool with
   | None ->
-    Api.Admin.pools admin_service >|= fun pools ->
+    Cluster_api.Admin.pools admin_service >|= fun pools ->
     List.iter print_endline pools
   | Some pool ->
-    Capability.with_ref (Api.Admin.pool admin_service pool) @@ fun pool ->
-    Api.Pool_admin.dump pool >|= fun status ->
+    Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
+    Cluster_api.Pool_admin.dump pool >|= fun status ->
     print_endline (String.trim status)
 
 (* Command-line parsing *)
@@ -129,7 +127,7 @@ let urgent =
     ["urgent"]
 
 let push_to =
-  let target_conv = Arg.conv Api.Docker.Image_id.(of_string, pp) in
+  let target_conv = Arg.conv Cluster_api.Docker.Image_id.(of_string, pp) in
   Arg.value @@
   Arg.(opt (some target_conv)) None @@
   Arg.info
@@ -167,7 +165,7 @@ let push_to =
     | None, _, _ -> None
     | Some target, Some user, Some password_file ->
       let password = read_first_line password_file in
-      Some { Api.Docker.Spec.target; user; password }
+      Some { Cluster_api.Docker.Spec.target; user; password }
     | Some _, None, _ -> Fmt.failwith "Must use --push-user with --push-to"
     | Some _, Some _, None -> Fmt.failwith "Must use --push-password with --push-to"
   in

@@ -3,11 +3,11 @@ opam-version: "2.0"
 synopsis: "Distribute build jobs to workers"
 maintainer: ["talex5@gmail.com"]
 authors: ["talex5@gmail.com"]
-homepage: "https://github.com/ocurrent/build-scheduler"
-bug-reports: "https://github.com/ocurrent/build-scheduler/issues"
+homepage: "https://github.com/ocurrent/ocluster"
+bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [
   "dune" {>= "2.5"}
-  "build-scheduler-api" {= version}
+  "ocluster-api" {= version}
   "lwt"
   "capnp-rpc-unix" {>= "0.7.0"}
   "logs"
@@ -36,4 +36,4 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/ocurrent/build-scheduler.git"
+dev-repo: "git+https://github.com/ocurrent/ocluster.git"

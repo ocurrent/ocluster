@@ -10,14 +10,14 @@ module Item = struct
 
   let cache_hint t = t.cache_hint
 
-  let cost_estimate _ = Build_scheduler.S.{ cached = 1; non_cached = 5 }
+  let cost_estimate _ = Cluster_scheduler.S.{ cached = 1; non_cached = 5 }
 
   let pp f t = Fmt.string f t.job
 end
 
 let job ?(cache_hint="") job = { Item.job; cache_hint }
 
-module Pool = Build_scheduler.Pool.Make(Item)
+module Pool = Cluster_scheduler.Pool.Make(Item)
 
 let job_state x =
   match Lwt.state x with
@@ -42,7 +42,7 @@ let flush_queue w ~expect =
 let with_test_db fn =
   let db = Sqlite3.db_open ":memory:" in
   Lwt.finalize
-    (fun () -> fn (Build_scheduler.Pool.Dao.init db))
+    (fun () -> fn (Cluster_scheduler.Pool.Dao.init db))
     (fun () -> if Sqlite3.db_close db then Lwt.return_unit else failwith "close: DB busy!")
 
 (* Assign three jobs to two workers. *)

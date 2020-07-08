@@ -1,6 +1,6 @@
 (library
-  (name build_scheduler_api)
-  (public_name build-scheduler-api)
+  (name cluster_api)
+  (public_name ocluster-api)
   (flags (:standard -w -53-55))
   (libraries capnp-rpc-lwt))
 

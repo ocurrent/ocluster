@@ -8,7 +8,7 @@ val run :
   ?allow_push:string list ->
   capacity:int ->
   name:string ->
-  Build_scheduler_api.Raw.Client.Registration.t Capnp_rpc_lwt.Sturdy_ref.t ->
+  Cluster_api.Raw.Client.Registration.t Capnp_rpc_lwt.Sturdy_ref.t ->
   unit Lwt.t
 (** [run ~capacity ~name registry] runs a builder that connects to registry and runs up to [capacity] jobs at once.
     The builder registers using the unique ID [name].
