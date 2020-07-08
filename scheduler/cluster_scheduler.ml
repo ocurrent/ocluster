@@ -2,12 +2,10 @@ open Astring
 open Lwt.Infix
 open Capnp_rpc_lwt
 
-module Api = Build_scheduler_api
-
 module Item = struct
   type t = {
-    descr : Api.Queue.job_desc;
-    set_job : Api.Raw.Service.Job.t Capability.resolver;
+    descr : Cluster_api.Queue.job_desc;
+    set_job : Cluster_api.Raw.Service.Job.t Capability.resolver;
   }
 
   type cache_hint = string
@@ -20,7 +18,7 @@ module Item = struct
   let cost_estimate _t = default_estimate
 
   let cache_hint t =
-    Api.Raw.Reader.JobDescr.cache_hint_get t.descr
+    Cluster_api.Raw.Reader.JobDescr.cache_hint_get t.descr
 
   let pp f t =
     match cache_hint t with
@@ -33,7 +31,7 @@ module Pool_api = struct
 
   type t = {
     pool : Pool.t;
-    workers : (string, Api.Worker.t) Hashtbl.t;
+    workers : (string, Cluster_api.Worker.t) Hashtbl.t;
   }
 
   let create ~name ~db =
@@ -41,7 +39,7 @@ module Pool_api = struct
     let workers = Hashtbl.create 10 in
     { pool; workers }
 
-  let submit t ~urgent (descr : Api.Queue.job_desc) : Api.Job.t =
+  let submit t ~urgent (descr : Cluster_api.Queue.job_desc) : Cluster_api.Job.t =
     let job, set_job = Capability.promise () in
     Log.info (fun f -> f "Received new job request (urgent=%b)" urgent);
     let item = { Item.descr; set_job } in
@@ -63,7 +61,7 @@ module Pool_api = struct
     | Ok q ->
       Log.info (fun f -> f "Registered new worker %S" name);
       Hashtbl.add t.workers name worker;
-      Api.Queue.local ~pop:(pop q) ~release:(fun () ->
+      Cluster_api.Queue.local ~pop:(pop q) ~release:(fun () ->
           Hashtbl.remove t.workers name;
           Capability.dec_ref worker;
           Pool.release q
@@ -71,11 +69,11 @@ module Pool_api = struct
 
   let registration_service t =
     let register = register t in
-    Api.Registration.local ~register
+    Cluster_api.Registration.local ~register
 
   let admin_service t =
     let dump () = Fmt.to_to_string Pool.dump t.pool in
-    Api.Pool_admin.local ~dump
+    Cluster_api.Pool_admin.local ~dump
 
   let worker t name =
     match Hashtbl.find_opt t.workers name with
@@ -103,7 +101,7 @@ let submission_service t =
     | Some pool ->
       Pool_api.submit ~urgent pool descr
   in
-  Api.Submission.local ~submit
+  Cluster_api.Submission.local ~submit
 
 let pool t name =
   String.Map.find_opt name t.pools
@@ -115,7 +113,7 @@ let admin_service t =
     | None -> Capability.broken (Capnp_rpc.Exception.v "No such pool")
     | Some pool_api -> Pool_api.admin_service pool_api
   in
-  Api.Admin.local ~pools ~pool
+  Cluster_api.Admin.local ~pools ~pool
 
 let create ~db pools =
   let db = Pool.Dao.init db in

@@ -4,8 +4,6 @@ open Capnp_rpc_lwt
 module Log_data = Log_data
 module Process = Process
 
-module Api = Build_scheduler_api
-
 module Metrics = struct
   open Prometheus
 
@@ -40,7 +38,7 @@ type t = {
     build_args:string list ->
     string ->
     (string, Process.error) Lwt_result.t;
-  registration_service : Api.Raw.Client.Registration.t Sturdy_ref.t;
+  registration_service : Cluster_api.Raw.Client.Registration.t Sturdy_ref.t;
   capacity : int;
   mutable in_use : int;                (* Number of active builds *)
   cond : unit Lwt_condition.t;         (* Fires when a build finishes (or switch turned off) *)
@@ -48,9 +46,9 @@ type t = {
   allow_push : string list;            (* Repositories users can push to *)
 }
 
-let docker_push ~switch ~log t hash { Api.Docker.Spec.target; user; password } =
-  let repo = Api.Docker.Image_id.repo target in
-  let target = Api.Docker.Image_id.to_string target in
+let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; user; password } =
+  let repo = Cluster_api.Docker.Image_id.repo target in
+  let target = Cluster_api.Docker.Image_id.to_string target in
   Log.info (fun f -> f "Push %S to %S as user %S" hash target user);
   Log_data.info log "Pushing %S to %S as user %S" hash target user;
   (* "docker push" rather stupidly requires us to tag the image locally with the same
@@ -86,9 +84,9 @@ let docker_push ~switch ~log t hash { Api.Docker.Spec.target; user; password } =
   )
 
 let build ~switch ~log t descr =
-  let module R = Api.Raw.Reader.JobDescr in
+  let module R = Cluster_api.Raw.Reader.JobDescr in
   let cache_hint = R.cache_hint_get descr in
-  let Docker_build { dockerfile; build_args; push_to } = Api.Submission.get_action descr in
+  let Docker_build { dockerfile; build_args; push_to } = Cluster_api.Submission.get_action descr in
   Log.info (fun f -> f "Got request to build (%s):\n%s" cache_hint (String.trim dockerfile));
   begin
     Context.with_build_context ~switch ~log descr @@ fun src ->
@@ -131,8 +129,8 @@ let loop ~switch t queue =
         Log.info (fun f -> f "Requesting a new job...");
         let switch = Lwt_switch.create () in
         let pop =
-          Capability.with_ref (Api.Job.local ~switch ~outcome ~stream_log_data:(Log_data.stream log)) @@ fun job ->
-          Api.Queue.pop queue job
+          Capability.with_ref (Cluster_api.Job.local ~switch ~outcome ~stream_log_data:(Log_data.stream log)) @@ fun job ->
+          Cluster_api.Queue.pop queue job
         in
         t.cancel <- (fun () -> Lwt.cancel pop);
         pop >>= fun request ->
@@ -238,8 +236,8 @@ let run ?switch ?(docker_build=docker_build) ?(allow_push=[]) ~capacity ~name re
          Sturdy_ref.connect_exn t.registration_service >>= fun reg ->
          Capability.with_ref reg @@ fun reg ->
          let queue =
-           let api = Api.Worker.local ~metrics in
-           let queue = Api.Registration.register reg ~name api in
+           let api = Cluster_api.Worker.local ~metrics in
+           let queue = Cluster_api.Registration.register reg ~name api in
            Capability.dec_ref api;
            queue
          in

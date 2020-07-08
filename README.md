@@ -1,9 +1,15 @@
-# Build scheduler
+# OCluster
 
 Status: **experimental**
 
-A build scheduler service that accepts build jobs from clients and distributes them to worker machines using Cap'n Proto.
+OCluster manages a pool of build workers.
+A build scheduler service accepts build jobs from clients and distributes them to worker machines using Cap'n Proto.
 Workers register themselves by connecting to the scheduler (and workers do not need to be able to accept incoming network connections).
+
+The scheduler can manage multiple pools (e.g. `linux-x86_64` and `linux-arm32`).
+Clients say which pool should handle their requests.
+At the moment, the only build type provided is building a Dockerfile in the context of some Git commit.
+The scheduler tries to schedule similar builds on the same machine, to benefit from Docker's build caching.
 
 ## The scheduler service
 
@@ -11,11 +17,11 @@ To run the scheduler:
 
 ```
 mkdir capnp-secrets
-dune exec -- build-scheduler \
+dune exec -- ocluster-scheduler \
   --capnp-secret-key-file=./capnp-secrets/key.pem \
   --capnp-listen-address=tcp:0.0.0.0:9000 \
   --capnp-public-address=tcp:127.0.0.1:9000 \
-  --state-dir=/var/lib/build-scheduler \
+  --state-dir=/var/lib/ocluster-scheduler \
   --pools=linux-arm32,linux-x86_64
 ```
 
@@ -52,7 +58,7 @@ contains a secret token granting it access.
 To run the build service locally:
 
 ```
-dune exec -- build-worker ./capnp-secrets/pool-linux-x86_64.cap --name=my-host --capacity=1
+dune exec -- ocluster-worker ./capnp-secrets/pool-linux-x86_64.cap --name=my-host --capacity=1
 ```
 
 Each builder must be given a unique name.
@@ -78,7 +84,7 @@ You can run a job like this:
 
 ```
 echo -e "FROM busybox\nRUN date\n" > Dockerfile.test
-dune exec -- build-client \
+dune exec -- ocluster-client \
   submit ./capnp-secrets/submission.cap \
   --pool=linux-x86_64 \
   Dockerfile.test
@@ -91,11 +97,11 @@ Instead, you can give a Git repository and a commit. The worker will clone the r
 and checkout the commit, using that as the Docker build context. e.g.
 
 ```
-dune exec -- build-client \
+dune exec -- ocluster-client \
   submit ./capnp-secrets/submission.cap \
   --pool=linux-x86_64 \
   Dockerfile \
-  https://github.com/ocurrent/build-scheduler.git cf4b43be2739b0d41924890a63e7a1fa5a2f1e3c
+  https://github.com/ocurrent/ocluster-scheduler.git cf4b43be2739b0d41924890a63e7a1fa5a2f1e3c
 ```
 
 If you list multiple commit hashes then the builder will merge them together.
@@ -105,14 +111,14 @@ The client executable can also be used to manage the service using `admin.cap`.
 To get a list of the available pools:
 
 ```
-dune exec -- build-client \
+dune exec -- ocluster-client \
   show ./capnp-secrets/admin.cap
 ```
 
 To show the state of one pool:
 
 ```
-dune exec -- build-client \
+dune exec -- ocluster-client \
   show ./capnp-secrets/admin.cap linux-x86_64
 ```
 
@@ -121,7 +127,7 @@ dune exec -- build-client \
 You can ask the builder to push the resulting image somewhere. The client provides three options for this:
 
 ```
-build-client ... \
+ocluster-client ... \
   --push-to org/staging:build-1 \
   --push-user=builder \
   --push-password ~/.builder-password
@@ -135,7 +141,7 @@ from several builders to create a single multi-arch image using `docker manifest
 For now, you must also start the builders with `--allow-push org/staging`. This
 is because the `docker push` command requires the builder to tag the image
 locally before pushing, and it would be unfortunate if a user asked it to tag
-an image as e.g. `ocurrent/build-worker:latest`.
+an image as e.g. `ocurrent/ocluster-worker:latest`.
 
 The client is responsible for deleting the image once it is no longer needed.
 

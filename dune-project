@@ -1,16 +1,16 @@
 (lang dune 2.5)
-(name build-scheduler)
+(name ocluster)
 (formatting disabled)
 
 (generate_opam_files true)
 
-(source (github ocurrent/build-scheduler))
+(source (github ocurrent/ocluster))
 (authors "talex5@gmail.com")
 (maintainers "talex5@gmail.com")
 
 (package
- (name build-scheduler-api)
- (synopsis "Cap'n Proto API for build-scheduler")
+ (name ocluster-api)
+ (synopsis "Cap'n Proto API for OCluster")
  (depends
   lwt
   (capnp-rpc-lwt (>= 0.7.0))
@@ -19,10 +19,10 @@
 ))
 
 (package
- (name build-scheduler)
+ (name ocluster)
  (synopsis "Distribute build jobs to workers")
  (depends
-  (build-scheduler-api (= :version))
+  (ocluster-api (= :version))
   lwt
   (capnp-rpc-unix (>= 0.7.0))
   logs

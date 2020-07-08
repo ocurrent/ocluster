@@ -1,6 +1,5 @@
 open Lwt.Infix
 module Restorer = Capnp_rpc_net.Restorer
-module Api = Build_scheduler_api
 
 let ( / ) = Filename.concat
 
@@ -33,15 +32,15 @@ module Web = struct
   module Server = Cohttp_lwt_unix.Server
 
   let get_metrics ~sched ~pool ~worker ~source =
-    match Build_scheduler.pool sched pool with
+    match Cluster_scheduler.pool sched pool with
     | None ->
       Server.respond_error ~status:`Bad_request ~body:"No such pool" ()
     | Some pool_api ->
-      match Build_scheduler.Pool_api.worker pool_api worker with
+      match Cluster_scheduler.Pool_api.worker pool_api worker with
       | None -> Server.respond_error ~status:`Bad_request ~body:"Worker not connected" ()
       | Some worker_api ->
         Capnp_rpc_lwt.Capability.with_ref worker_api @@ fun worker_api ->
-        Api.Worker.metrics worker_api ~source >>= function
+        Cluster_api.Worker.metrics worker_api ~source >>= function
         | Error (`Capnp e) ->
           Logs.warn (fun f -> f "Error getting metrics for %S/%S: %a" pool worker Capnp_rpc.Error.pp e);
           Server.respond_error ~status:`Internal_server_error ~body:"Worker metrics collection failed" ()
@@ -82,11 +81,11 @@ let main capnp secrets_dir pools prometheus_config state_dir =
     let services = Restorer.Table.create make_sturdy in
     let submission_id = Capnp_rpc_unix.Vat_config.derived_id capnp "submission" in
     let admin_id = Capnp_rpc_unix.Vat_config.derived_id capnp "admin" in
-    let sched = Build_scheduler.create ~db pools in
-    Restorer.Table.add services submission_id (Build_scheduler.submission_service sched);
-    Restorer.Table.add services admin_id (Build_scheduler.admin_service sched);
+    let sched = Cluster_scheduler.create ~db pools in
+    Restorer.Table.add services submission_id (Cluster_scheduler.submission_service sched);
+    Restorer.Table.add services admin_id (Cluster_scheduler.admin_service sched);
     let exports =
-      Build_scheduler.registration_services sched |> List.map (fun (id, service) ->
+      Cluster_scheduler.registration_services sched |> List.map (fun (id, service) ->
           let name = "pool-" ^ id in
           let id = Capnp_rpc_unix.Vat_config.derived_id capnp name in
           Restorer.Table.add services id service;

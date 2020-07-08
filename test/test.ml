@@ -1,8 +1,6 @@
 open Capnp_rpc_lwt
 open Lwt.Infix
 
-module Api = Build_scheduler_api
-
 (* Setting this to true shows log output, which is useful if the tests hang.
    However, it also hides the Alcotest diff if it fails. *)
 let verbose = false
@@ -30,7 +28,7 @@ let () =
 let read_log job =
   let buffer = Buffer.create 1024 in
   let rec aux start =
-    Api.Job.log job start >>= function
+    Cluster_api.Job.log job start >>= function
     | Error (`Capnp e) -> Fmt.failwith "Error tailing logs: %a" Capnp_rpc.Error.pp e
     | Ok ("", _) -> Lwt.return (Buffer.contents buffer)
     | Ok (data, next) ->
@@ -40,10 +38,10 @@ let read_log job =
   aux 0L
 
 let submit service dockerfile =
-  let action = Api.Submission.docker_build dockerfile in
-  Capability.with_ref (Api.Submission.submit service ~pool:"pool" ~action ~cache_hint:"1" ?src:None) @@ fun job ->
+  let action = Cluster_api.Submission.docker_build dockerfile in
+  Capability.with_ref (Cluster_api.Submission.submit service ~pool:"pool" ~action ~cache_hint:"1" ?src:None) @@ fun job ->
   read_log job >>= fun log ->
-  Api.Job.result job >|= function
+  Cluster_api.Job.result job >|= function
   | Ok "" -> log
   | Ok x -> Fmt.failwith "Unexpected job output: %S" x
   | Error (`Capnp _) -> Fmt.strf "%sFAILED@." log
@@ -52,12 +50,12 @@ let with_sched fn =
   let db = Sqlite3.db_open ":memory:" in
   Lwt.finalize
     (fun () ->
-       let sched = Build_scheduler.create ~db ["pool"] in
-       let pools = Build_scheduler.registration_services sched in
+       let sched = Cluster_scheduler.create ~db ["pool"] in
+       let pools = Cluster_scheduler.registration_services sched in
        match pools with
        | ["pool", registration_service] ->
          Capability.with_ref registration_service @@ fun registry ->
-         Capability.with_ref (Build_scheduler.submission_service sched) @@ fun submission_service ->
+         Capability.with_ref (Cluster_scheduler.submission_service sched) @@ fun submission_service ->
          fn ~submission_service ~registry
        | _ -> failwith "Missing pool!"
     )
@@ -125,12 +123,12 @@ let builder_capacity () =
 
 let admin () =
   let db = Sqlite3.db_open ":memory:" in
-  let sched = Build_scheduler.create ~db ["pool"] in
-  Capability.with_ref (Build_scheduler.admin_service sched) @@ fun admin ->
-  Api.Admin.pools admin >>= fun pools ->
+  let sched = Cluster_scheduler.create ~db ["pool"] in
+  Capability.with_ref (Cluster_scheduler.admin_service sched) @@ fun admin ->
+  Cluster_api.Admin.pools admin >>= fun pools ->
   Alcotest.(check (list string)) "Check pools" ["pool"] pools;
-  Capability.with_ref (Api.Admin.pool admin "pool") @@ fun pool ->
-  Api.Pool_admin.dump pool >>= fun state ->
+  Capability.with_ref (Cluster_api.Admin.pool admin "pool") @@ fun pool ->
+  Cluster_api.Pool_admin.dump pool >>= fun state ->
   Logs.info (fun f -> f "Pool state:\n%s" state);
   Lwt.return_unit
 
@@ -205,15 +203,15 @@ let cancel () =
   let builder = Mock_builder.create () in
   Lwt_switch.with_switch @@ fun switch ->
   Mock_builder.run ~switch builder (Mock_network.sturdy registry);
-  let action = Api.Submission.docker_build "example" in
-  Capability.with_ref (Api.Submission.submit submission_service ~pool:"pool" ~action ~cache_hint:"1" ?src:None) @@ fun job ->
+  let action = Cluster_api.Submission.docker_build "example" in
+  Capability.with_ref (Cluster_api.Submission.submit submission_service ~pool:"pool" ~action ~cache_hint:"1" ?src:None) @@ fun job ->
   let log = read_log job in
   Mock_builder.await builder "example" >>= fun _ ->
-  Api.Job.cancel job >>= fun cancel_result ->
+  Cluster_api.Job.cancel job >>= fun cancel_result ->
   Alcotest.(check (result unit reject)) "Cancel succeeds" (Ok ()) cancel_result;
   log >>= fun log ->
   Alcotest.(check string) "Check log" "Building on worker-1\nBuilding example\nJob cancelled\n" log;
-  Api.Job.result job >>= fun result ->
+  Cluster_api.Job.result job >>= fun result ->
   let result = Result.map_error (fun (`Capnp e) -> Fmt.to_to_string Capnp_rpc.Error.pp e) result in
   Alcotest.(check (result reject string)) "Check job failed" (Error "Failed: Build cancelled") result;
   Lwt.return_unit
