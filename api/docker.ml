@@ -38,12 +38,14 @@ module Spec = struct
 
   type t = {
     dockerfile : string;
+    build_args : string list;
     push_to : push option;
   }
 
-  let init b { dockerfile; push_to } =
+  let init b { dockerfile; build_args; push_to } =
     let module DB = Raw.Builder.DockerBuild in
     DB.dockerfile_set b dockerfile;
+    DB.build_args_set_list b build_args |> ignore;
     push_to |> Option.iter (fun { target; user; password } ->
         DB.push_target_set b (Image_id.to_string target);
         DB.push_user_set b user;
@@ -56,6 +58,7 @@ module Spec = struct
     let target = R.push_target_get r in
     let user = R.push_user_get r in
     let password = R.push_password_get r in
+    let build_args = R.build_args_get_list r in
     let push_to =
       match target, user, password with
       | "", "", "" -> None
@@ -67,5 +70,5 @@ module Spec = struct
         | Ok target -> Some { target; user; password }
         | Error (`Msg m) -> failwith m
     in
-    { dockerfile; push_to }
+    { dockerfile; build_args; push_to }
 end

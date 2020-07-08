@@ -15,7 +15,7 @@
   lwt
   (capnp-rpc-lwt (>= 0.7.0))
   fmt
-  (ocaml (>= 4.08.0))
+  (ocaml (>= 4.10.0))
 ))
 
 (package
@@ -33,7 +33,7 @@
   prometheus-app
   cohttp-lwt-unix
   sqlite3
-  (ocaml (>= 4.08.0))
+  (ocaml (>= 4.10.0))
   (alcotest (and (>= 1.0.0) :with-test))
   (alcotest-lwt (and (>= 1.0.1) :with-test))
 ))
