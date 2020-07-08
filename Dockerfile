@@ -5,10 +5,10 @@ COPY --chown=opam *.opam /src/
 WORKDIR /src
 RUN opam install -y --deps-only .
 ADD --chown=opam . .
-RUN opam config exec -- dune build ./_build/install/default/bin/build-scheduler
+RUN opam config exec -- dune build ./_build/install/default/bin/ocluster-scheduler
 
 FROM debian:10
 RUN apt-get update && apt-get install libev4 libsqlite3-0 -y --no-install-recommends
-WORKDIR /var/lib/build-scheduler
-ENTRYPOINT ["/usr/local/bin/build-scheduler"]
-COPY --from=build /src/_build/install/default/bin/build-scheduler /usr/local/bin/
+WORKDIR /var/lib/ocluster-scheduler
+ENTRYPOINT ["/usr/local/bin/ocluster-scheduler"]
+COPY --from=build /src/_build/install/default/bin/ocluster-scheduler /usr/local/bin/
