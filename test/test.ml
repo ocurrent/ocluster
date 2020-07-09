@@ -38,7 +38,7 @@ let read_log job =
   aux 0L
 
 let submit service dockerfile =
-  let action = Cluster_api.Submission.docker_build dockerfile in
+  let action = Cluster_api.Submission.docker_build (`Contents dockerfile) in
   Capability.with_ref (Cluster_api.Submission.submit service ~pool:"pool" ~action ~cache_hint:"1" ?src:None) @@ fun job ->
   read_log job >>= fun log ->
   Cluster_api.Job.result job >|= function
@@ -203,7 +203,7 @@ let cancel () =
   let builder = Mock_builder.create () in
   Lwt_switch.with_switch @@ fun switch ->
   Mock_builder.run ~switch builder (Mock_network.sturdy registry);
-  let action = Cluster_api.Submission.docker_build "example" in
+  let action = Cluster_api.Submission.docker_build (`Contents "example") in
   Capability.with_ref (Cluster_api.Submission.submit submission_service ~pool:"pool" ~action ~cache_hint:"1" ?src:None) @@ fun job ->
   let log = read_log job in
   Mock_builder.await builder "example" >>= fun _ ->

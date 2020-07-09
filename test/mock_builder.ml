@@ -30,18 +30,20 @@ let rec await t id =
     Lwt_condition.wait t.cond >>= fun () ->
     await t id
 
-let docker_build t ~switch ~log ~src:_ ~build_args:_ dockerfile =
-  Logs.info (fun f -> f "Mock build got %S" dockerfile);
-  Cluster_worker.Log_data.write log (Fmt.strf "Building %s@." dockerfile);
-  let reply = get t dockerfile in
-  Lwt_switch.add_hook_or_exec (Some switch) (fun () ->
-      if Lwt.state reply = Lwt.Sleep then
-        set t dockerfile @@ Error `Cancelled;
-      Lwt.return_unit
-    ) >>= fun () ->
-  reply >|= fun reply ->
-  Hashtbl.remove t.replies dockerfile;
-  reply
+let docker_build t ~switch ~log ~src:_ ~build_args:_ = function
+  | `Path _ -> assert false
+  | `Contents dockerfile ->
+    Logs.info (fun f -> f "Mock build got %S" dockerfile);
+    Cluster_worker.Log_data.write log (Fmt.strf "Building %s@." dockerfile);
+    let reply = get t dockerfile in
+    Lwt_switch.add_hook_or_exec (Some switch) (fun () ->
+        if Lwt.state reply = Lwt.Sleep then
+          set t dockerfile @@ Error `Cancelled;
+        Lwt.return_unit
+      ) >>= fun () ->
+    reply >|= fun reply ->
+    Hashtbl.remove t.replies dockerfile;
+    reply
 
 let run ?(capacity=1) ?(name="worker-1") ~switch t registration_service =
   let thread = Cluster_worker.run ~switch ~capacity ~name ~docker_build:(docker_build t) registration_service in

@@ -37,14 +37,20 @@ module Spec = struct
   }
 
   type t = {
-    dockerfile : string;
+    dockerfile : [`Contents of string | `Path of string];
     build_args : string list;
     push_to : push option;
   }
 
   let init b { dockerfile; build_args; push_to } =
     let module DB = Raw.Builder.DockerBuild in
-    DB.dockerfile_set b dockerfile;
+    let module Dockerfile = Raw.Builder.DockerBuild.Dockerfile in
+    begin
+      let dockerfile_b = DB.dockerfile_get b in
+      match dockerfile with
+      | `Contents contents -> Dockerfile.contents_set dockerfile_b contents
+      | `Path path -> Dockerfile.path_set dockerfile_b path
+    end;
     DB.build_args_set_list b build_args |> ignore;
     push_to |> Option.iter (fun { target; user; password } ->
         DB.push_target_set b (Image_id.to_string target);
@@ -54,7 +60,13 @@ module Spec = struct
 
   let read r =
     let module R = Raw.Reader.DockerBuild in
-    let dockerfile = R.dockerfile_get r in
+    let dockerfile =
+      let module Dockerfile = Raw.Reader.DockerBuild.Dockerfile in
+      match Dockerfile.get (R.dockerfile_get r) with
+      | Contents c -> `Contents c
+      | Path p -> `Path p
+      | Undefined _ -> Fmt.failwith "Unknown Dockerfile file"
+    in
     let target = R.push_target_get r in
     let user = R.push_user_get r in
     let password = R.push_password_get r in

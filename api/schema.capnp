@@ -1,8 +1,13 @@
 @0x8378b104cef5b2eb;
 
 struct DockerBuild {
-  dockerfile   @0 :Text;
-  # The contents of the Dockerfile to build.
+  dockerfile   :union {
+    contents   @0 :Text;
+    # The contents of the Dockerfile to build.
+
+    path       @5 :Text;
+    # The path of the Dockerfile within the context.
+  }
 
   pushTarget   @1 :Text;
   # If set, the builder will "docker push" to this target on success.
