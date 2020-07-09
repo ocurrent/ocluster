@@ -71,7 +71,7 @@ module Repo = struct
         Process.exec ~switch ~log ["git"; "-C"; local_repo; "remote"; "add"; "origin"; "--mirror=fetch"; "--"; Uri.to_string t.url]
       )
     end >>!= fun () ->
-    Process.exec ~switch ~log ["git"; "-C"; local_repo; "fetch"; "--update-head-ok"; "origin"]
+    Process.exec ~switch ~log ["git"; "-C"; local_repo; "fetch"; "-q"; "--update-head-ok"; "origin"]
 end
 
 let repos = Hashtbl.create 1000

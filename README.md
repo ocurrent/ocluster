@@ -86,11 +86,16 @@ You can run a job like this:
 echo -e "FROM busybox\nRUN date\n" > Dockerfile.test
 dune exec -- ocluster-client \
   submit ./capnp-secrets/submission.cap \
+  --cache-hint tutorial \
   --pool=linux-x86_64 \
-  Dockerfile.test
+  --local-dockerfile Dockerfile.test
 ```
 
 The client will display the log output from the job as it arrives.
+
+The scheduler will remember the cache-hint. If you submit the job again with
+the same hint, it will try to schedule it on the same worker, which will be
+faster.
 
 Unlike `docker build`, it does not transfer the current directory as the build context.
 Instead, you can give a Git repository and a commit. The worker will clone the repository
@@ -99,10 +104,15 @@ and checkout the commit, using that as the Docker build context. e.g.
 ```
 dune exec -- ocluster-client \
   submit ./capnp-secrets/submission.cap \
+  --cache-hint tutorial \
   --pool=linux-x86_64 \
-  Dockerfile \
-  https://github.com/ocurrent/ocluster-scheduler.git cf4b43be2739b0d41924890a63e7a1fa5a2f1e3c
+  --local-dockerfile Dockerfile \
+  https://github.com/ocurrent/ocluster.git ac619d2083bb15e0c408e4cd0e3ef7135670cfd5
 ```
+
+Instead of using `--local-dockerfile`, you could also use `--context-dockerfile=Dockerfile` to
+tell the builder to read the Dockerfile from the source commit (this is the default if you don't
+specify `--local-dockerfile`).
 
 If you list multiple commit hashes then the builder will merge them together.
 This is useful for e.g. testing a pull request merged with the master branch's head.

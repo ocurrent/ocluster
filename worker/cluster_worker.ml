@@ -16,6 +16,7 @@ module Metrics = struct
 end
 
 let ( >>!= ) = Lwt_result.bind
+let ( / ) = Filename.concat
 
 let docker_push_lock = Lwt_mutex.create ()
 
@@ -36,7 +37,7 @@ type t = {
     log:Log_data.t ->
     src:string ->
     build_args:string list ->
-    string ->
+    [ `Contents of string | `Path of string ] ->
     (string, Process.error) Lwt_result.t;
   registration_service : Cluster_api.Raw.Client.Registration.t Sturdy_ref.t;
   capacity : int;
@@ -87,7 +88,11 @@ let build ~switch ~log t descr =
   let module R = Cluster_api.Raw.Reader.JobDescr in
   let cache_hint = R.cache_hint_get descr in
   let Docker_build { dockerfile; build_args; push_to } = Cluster_api.Submission.get_action descr in
-  Log.info (fun f -> f "Got request to build (%s):\n%s" cache_hint (String.trim dockerfile));
+  Log.info (fun f ->
+      match dockerfile with
+      | `Contents contents -> f "Got request to build (%s):\n%s" cache_hint (String.trim contents)
+      | `Path path -> f "Got request to build %S (%s)" path cache_hint
+    );
   begin
     Context.with_build_context ~switch ~log descr @@ fun src ->
     t.build ~switch ~log ~src ~build_args dockerfile >>!= fun hash ->
@@ -167,16 +172,51 @@ let loop ~switch t queue =
   in
   loop ()
 
+let error_msg fmt =
+  fmt |> Fmt.kstrf @@ fun x -> Error (`Msg x)
+
+(* Check [path] points below [src]. Don't follow symlinks. *)
+let check_contains ~path src =
+  match Fpath.of_string path with
+  | Error (`Msg m) -> Error (`Msg m)
+  | Ok path ->
+    let path = Fpath.normalize path in
+    if Fpath.is_abs path then error_msg "%a is an absolute path!" Fpath.pp path
+    else (
+      let rec aux ~src = function
+        | [] -> error_msg "Empty path!"
+        | x :: _ when Fpath.is_rel_seg x -> error_msg "Relative segment in %a" Fpath.pp path
+        | "" :: _ -> error_msg "Empty segment in %a!" Fpath.pp path
+        | x :: xs ->
+          let src = src / x in
+          match Unix.lstat src with
+          | Unix.{ st_kind = S_DIR; _ } -> aux ~src xs
+          | Unix.{ st_kind = S_REG; _ } when xs = [] -> Ok src
+          | _ -> error_msg "%S is not a directory (in %a)" x Fpath.pp path
+          | exception Unix.Unix_error(Unix.ENOENT, _, _) -> error_msg "%S does not exist (in %a)" x Fpath.pp path
+      in
+      aux ~src (Fpath.segs path)
+    )
+
 let docker_build ~switch ~log ~src ~build_args dockerfile =
   let iid_file = Filename.temp_file "build-worker-" ".iid" in
   Lwt.finalize
     (fun () ->
+       begin
+         match dockerfile with
+         | `Contents contents -> Lwt_result.return ("-", Some contents)
+         | `Path "-" -> Lwt_result.fail (`Msg "Path cannot be '-'!")
+         | `Path path ->
+           match check_contains ~path src with
+           | Ok path -> Lwt_result.return (path, None)
+           | Error e -> Lwt_result.fail e
+       end >>!= fun (dockerpath, stdin) ->
        let args =
          List.concat_map (fun x -> ["--build-arg"; x]) build_args
-         @ ["--pull"; "--iidfile"; iid_file; "-f"; "-"; src]
+         @ ["--pull"; "--iidfile"; iid_file; "-f"; dockerpath; src]
        in
        Logs.info (fun f -> f "docker build @[%a@]" Fmt.(list ~sep:sp (quote string)) args);
-       Process.exec ~switch ~log ~stdin:dockerfile ("docker" :: "build" :: args) >>!= fun () ->
+       Process.exec ~switch ~log ?stdin ("docker" :: "build" :: args) >>!= fun () ->
        Lwt_result.return (String.trim (read_file iid_file))
     )
     (fun () ->

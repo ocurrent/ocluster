@@ -43,7 +43,12 @@ let submit submission_path pool dockerfile repository commits cache_hint urgent 
     | Some repo, commits -> Some (repo, commits)
   in
   run submission_path @@ fun submission_service ->
-  Lwt_io.(with_file ~mode:input) dockerfile (Lwt_io.read ?count:None) >>= fun dockerfile ->
+  begin match dockerfile with
+    | `Context_path path -> Lwt.return (`Path path)
+    | `Local_path path ->
+      Lwt_io.(with_file ~mode:input) path (Lwt_io.read ?count:None) >|= fun data ->
+      `Contents data
+  end >>= fun dockerfile ->
   let action = Cluster_api.Submission.docker_build ?push_to ~build_args dockerfile in
   let job = Cluster_api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ?src in
   let result = Cluster_api.Job.result job in
@@ -79,17 +84,35 @@ let connect_addr =
     ~docv:"ADDR"
     []
 
-let dockerfile =
-  Arg.required @@
-  Arg.pos 1 Arg.(some file) None @@
+let local_dockerfile =
+  Arg.value @@
+  Arg.opt Arg.(some file) None @@
   Arg.info
-    ~doc:"Path of the Dockerfile to build"
+    ~doc:"Path of the local Dockerfile to submit"
     ~docv:"PATH"
-    []
+    ["local-dockerfile"]
+
+let context_dockerfile =
+  Arg.value @@
+  Arg.opt Arg.(some string) None @@
+  Arg.info
+    ~doc:"Path of the Dockerfile within the commit"
+    ~docv:"PATH"
+    ["context-dockerfile"]
+
+let dockerfile =
+  let make local_dockerfile context_dockerfile =
+    match local_dockerfile, context_dockerfile with
+    | None, None -> `Ok (`Context_path "Dockerfile")
+    | Some local, None -> `Ok (`Local_path local)
+    | None, Some context -> `Ok (`Context_path context)
+    | Some _, Some _ -> `Error (false, "Can't use --local-dockerfile and --context-dockerfile together!")
+  in
+  Term.(ret (pure make $ local_dockerfile $ context_dockerfile))
 
 let repo =
   Arg.value @@
-  Arg.pos 2 Arg.(some string) None @@
+  Arg.pos 1 Arg.(some string) None @@
   Arg.info
     ~doc:"URL of the source Git repository"
     ~docv:"URL"
@@ -97,7 +120,7 @@ let repo =
 
 let commits =
   Arg.value @@
-  Arg.(pos_right 2 string) [] @@
+  Arg.(pos_right 1 string) [] @@
   Arg.info
     ~doc:"Git commit to use as context (full commit hash)"
     ~docv:"HASH"

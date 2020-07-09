@@ -10,4 +10,4 @@ val exec :
   ?stdin:string ->
   ?stderr:Lwt_process.redirection ->
   string list ->
-  (unit, error) Lwt_result.t
+  (unit, [> error]) Lwt_result.t
