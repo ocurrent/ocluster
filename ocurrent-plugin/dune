@@ -1,0 +1,13 @@
+(library
+ (public_name current_ocluster)
+ (libraries
+   ocluster-api
+   current
+   current.cache
+   current_git
+   duration
+   fmt
+   logs
+   lwt
+   ppx_deriving_yojson.runtime)
+ (preprocess (pps ppx_deriving.std ppx_deriving_yojson)))

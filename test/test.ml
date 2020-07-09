@@ -240,4 +240,5 @@ let () =
       test_case "admin" admin;
     ];
     "scheduling", Test_scheduling.suite;
+    "plugin", Test_plugin.suite;
   ]

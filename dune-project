@@ -34,6 +34,23 @@
   cohttp-lwt-unix
   sqlite3
   (ocaml (>= 4.10.0))
+  (current_ocluster (and (= :version) :with-test))
   (alcotest (and (>= 1.0.0) :with-test))
   (alcotest-lwt (and (>= 1.0.1) :with-test))
+))
+
+(package
+ (name current_ocluster)
+ (synopsis "OCurrent plugin for OCluster builds")
+ (depends
+  (ocluster-api (= :version))
+  lwt
+  (current (>= 0.3))
+  (current_git (>= 0.3))
+  (capnp-rpc-unix (>= 0.7.0))
+  duration
+  logs
+  fmt
+  ppx_deriving_yojson
+  (ocaml (>= 4.10.0))
 ))

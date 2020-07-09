@@ -80,6 +80,8 @@ To submit a job, you need:
 - the name of the pool to use, and
 - a `Dockerfile` describing what to build.
 
+There is a command-line client (for testing), and a plugin for use in [OCurrent](https://github.com/ocurrent/ocurrent) pipelines.
+
 You can run a job like this:
 
 ```

@@ -80,3 +80,22 @@ let remote ~switch (x : 'a Capability.t) : 'a Sturdy_ref.t =
 
     method to_uri_with_secrets = Uri.of_string "mock sturdy-ref"
   end
+
+(* [remote_breakable x] is a [(sr, break)] pair, where [sr] is a sturdy-ref that connects to [x] over a fake network.
+   And [break] is a function that breaks the network. Connecting after breaking the network will succeed. *)
+let remote_breakable x =
+  let switch = ref (Lwt_switch.create ()) in
+  let sr =
+    Capnp_rpc_lwt.Cast.sturdy_of_raw @@ object
+      method connect =
+        Sturdy_ref.connect_exn (remote ~switch:!switch x) >>= fun cap ->
+        Lwt_result.return (Capnp_rpc_lwt.Cast.cap_to_raw cap)
+
+      method to_uri_with_secrets = Uri.of_string "breakable sturdy-ref"
+    end
+  in
+  let break () =
+    Lwt_switch.turn_off !switch >|= fun () ->
+    switch := Lwt_switch.create ()
+  in
+  sr, break
