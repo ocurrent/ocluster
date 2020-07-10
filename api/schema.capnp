@@ -76,8 +76,14 @@ interface Worker {
     host  @1;   # Get the metrics from the prometheus-node-exporter service
   }
 
-  metrics @0 (source :MetricsSource) -> (contentType :Text, data :Text);
+  metrics    @0 (source :MetricsSource) -> (contentType :Text, data :Text);
   # Get Prometheus metrics.
+
+  selfUpdate @1 () -> (updating : Bool);
+  # Check for updates and restart if necessary.
+  # Returns false if there are no updates, or true if updates were found and
+  # the service is preparing to restart. This may take a while, as it will
+  # finish existing jobs first.
 }
 
 interface Registration {
@@ -96,6 +102,7 @@ struct WorkerInfo {
 interface PoolAdmin {
   dump      @0 () -> (state :Text);
   workers   @1 () -> (workers : List(WorkerInfo));
+  worker    @3 (worker :Text) -> (worker :Worker);
   setActive @2 (worker :Text, active :Bool) -> ();
 }
 

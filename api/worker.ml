@@ -3,7 +3,7 @@ open Capnp_rpc_lwt
 
 let ( >>!= ) = Lwt_result.bind
 
-let local ~metrics =
+let local ~metrics ~self_update =
   let module X = Raw.Service.Worker in
   X.local @@ object
     inherit X.service
@@ -27,6 +27,17 @@ let local ~metrics =
       | Agent -> collect `Agent
       | Host -> collect `Host
       | Undefined _ -> Service.fail "Unknown metrics source"
+
+    method self_update_impl _params release_param_caps =
+      let open X.SelfUpdate in
+      release_param_caps ();
+      Service.return_lwt @@ fun () ->
+      self_update () >|= function
+      | Error (`Msg m) -> Error (`Capnp (Capnp_rpc.Error.exn "%s" m))
+      | Ok x ->
+        let response, results = Service.Response.create Results.init_pointer in
+        Results.updating_set results x;
+        Ok response
   end
 
 module X = Raw.Client.Worker
@@ -44,3 +55,8 @@ let metrics t ~source =
   Params.source_set params source;
   Capability.call_for_value t method_id request >>!= fun results ->
   Lwt_result.return (Results.content_type_get results, Results.data_get results)
+
+let self_update t =
+  let open X.SelfUpdate in
+  let request = Capability.Request.create_no_args () in
+  Capability.call_for_value_exn t method_id request >|= Results.updating_get

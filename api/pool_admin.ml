@@ -6,7 +6,7 @@ type worker_info = {
   active : bool;
 }
 
-let local ~dump ~workers ~set_active =
+let local ~dump ~workers ~worker ~set_active =
   let module X = Raw.Service.PoolAdmin in
   X.local @@ object
     inherit X.service
@@ -40,6 +40,18 @@ let local ~dump ~workers ~set_active =
       match set_active worker active with
       | Ok () -> Service.return_empty ()
       | Error `Unknown_worker -> Service.fail "Unknown worker"
+
+    method worker_impl params release_param_caps =
+      let open X.Worker in
+      let name = Params.worker_get params in
+      release_param_caps ();
+      match worker name with
+      | None -> Service.fail "Unknown worker"
+      | Some cap ->
+        let response, results = Service.Response.create Results.init_pointer in
+        Results.worker_set results (Some cap);
+        Capability.dec_ref cap;
+        Service.return response
   end
 
 module X = Raw.Client.PoolAdmin
@@ -60,6 +72,12 @@ let workers t =
   let name = R.name_get worker in
   let active = R.active_get worker in
   { name; active }
+
+let worker t worker =
+  let open X.Worker in
+  let request, params = Capability.Request.create Params.init_pointer in
+  Params.worker_set params worker;
+  Capability.call_for_caps t method_id request Results.worker_get_pipelined
 
 let set_active t worker active =
   let open X.SetActive in

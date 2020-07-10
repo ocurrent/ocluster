@@ -19,4 +19,5 @@ let reporter =
 let init () =
   Fmt_tty.setup_std_outputs ();
   Logs.(set_level (Some Info));
+  (* Logs.Src.set_level Capnp_rpc.Debug.src (Some Debug); *)
   Logs.set_reporter reporter

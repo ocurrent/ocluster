@@ -75,6 +75,13 @@ module Pool_api = struct
     let register = register t in
     Cluster_api.Registration.local ~register
 
+  let worker t name =
+    match Hashtbl.find_opt t.workers name with
+    | None -> None
+    | Some w ->
+      Capability.inc_ref w;
+      Some w
+
   let admin_service t =
     let dump () = Fmt.to_to_string Pool.dump t.pool in
     let workers () =
@@ -90,14 +97,7 @@ module Pool_api = struct
       | Some worker -> Pool.set_active worker active; Ok ()
       | None -> Error `Unknown_worker
     in
-    Cluster_api.Pool_admin.local ~dump ~workers ~set_active
-
-  let worker t name =
-    match Hashtbl.find_opt t.workers name with
-    | None -> None
-    | Some w ->
-      Capability.inc_ref w;
-      Some w
+    Cluster_api.Pool_admin.local ~dump ~workers ~worker:(worker t) ~set_active
 end
 
 type t = {

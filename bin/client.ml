@@ -95,6 +95,30 @@ let set_active active cap_path pool worker =
         Fmt.(list ~sep:cut pp_worker_info) workers;
       exit 1
 
+let update cap_path pool worker =
+  run cap_path @@ fun admin_service ->
+  Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
+  match worker with
+  | Some worker ->
+    begin
+      Capability.with_ref (Cluster_api.Pool_admin.worker pool worker) @@ fun worker ->
+      Cluster_api.Worker.self_update worker >|= function
+      | false -> Fmt.pr "No updates found.@."
+      | true -> Fmt.pr "Updates found. Service will restart once jobs have finished.@."
+    end
+  | None ->
+    Cluster_api.Pool_admin.workers pool >|= function
+    | [] ->
+      Fmt.epr "No workers connected to pool!@.";
+      exit 1
+    | workers ->
+      let pp_worker_info f { Cluster_api.Pool_admin.name; active = _ } =
+        Fmt.pf f "%s" name
+      in
+      Fmt.epr "@[<v>Specify which worker you want to update. Candidates are:@,%a@."
+        Fmt.(list ~sep:cut pp_worker_info) workers;
+      exit 1
+
 (* Command-line parsing *)
 
 open Cmdliner
@@ -252,7 +276,12 @@ let unpause =
   Term.(const (set_active true) $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "unpause" ~doc
 
-let cmds = [submit; show; pause; unpause]
+let update =
+  let doc = "Ask a worker to check for updates to itself" in
+  Term.(const update $ connect_addr $ Arg.required pool_pos $ worker),
+  Term.info "update" ~doc
+
+let cmds = [submit; show; pause; unpause; update]
 
 let default_cmd =
   let doc = "a command-lint client for the build-scheduler" in
