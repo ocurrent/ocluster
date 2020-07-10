@@ -58,11 +58,15 @@ contains a secret token granting it access.
 To run the build service locally:
 
 ```
-dune exec -- ocluster-worker ./capnp-secrets/pool-linux-x86_64.cap --name=my-host --capacity=1
+dune exec -- ocluster-worker ./capnp-secrets/pool-linux-x86_64.cap \
+  --name=my-host --capacity=1 --prune-threshold=20
 ```
 
 Each builder must be given a unique name.
 `capacity` controls how many jobs this worker will build at once.
+`prune-threshold` says how much free space must be available in the
+`/var/lib/docker` partition before the worker will run `docker system prune -af`.
+If not given, then the worker will not monitor free space.
 
 The builder connects to the scheduler and waits for jobs.
 You should see `worker [INFO] Requesting a new job...` in the worker log,
