@@ -212,7 +212,7 @@ let label dockerfile pool =
 module Raw = struct
   let with_hint ~cache_hint t =
     match cache_hint with
-    | Some cache_hint -> { t with cache_hint }
+    | Some _ -> { t with cache_hint }
     | None -> t
 
   let build_and_push ?cache_hint t ~push_target ~pool ~src ~options dockerfile =

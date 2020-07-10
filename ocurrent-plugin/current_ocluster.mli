@@ -22,7 +22,7 @@ val with_push_auth : (string * string) option -> t -> t
     sharing the same connection. *)
 
 val build : 
-  ?cache_hint:string option ->
+  ?cache_hint:string ->
   t ->
   pool:string ->
   src:Current_git.Commit_id.t list Current.t ->
@@ -33,7 +33,7 @@ val build :
     Note: all commits in [src] must be in the same repository. *)
 
 val build_and_push :
-  ?cache_hint:string option ->
+  ?cache_hint:string ->
   t ->
   push_target:Cluster_api.Docker.Image_id.t ->
   pool:string ->
@@ -47,7 +47,7 @@ val build_and_push :
 
 module Raw : sig
   val build : 
-    ?cache_hint:string option ->
+    ?cache_hint:string ->
     t ->
     pool:string ->
     src:Current_git.Commit_id.t list ->
@@ -56,7 +56,7 @@ module Raw : sig
     unit Current.Primitive.t
 
   val build_and_push :
-    ?cache_hint:string option ->
+    ?cache_hint:string ->
     t ->
     push_target:Cluster_api.Docker.Image_id.t ->
     pool:string ->
