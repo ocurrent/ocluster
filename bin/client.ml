@@ -72,6 +72,29 @@ let show cap_path pool =
     Cluster_api.Pool_admin.dump pool >|= fun status ->
     print_endline (String.trim status)
 
+let set_active active cap_path pool worker =
+  run cap_path @@ fun admin_service ->
+  Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
+  match worker with
+  | Some worker ->
+    Cluster_api.Pool_admin.set_active pool worker active
+  | None ->
+    Cluster_api.Pool_admin.workers pool >|= function
+    | [] ->
+      Fmt.epr "No workers connected to pool!@.";
+      exit 1
+    | workers ->
+      let pp_active f = function
+        | true -> Fmt.string f "active"
+        | false -> Fmt.string f "paused"
+      in
+      let pp_worker_info f { Cluster_api.Pool_admin.name; active } =
+        Fmt.pf f "%s (%a)" name pp_active active
+      in
+      Fmt.epr "@[<v>Specify which worker you want to affect. Candidates are:@,%a@."
+        Fmt.(list ~sep:cut pp_worker_info) workers;
+      exit 1
+
 (* Command-line parsing *)
 
 open Cmdliner
@@ -200,19 +223,36 @@ let submit =
   Term.info "submit" ~doc
 
 let pool_pos =
-  Arg.value @@
   Arg.pos 1 Arg.(some string) None @@
   Arg.info
     ~doc:"Pool to use"
-    ~docv:"ID"
+    ~docv:"POOL"
+    []
+
+let worker =
+  Arg.value @@
+  Arg.pos 2 Arg.(some string) None @@
+  Arg.info
+    ~doc:"Worker id"
+    ~docv:"WORKER"
     []
 
 let show =
   let doc = "Show information about a service, pool or worker" in
-  Term.(const show $ connect_addr $ pool_pos),
+  Term.(const show $ connect_addr $ Arg.value pool_pos),
   Term.info "show" ~doc
 
-let cmds = [submit; show]
+let pause =
+  let doc = "Set a worker to be unavailable for further jobs" in
+  Term.(const (set_active false) $ connect_addr $ Arg.required pool_pos $ worker),
+  Term.info "pause" ~doc
+
+let unpause =
+  let doc = "Resume a paused worker" in
+  Term.(const (set_active true) $ connect_addr $ Arg.required pool_pos $ worker),
+  Term.info "unpause" ~doc
+
+let cmds = [submit; show; pause; unpause]
 
 let default_cmd =
   let doc = "a command-lint client for the build-scheduler" in

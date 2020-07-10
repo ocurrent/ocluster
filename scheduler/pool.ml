@@ -21,6 +21,10 @@ module Metrics = struct
   let workers_ready =
     let help = "Number of workers ready to accept a new job" in
     Gauge.v_label ~label_name:"pool" ~help ~namespace ~subsystem "workers_ready"
+
+  let workers_paused =
+    let help = "Number of workers set to inactive" in
+    Gauge.v_label ~label_name:"pool" ~help ~namespace ~subsystem "workers_paused"
 end
 
 module Dao = struct
@@ -69,7 +73,7 @@ module Dao = struct
 end
 
 module Make (Item : S.ITEM) = struct
-  type worker_id = string
+  module Worker_map = Astring.String.Map
 
   module Backlog = struct
     type t = {
@@ -116,18 +120,19 @@ module Make (Item : S.ITEM) = struct
   end
 
   type t = {
-    pool : string;                        (* For metrics reporting and DB *)
+    pool : string;                          (* For metrics reporting and DB *)
     db : Dao.t;
     mutable main : [
-      | `Backlog of Backlog.t             (* No workers are ready *)
-      | `Ready of worker Lwt_dllist.t     (* No work is available. *)
+      | `Backlog of Backlog.t               (* No workers are ready *)
+      | `Ready of worker Lwt_dllist.t       (* No work is available. *)
     ];
-    workers : (worker_id, worker) Hashtbl.t;
-    will_cache : (Item.cache_hint, worker_id list) Hashtbl.t; (* Which workers will soon have cached this? *)
+    mutable workers : worker Worker_map.t;  (* Connected workers *)
   } and worker = {
     parent : t;
     name : string;
-    mutable state : [ `Running of (int * bool * Item.t) Lwt_dllist.t * unit Lwt_condition.t | `Finished ];
+    mutable state : [ `Running of (int * bool * Item.t) Lwt_dllist.t * unit Lwt_condition.t
+                    | `Inactive of unit Lwt.t * unit Lwt.u  (* ready/set_ready for resume *)
+                    | `Finished ];
     mutable workload : int;     (* Total cost of items in worker's queue. *)
   }
 
@@ -157,12 +162,12 @@ module Make (Item : S.ITEM) = struct
     let rec aux ~best = function
       | [] -> best
       | x :: xs ->
-        match Hashtbl.find_opt t.workers x with
+        match Worker_map.find_opt x t.workers with
         | None -> aux ~best xs      (* Worker is not on-line *)
         | Some w when w.workload > max_workload -> aux ~best xs
         | Some w ->
           match w.state with
-          | `Finished -> aux ~best xs       (* Worker is shutting down *)
+          | `Inactive _ | `Finished -> aux ~best xs       (* Worker is unavailable *)
           | `Running (q, c) ->
             match best with
             | Some (best_worker, _, _) when best_worker.workload < w.workload -> aux ~best xs
@@ -182,11 +187,6 @@ module Make (Item : S.ITEM) = struct
         (* If a worker already has this cached, send it there: *)
         Dao.query_cache t.db ~pool:t.pool ~hint:(hint :> string)
         |> best_worker t ~max_workload:cost.non_cached
-        |> function
-        | Some best -> Some best
-        | None ->
-          (* If not, maybe some worker will have it cached soon: *)
-          Option.bind (Hashtbl.find_opt t.will_cache hint) (best_worker t ~max_workload:cost.non_cached)
       in
       match best with
       | None -> false   (* No workers will have this cached. *)
@@ -198,18 +198,7 @@ module Make (Item : S.ITEM) = struct
         true
     )
 
-  let clear_will_cache item worker =
-    let t = worker.parent in
-    let hint = Item.cache_hint item in
-    match Hashtbl.find_opt t.will_cache hint with
-    | None -> ()
-    | Some ids ->
-      match List.filter ((<>) worker.name) ids with
-      | [] -> Hashtbl.remove t.will_cache hint
-      | ids -> Hashtbl.replace t.will_cache hint ids
-
   let mark_cached item worker =
-    clear_will_cache item worker;
     let t = worker.parent in
     let hint = Item.cache_hint item in
     Dao.mark_cached t.db ~pool:t.pool ~hint:(hint :> string) ~worker:worker.name
@@ -219,6 +208,7 @@ module Make (Item : S.ITEM) = struct
     let rec aux () =
       match worker.state with
       | `Finished -> Lwt_result.fail `Finished
+      | `Inactive (ready, _) -> ready >>= aux
       | `Running (queue, cond) ->
         (* Check our local queue, in case something has already been assigned to us. *)
         match dequeue_opt queue (Metrics.assigned_items worker.name) with
@@ -263,21 +253,22 @@ module Make (Item : S.ITEM) = struct
       Log.info (fun f -> f "Pushing %a back on to the main queue" Item.pp item);
       Prometheus.Gauge.dec_one (Metrics.assigned_items worker.name);
       Backlog.push_back ~urgent ~pool:worker.parent.pool item q;
-      clear_will_cache item worker;
       push_back worker worker_q q
     | None -> ()
 
   let register t ~name =
-    if Hashtbl.mem t.workers name then Error `Name_taken
+    if Worker_map.mem name t.workers then Error `Name_taken
     else (
+      let ready, set_ready = Lwt.wait () in
       let q = {
         parent = t;
         name;
-        state = `Running (Lwt_dllist.create (), Lwt_condition.create ());
+        state = `Inactive (ready, set_ready);
         workload = 0;
       } in
-      Hashtbl.add t.workers name q;
+      t.workers <- Worker_map.add name q t.workers;
       Prometheus.Gauge.inc_one (Metrics.workers_connected t.pool);
+      Prometheus.Gauge.inc_one (Metrics.workers_paused t.pool);
       Ok q
     )
 
@@ -297,30 +288,28 @@ module Make (Item : S.ITEM) = struct
         (* Don't decrement [Metrics.workers_ready] here. That happens when it wakes up. *)
         let worker = Lwt_dllist.take_r q in
         match worker.state with
-        | `Finished -> submit ~urgent t item    (* Stale queue item. Retry. *)
+        | `Inactive _ | `Finished -> submit ~urgent t item    (* Stale queue item. Retry. *)
         | `Running (worker_q, cond) ->
           (* Assign to first worker in queue. The worker can't have it cached since it's
              idle and we couldn't find any free preferred worker. *)
           Log.info (fun f -> f "Assigning %a to %S (the next free worker)" Item.pp item worker.name);
           let cost = Item.cost_estimate item in
-          let cache_hint = Item.cache_hint item in
-          let prev = Hashtbl.find_opt t.will_cache cache_hint |> Option.value ~default:[] in
-          Hashtbl.replace t.will_cache cache_hint (worker.name :: prev);
           enqueue (cost.non_cached, urgent, item) worker_q (Metrics.assigned_items worker.name);
           worker.workload <- worker.workload + cost.non_cached;
+          mark_cached item worker;
           Lwt_condition.broadcast cond ()
       )
 
-  (* Worker [w] has disconnected. *)
-  let release w =
+  let set_inactive w =
     let t = w.parent in
     let assigned_items = Metrics.assigned_items w.name in
     match w.state with
     | `Finished -> failwith "Queue already closed!"
+    | `Inactive _ -> ()
     | `Running (worker_q, cond) ->
-      w.state <- `Finished;
-      Hashtbl.remove t.workers w.name;
-      Prometheus.Gauge.dec_one (Metrics.workers_connected t.pool);
+      let ready, set_ready = Lwt.wait () in
+      w.state <- `Inactive (ready, set_ready);
+      w.workload <- 0;
       let rec reassign () =
         if Lwt_dllist.is_empty worker_q then ()
         else match t.main with
@@ -334,17 +323,49 @@ module Make (Item : S.ITEM) = struct
             reassign ()
       in
       let len = Lwt_dllist.length worker_q in
-      Log.info (fun f -> f "%S disconnected (reassigning %d items)" w.name len);
+      Log.info (fun f -> f "%S marked inactive (reassigning %d items)" w.name len);
+      Prometheus.Gauge.inc_one (Metrics.workers_paused w.parent.pool);
       reassign ();
       Lwt_condition.broadcast cond ()   (* Wake the worker's pop thread. *)
+
+  let set_active w = function
+    | false -> set_inactive w
+    | true ->
+      match w.state with
+      | `Finished -> failwith "Queue already closed!"
+      | `Running _ -> ()
+      | `Inactive (_, set_ready) ->
+        Log.info (fun f -> f "Activate queue for %S" w.name);
+        Prometheus.Gauge.dec_one (Metrics.workers_paused w.parent.pool);
+        w.state <- `Running (Lwt_dllist.create (), Lwt_condition.create ());
+        Lwt.wakeup set_ready ()
+
+  (* Worker [w] has disconnected. *)
+  let release w =
+    set_inactive w;
+    match w.state with
+    | `Inactive (_, set_ready) ->
+      w.state <- `Finished;
+      let t = w.parent in
+      t.workers <- Worker_map.remove w.name t.workers;
+      Prometheus.Gauge.dec_one (Metrics.workers_connected t.pool);
+      Prometheus.Gauge.dec_one (Metrics.workers_paused t.pool);
+      Lwt.wakeup set_ready ()
+    | _ -> assert false
+
+  let connected_workers t = t.workers
+
+  let is_active worker =
+    match worker.state with
+    | `Running _ -> true
+    | `Inactive _ | `Finished -> false
 
   let create ~name ~db =
     {
       pool = name;
       db;
       main = `Backlog (Backlog.create ());
-      workers = Hashtbl.create 10;
-      will_cache = Hashtbl.create 1000;
+      workers = Worker_map.empty;
     }
 
   let dump_queue ?(sep=Fmt.sp) pp f q =
@@ -365,25 +386,14 @@ module Make (Item : S.ITEM) = struct
 
   let pp_state f = function
     | `Finished -> Fmt.string f "(finished)"
+    | `Inactive _ -> Fmt.string f "(inactive)"
     | `Running (q, _) -> dump_queue pp_cost_item f q
 
-  let dump_workers f tbl =
+  let dump_workers f x =
     let pp_item f (id, w) =
       Fmt.pf f "@,%s (%d): @[%a@]" id w.workload pp_state w.state in
-    Hashtbl.to_seq tbl
-    |> List.of_seq
-    |> List.sort compare
+    Worker_map.bindings x
     |> Fmt.(list ~sep:nop) pp_item f
-
-  let dump_cache f tbl =
-    let pp_item f (id, workers) =
-      Fmt.pf f "%s: %a"
-        (id : Item.cache_hint :> string)
-        Fmt.(Dump.list string) workers in
-    Hashtbl.to_seq tbl
-    |> List.of_seq
-    |> List.sort compare
-    |> Fmt.(list ~sep:comma) pp_item f
 
   let dump_main f = function
     | `Backlog (q : Backlog.t) ->
@@ -393,10 +403,9 @@ module Make (Item : S.ITEM) = struct
     | `Ready q ->
       Fmt.pf f "(ready) %a" (dump_queue pp_worker) q
 
-  let dump f {pool; db; main; workers; will_cache} =
-    Fmt.pf f "@[<v>queue: @[%a@]@,@[<v2>registered:%a@]@,cached: @[%a@]@,will_cache: @[%a@]@]@."
+  let dump f {pool; db; main; workers} =
+    Fmt.pf f "@[<v>queue: @[%a@]@,@[<v2>registered:%a@]@,cached: @[%a@]@]@."
       dump_main main
       dump_workers workers
       Dao.dump (db, pool)
-      dump_cache will_cache
 end

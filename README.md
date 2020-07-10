@@ -134,6 +134,17 @@ dune exec -- ocluster-client \
   show ./capnp-secrets/admin.cap linux-x86_64
 ```
 
+To pause a worker, give the pool and the worker's name, e.g.:
+
+```
+dune exec -- ocluster-client \
+  pause ./capnp-secrets/admin.cap linux-x86_64 my-host
+```
+
+A paused worker will not be assigned any more items until it is unpaused, but
+it will continue with any jobs it is already running. Use `unpause` to resume it.
+
+
 ### Publishing the result
 
 You can ask the builder to push the resulting image somewhere. The client provides three options for this:
