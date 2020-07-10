@@ -19,10 +19,18 @@ struct DockerBuild {
   # Example value: "myorg/staging:job-123"
 
   pushUser     @2 :Text;
-  pushPassword @3: Text;
+  pushPassword @3 :Text;
 
-  buildArgs    @4: List(Text);
+  buildArgs    @4 :List(Text);
   # Options to pass to `docker build` using `--build-arg`.
+
+  squash       @6 :Bool;
+  # Squash the image layers together using `--squash`.
+
+  buildkit     @7 :Bool;
+  # Use BuildKit for the build.
+  # Note: buildkit builds shared caches, so clients using such builds must all
+  # trust each other not to poison the caches.
 }
 
 struct JobDescr {

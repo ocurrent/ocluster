@@ -50,6 +50,7 @@ module Op = struct
     type t = {
       dockerfile : [ `Contents of string | `Path of string ];
       src : commit_id list;
+      options : Cluster_api.Docker.Spec.options;
       pool : string;
       push_target : target option;
     } [@@deriving to_yojson]
@@ -131,7 +132,7 @@ module Op = struct
       in
       Some (repo, List.map hash commits)
 
-  let build t job { Key.dockerfile; src; pool; push_target } =
+  let build t job { Key.dockerfile; src; options; pool; push_target } =
     let push_to =
       match push_target, t.push_auth with
       | Some target, Some (user, password) ->
@@ -140,7 +141,7 @@ module Op = struct
       | _ ->
         None
     in
-    let action = Cluster_api.Submission.docker_build ?push_to dockerfile in
+    let action = Cluster_api.Submission.docker_build ?push_to ~options dockerfile in
     let src = single_repo src in
     let cache_hint =
       match t.cache_hint with
@@ -181,7 +182,7 @@ module Op = struct
       end;
       Lwt_result.return repo_id
 
-  let pp f {Key.dockerfile; src; pool; push_target = _} =
+  let pp f {Key.dockerfile; src; options = _; pool; push_target = _} =
     match dockerfile with
     | `Path path ->
       Fmt.pf f "@[<v2>Build %s using %s in@,%a@]"
@@ -214,17 +215,17 @@ module Raw = struct
     | Some cache_hint -> { t with cache_hint }
     | None -> t
 
-  let build_and_push ?cache_hint t ~push_target ~pool ~src dockerfile =
+  let build_and_push ?cache_hint t ~push_target ~pool ~src ~options dockerfile =
     let t = with_hint ~cache_hint t in
-    Build.get t { Op.Key.dockerfile; src; pool; push_target = Some push_target }
+    Build.get t { Op.Key.dockerfile; src; options; pool; push_target = Some push_target }
     |> Current.Primitive.map_result @@ function
     | Ok "" -> Error (`Msg "No output image (push auth not configured)")
     | Ok x -> Ok x
     | Error _ as e -> e
 
-  let build ?cache_hint t ~pool ~src dockerfile =
+  let build ?cache_hint t ~pool ~src ~options dockerfile =
     let t = with_hint ~cache_hint t in
-    Build.get t { Op.Key.dockerfile; src; pool; push_target = None }
+    Build.get t { Op.Key.dockerfile; src; options; pool; push_target = None }
     |> Current.Primitive.map_result (Result.map (function
         | "" -> ()
         | x -> Fmt.failwith "BUG: got a RepoID (%S) but we didn't ask to push!" x
@@ -235,14 +236,14 @@ let unwrap = function
   | `Path _ as x -> Current.return x
   | `Contents x -> Current.map (fun x -> `Contents x) x
 
-let build_and_push ?cache_hint t ~push_target ~pool ~src dockerfile =
+let build_and_push ?cache_hint t ~push_target ~pool ~src ~options dockerfile =
   label dockerfile pool |>
   let> dockerfile = unwrap dockerfile
   and> src = src in
-  Raw.build_and_push ?cache_hint t ~push_target ~pool ~src dockerfile
+  Raw.build_and_push ?cache_hint t ~push_target ~pool ~src ~options dockerfile
 
-let build ?cache_hint t ~pool ~src dockerfile =
+let build ?cache_hint t ~pool ~src ~options dockerfile =
   label dockerfile pool |>
   let> dockerfile = unwrap dockerfile
   and> src = src in
-  Raw.build ?cache_hint t ~pool ~src dockerfile
+  Raw.build ?cache_hint t ~pool ~src ~options dockerfile

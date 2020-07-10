@@ -26,6 +26,7 @@ val build :
   t ->
   pool:string ->
   src:Current_git.Commit_id.t list Current.t ->
+  options:Cluster_api.Docker.Spec.options ->
   [ `Contents of string Current.t | `Path of string ] ->
   unit Current.t
 (** [build t ~pool ~src dockerfile] builds [dockerfile] in context [src] using pool [pool] within build cluster [t].
@@ -37,6 +38,7 @@ val build_and_push :
   push_target:Cluster_api.Docker.Image_id.t ->
   pool:string ->
   src:Current_git.Commit_id.t list Current.t ->
+  options:Cluster_api.Docker.Spec.options ->
   [ `Contents of string Current.t | `Path of string ] ->
   string Current.t
 (** [build_and_push] is like [build] but also uploads the resulting image to [push_target] on success.
@@ -49,6 +51,7 @@ module Raw : sig
     t ->
     pool:string ->
     src:Current_git.Commit_id.t list ->
+    options:Cluster_api.Docker.Spec.options ->
     [ `Contents of string | `Path of string ] ->
     unit Current.Primitive.t
 
@@ -58,6 +61,7 @@ module Raw : sig
     push_target:Cluster_api.Docker.Image_id.t ->
     pool:string ->
     src:Current_git.Commit_id.t list ->
+    options:Cluster_api.Docker.Spec.options ->
     [ `Contents of string | `Path of string ] ->
     string Current.Primitive.t
 end

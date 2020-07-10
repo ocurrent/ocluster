@@ -18,11 +18,19 @@ module Spec : sig
     password : string;
   }
 
+  type options = {
+    build_args : string list;  (** "--build-arg" arguments. *)
+    squash : bool;
+    buildkit: bool;
+  } [@@deriving yojson]
+
   type t = {
     dockerfile : [`Contents of string | `Path of string];
-    build_args : string list;  (** "--build-arg" arguments. *)
+    options : options;
     push_to : push option;     (** Where to upload the resulting image. *)
   }
+
+  val defaults : options
 
   val init : Raw.Builder.DockerBuild.t -> t -> unit
   (** [init builder t] initialises a fresh builder with the values from [t]. *)

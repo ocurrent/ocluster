@@ -3,7 +3,7 @@ val run :
   ?docker_build:(switch:Lwt_switch.t ->
                  log:Log_data.t ->
                  src:string ->
-                 build_args:string list ->
+                 options:Cluster_api.Docker.Spec.options ->
                  [ `Contents of string | `Path of string ] ->
                  (string, Process.error) Lwt_result.t) ->
   ?allow_push:string list ->
