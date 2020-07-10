@@ -148,6 +148,16 @@ dune exec -- ocluster-client \
 A paused worker will not be assigned any more items until it is unpaused, but
 it will continue with any jobs it is already running. Use `unpause` to resume it.
 
+To update a worker:
+
+```
+dune exec -- ocluster-client \
+  update ./capnp-secrets/admin.cap linux-x86_64 my-host
+```
+
+This will ask the worker to update itself. It checks that the Docker service
+`builder_agent` is running the latest `ocurrent/ocluster-worker:live` from Docker Hub.
+If not, the worker finishes any jobs in progress and then updates itself.
 
 ### Publishing the result
 

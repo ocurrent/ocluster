@@ -15,6 +15,12 @@ module Metrics = struct
     Gauge.v ~help ~namespace ~subsystem "running_jobs"
 end
 
+module Self_update = struct
+  let service = "builder_agent"
+  let repo = "ocurrent/ocluster-worker"
+  let tag = "live"
+end
+
 let ( >>!= ) = Lwt_result.bind
 let ( / ) = Filename.concat
 
@@ -73,7 +79,7 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; user; pass
     | Ok () ->
       Process.exec ~switch ~log @@ docker ["tag"; "--"; hash; target] >>!= fun () ->
       Process.exec ~switch ~log @@ docker ["push"; "--"; target] >>!= fun () ->
-      Lwt_process.pread_line ("", [| "docker"; "image"; "inspect"; "-f"; "{{ range index .RepoDigests}}{{ . }} {{ end }}"; "--"; target |]) >>= function
+      Lwt_process.pread_line ("", [| "docker"; "image"; "inspect"; "-f"; "{{ range index .RepoDigests }}{{ . }} {{ end }}"; "--"; target |]) >>= function
       | "" -> Lwt_result.fail (`Msg "Failed to read RepoDigests for newly-pushed image!")
       | ids ->
         let open Astring in
@@ -300,6 +306,53 @@ let metrics = function
          Lwt.return @@ Fmt.error_msg "Failed to connect to prometheus-node-exporter"
       )
 
+let check_exit_status = function
+  | Unix.WEXITED 0 -> ()
+  | Unix.WEXITED x -> Fmt.failwith "Sub-process failed with exit code %d" x
+  | Unix.WSIGNALED x -> Fmt.failwith "Sub-process failed with signal %d" x
+  | Unix.WSTOPPED x -> Fmt.failwith "Sub-process stopped with signal %d" x
+
+let self_update t queue =
+  let image_name = Printf.sprintf "%s:%s" Self_update.repo Self_update.tag in
+  Lwt_process.exec ("", [| "docker"; "pull"; image_name |]) >|= check_exit_status >>= fun () ->
+  Lwt_process.pread_line ("", [| "docker"; "image"; "inspect"; "-f";
+                                 "{{ range index .RepoDigests }}{{ . }} {{ end }}"; "--"; image_name |]) >>= fun new_repo_ids ->
+  let new_repo_ids = Astring.String.cuts ~sep:" " new_repo_ids in
+  Lwt_process.pread_line ("", [| "docker"; "service"; "inspect"; Self_update.service;
+                                 "--format"; "{{ .Spec.TaskTemplate.ContainerSpec.Image }}" |]) >>= fun current_repo_id ->
+  match String.trim current_repo_id with
+  | "" -> Lwt.return @@ error_msg "Failed to inspect service %S" Self_update.service
+  | current_repo_id ->
+    Log.info (fun f -> f "@[<v>Checking for updates. Running now:@,%s@,Latest available:@,%a@]" current_repo_id
+                 Fmt.(list ~sep:cut string) new_repo_ids);
+    if List.mem current_repo_id new_repo_ids then (
+      Log.info (fun f -> f "Already running the latest version");
+      Lwt_result.return false
+    ) else (
+      let affix = Self_update.repo ^ "@" in
+      match List.find_opt (Astring.String.is_prefix ~affix) new_repo_ids with
+      | None ->
+        Lwt.return @@ error_msg "No new image starts with %S!" affix
+      | Some id ->
+        Log.info (fun f -> f "Need to update service %s -> %s" current_repo_id id);
+        Cluster_api.Queue.set_active queue false >|= fun () ->
+        Lwt.async (fun () ->
+            Lwt_unix.sleep 1.0 >>= fun () ->
+            let rec drain () =
+              if t.in_use = 0 then Lwt.return_unit
+              else Lwt_condition.wait t.cond >>= drain
+            in
+            drain () >>= fun () ->
+            Log.info (fun f -> f "All jobs finished. Updating...");
+            Lwt_process.exec ("", [| "docker"; "service"; "update"; "--image"; id; Self_update.service |])
+            >|= check_exit_status >>= fun () ->
+            Log.warn (fun f -> f "Update succeeded but... we should probably have stopped running by now.");
+            Lwt_unix.sleep 10.0 >>= fun () ->
+            exit 1      (* Give up *)
+          );
+        Ok true
+    )
+
 let run ?switch ?(docker_build=docker_build) ?(allow_push=[]) ?prune_threshold ~capacity ~name registration_service =
   begin match prune_threshold with
     | None -> Log.info (fun f -> f "Prune threshold not set. Will not check for low disk-space!")
@@ -331,9 +384,11 @@ let run ?switch ?(docker_build=docker_build) ?(allow_push=[]) ?prune_threshold ~
          Sturdy_ref.connect_exn t.registration_service >>= fun reg ->
          Capability.with_ref reg @@ fun reg ->
          let queue =
-           let api = Cluster_api.Worker.local ~metrics in
+           let update = ref (fun () -> Lwt_result.fail (`Msg "Not initialised yet")) in
+           let api = Cluster_api.Worker.local ~metrics ~self_update:(fun () -> !update ()) in
            let queue = Cluster_api.Registration.register reg ~name api in
            Capability.dec_ref api;
+           update := (fun () -> self_update t queue);
            queue
          in
          Capability.with_ref queue @@ fun queue ->
