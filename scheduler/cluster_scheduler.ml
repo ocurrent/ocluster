@@ -59,9 +59,13 @@ module Pool_api = struct
     | Error `Name_taken ->
       Fmt.failwith "Worker already registered!";
     | Ok q ->
+      Pool.set_active q true;
       Log.info (fun f -> f "Registered new worker %S" name);
       Hashtbl.add t.workers name worker;
-      Cluster_api.Queue.local ~pop:(pop q) ~release:(fun () ->
+      Cluster_api.Queue.local
+        ~pop:(pop q)
+        ~set_active:(Pool.set_active q)
+        ~release:(fun () ->
           Hashtbl.remove t.workers name;
           Capability.dec_ref worker;
           Pool.release q
@@ -73,7 +77,20 @@ module Pool_api = struct
 
   let admin_service t =
     let dump () = Fmt.to_to_string Pool.dump t.pool in
-    Cluster_api.Pool_admin.local ~dump
+    let workers () =
+      Pool.connected_workers t.pool
+      |> Astring.String.Map.bindings
+      |> List.map (fun (name, worker) ->
+          let active = Pool.is_active worker in
+          { Cluster_api.Pool_admin.name; active }
+        )
+    in
+    let set_active name active =
+      match Astring.String.Map.find_opt name (Pool.connected_workers t.pool) with
+      | Some worker -> Pool.set_active worker active; Ok ()
+      | None -> Error `Unknown_worker
+    in
+    Cluster_api.Pool_admin.local ~dump ~workers ~set_active
 
   let worker t name =
     match Hashtbl.find_opt t.workers name with

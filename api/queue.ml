@@ -3,7 +3,7 @@ open Capnp_rpc_lwt
 
 type job_desc = Raw.Reader.JobDescr.t
 
-let local ~pop ~release =
+let local ~pop ~set_active ~release =
   let module X = Raw.Service.Queue in
   X.local @@ object
     inherit X.service
@@ -22,6 +22,13 @@ let local ~pop ~release =
         let _ : Raw.Builder.JobDescr.t = Results.descr_set_reader results descr in
         response
 
+    method set_active_impl params release_param_caps =
+      let open X.SetActive in
+      let active = Params.active_get params in
+      release_param_caps ();
+      set_active active;
+      Service.return_empty ()
+
     method! release = release ()
   end
 
@@ -36,3 +43,9 @@ let pop t job =
   let request, params = Capability.Request.create Params.init_pointer in
   Params.job_set params (Some job);
   Capability.call_for_value_exn t method_id request >|= Results.descr_get
+
+let set_active t active =
+  let open X.SetActive in
+  let request, params = Capability.Request.create Params.init_pointer in
+  Params.active_set params active;
+  Capability.call_for_unit_exn t method_id request

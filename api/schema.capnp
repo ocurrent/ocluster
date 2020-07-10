@@ -61,7 +61,13 @@ interface Job {
 }
 
 interface Queue {
-  pop @0 (job :Job) -> (descr :JobDescr);
+  pop       @0 (job :Job) -> (descr :JobDescr);
+
+  setActive @1 (active :Bool) -> ();
+  # When a queue is made inactive any items on it are returned to the main
+  # queue and no new items will be added until it is made active again. This
+  # is useful if a worker needs to stop handling jobs for a while (e.g. to
+  # prune or upgrade), but still wants to provide metrics.
 }
 
 interface Worker {
@@ -82,8 +88,15 @@ interface Submission {
   submit @0 (pool :Text, descr :JobDescr, urgent :Bool) -> (job :Job);
 }
 
+struct WorkerInfo {
+  name   @0 :Text;
+  active @1 :Bool;
+}
+
 interface PoolAdmin {
-  dump @0 () -> (state :Text);
+  dump      @0 () -> (state :Text);
+  workers   @1 () -> (workers : List(WorkerInfo));
+  setActive @2 (worker :Text, active :Bool) -> ();
 }
 
 interface Admin {
