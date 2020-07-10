@@ -5,11 +5,11 @@ let or_die = function
   | Ok x -> x
   | Error `Msg m -> failwith m
 
-let main registration_path capacity name allow_push =
+let main registration_path capacity name allow_push prune_threshold =
   Lwt_main.run begin
     let vat = Capnp_rpc_unix.client_only_vat () in
     let sr = Capnp_rpc_unix.Cap_file.load vat registration_path |> or_die in
-    Cluster_worker.run ~capacity ~name ~allow_push sr
+    Cluster_worker.run ~capacity ~name ~allow_push ?prune_threshold sr
   end
 
 (* Command-line parsing *)
@@ -40,6 +40,14 @@ let capacity =
     ~docv:"N"
     ["capacity"]
 
+let prune_threshold =
+  Arg.value @@
+  Arg.opt Arg.(some float) None @@
+  Arg.info
+    ~doc:"Run 'docker system prune' when /var/lib/docker's free space falls below this (0-100)"
+    ~docv:"PERCENTAGE"
+    ["prune-threshold"]
+
 let allow_push =
   Arg.value @@
   Arg.opt Arg.(list string) [] @@
@@ -50,7 +58,7 @@ let allow_push =
 
 let cmd =
   let doc = "Run a build worker" in
-  Term.(const main $ connect_addr $ capacity $ worker_name $ allow_push),
+  Term.(const main $ connect_addr $ capacity $ worker_name $ allow_push $ prune_threshold),
   Term.info "build-worker" ~doc
 
 let () = Term.(exit @@ eval cmd)

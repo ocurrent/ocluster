@@ -39,6 +39,7 @@ type t = {
     build_args:string list ->
     [ `Contents of string | `Path of string ] ->
     (string, Process.error) Lwt_result.t;
+  prune_threshold : float option;      (* docker-prune when free space is lower than this (percentage) *)
   registration_service : Cluster_api.Raw.Client.Registration.t Sturdy_ref.t;
   capacity : int;
   mutable in_use : int;                (* Number of active builds *)
@@ -118,6 +119,53 @@ let build ~switch ~log t descr =
     Log.info (fun f -> f "Job failed: %s" msg);
     Error (`Msg "Build failed")
 
+let check_docker_partition t =
+  match t.prune_threshold with
+  | None -> Lwt_result.return ()
+  | Some prune_threshold ->
+    Lwt_process.pread ("", [| "df"; "/var/lib/docker"; "--output=pcent" |]) >|= fun lines ->
+    match String.split_on_char '\n' (String.trim lines) with
+    | [_; result] ->
+      let used =
+        try Scanf.sscanf result " %f%%" Fun.id
+        with _ -> Fmt.failwith "Expected %S, got %S" "xx%" result
+      in
+      let free = 100. -. used in
+      Log.info (fun f -> f "Docker partition: %.0f%% free" free);
+      if free < prune_threshold then Error `Disk_space_low
+      else Ok ()
+    | _ ->
+      Fmt.failwith "Expected two lines from df, but got:@,%S" lines
+
+let rec maybe_prune t queue =
+  check_docker_partition t >>= function
+  | Ok () -> Lwt.return_unit
+  | Error `Disk_space_low ->
+    Log.info (fun f -> f "Disk-space low. Will finish current jobs and then prune.");
+    Cluster_api.Queue.set_active queue false >>= fun () ->
+    let rec drain () =
+      if t.in_use = 0 then Lwt.return_unit
+      else Lwt_condition.wait t.cond >>= drain
+    in
+    drain () >>= fun () ->
+    Log.info (fun f -> f "All jobs finished. Pruning...");
+    Lwt_process.exec ("", [| "docker"; "system"; "prune"; "-af" |]) >>= function
+    | Unix.WEXITED 0 ->
+      begin
+        check_docker_partition t >>= function
+        | Ok () ->
+          Log.info (fun f -> f "Prune complete. Re-activating queue...");
+          Cluster_api.Queue.set_active queue true
+        | Error `Disk_space_low ->
+          Log.warn (fun f -> f "Disk-space still low after pruning! Will retry in one hour.");
+          Unix.sleep (60 * 60);
+          maybe_prune t queue
+      end
+    | _ ->
+      Log.warn (fun f -> f "docker prune command failed! Will retry in one hour.");
+      Unix.sleep (60 * 60);
+      maybe_prune t queue
+
 let loop ~switch t queue =
   let rec loop () =
     match switch with
@@ -129,6 +177,7 @@ let loop ~switch t queue =
         Log.info (fun f -> f "At capacity. Waiting for a build to finish before requesting more...");
         Lwt_condition.wait t.cond >>= loop
       ) else (
+        maybe_prune t queue >>= fun () ->
         let outcome, set_outcome = Lwt.wait () in
         let log = Log_data.create () in
         Log.info (fun f -> f "Requesting a new job...");
@@ -251,9 +300,15 @@ let metrics = function
          Lwt.return @@ Fmt.error_msg "Failed to connect to prometheus-node-exporter"
       )
 
-let run ?switch ?(docker_build=docker_build) ?(allow_push=[]) ~capacity ~name registration_service =
+let run ?switch ?(docker_build=docker_build) ?(allow_push=[]) ?prune_threshold ~capacity ~name registration_service =
+  begin match prune_threshold with
+    | None -> Log.info (fun f -> f "Prune threshold not set. Will not check for low disk-space!")
+    | Some frac when frac < 0.0 || frac > 100.0 -> Fmt.invalid_arg "prune_threshold must be in the range 0 to 100"
+    | Some _ -> ()
+  end;
   let t = {
     name;
+    prune_threshold;
     registration_service;
     build = docker_build;
     cond = Lwt_condition.create ();
