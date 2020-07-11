@@ -28,7 +28,8 @@
   logs
   fmt
   conf-libev
-  git-unix
+  digestif
+  fpath
   lwt-dllist
   prometheus-app
   cohttp-lwt-unix
