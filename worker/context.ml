@@ -1,6 +1,6 @@
 open Lwt.Infix
 
-module Store = Git_unix.Store
+module Hash = Digestif.SHA1
 
 let ( / ) = Filename.concat
 let ( >>!= ) = Lwt_result.bind
@@ -23,8 +23,6 @@ let get_tmp_dir () =
   ensure_dir tmp;
   tmp
 
-let store_err ~label = Lwt_result.map_err (fun e -> `Msg (Fmt.strf "%s: %a" label Store.pp_error e))
-
 module Repo = struct
   type t = {
     url : Uri.t;
@@ -33,8 +31,8 @@ module Repo = struct
 
   let id t =
     let base = Filename.basename (Uri.path t.url) in
-    let digest = Store.Hash.digest_string (Uri.to_string t.url) in
-    Fmt.strf "%s-%s" base (Store.Hash.to_hex digest)
+    let digest = Hash.digest_string (Uri.to_string t.url) in
+    Fmt.strf "%s-%s" base (Hash.to_hex digest)
 
   let local_copy t =
     repos_dir / id t
@@ -49,14 +47,13 @@ module Repo = struct
   let has_commits t cs =
     let local_repo = local_copy t in
     if dir_exists local_repo then (
-      let local_repo = Fpath.v local_repo in
-      Store.v local_repo |> store_err ~label:"Failed to create repository" >>!= fun store ->
       let rec aux = function
         | [] -> Lwt_result.return true
         | c :: cs ->
-          Store.mem store c >>= function
-          | true -> aux cs
-          | false -> Lwt_result.return false
+          Lwt_process.exec ~cwd:local_repo ("", [| "git"; "cat-file"; "-e"; Hash.to_hex c |]) >>= function
+          | Unix.WEXITED 0 -> aux cs
+          | Unix.WEXITED _ -> Lwt_result.return false
+          | _ -> Fmt.failwith "git cat-file crashed!"
       in
       aux cs
     ) else Lwt_result.return false      (* Don't let ocaml-git try to init a new repository! *)
@@ -91,7 +88,7 @@ let rec lwt_result_list_iter_s f = function
     lwt_result_list_iter_s f xs
 
 let build_context ~switch ~log ~tmpdir descr =
-  match Cluster_api.Raw.Reader.JobDescr.commits_get_list descr |> List.map Store.Hash.of_hex with
+  match Cluster_api.Raw.Reader.JobDescr.commits_get_list descr |> List.map Hash.of_hex with
   | [] ->
     Lwt_result.return ()
   | (c :: cs) as commits ->
@@ -103,9 +100,9 @@ let build_context ~switch ~log ~tmpdir descr =
           | false -> Repo.fetch ~switch ~log repository
         end >>!= fun () ->
         let clone = Repo.local_copy repository in
-        Process.exec ~switch ~log ["git"; "-C"; clone; "reset"; "--hard"; Store.Hash.to_hex c] >>!= fun () ->
+        Process.exec ~switch ~log ["git"; "-C"; clone; "reset"; "--hard"; Hash.to_hex c] >>!= fun () ->
         Process.exec ~switch ~log ["git"; "-C"; clone; "clean"; "-fdx"] >>!= fun () ->
-        let merge c = Process.exec ~switch ~log ["git"; "-C"; clone; "merge"; Store.Hash.to_hex c] in
+        let merge c = Process.exec ~switch ~log ["git"; "-C"; clone; "merge"; Hash.to_hex c] in
         cs |> lwt_result_list_iter_s merge >>!= fun () ->
         Process.exec ~switch ~log ["git"; "-C"; clone; "submodule"; "init"] >>!= fun () ->
         Process.exec ~switch ~log ["git"; "-C"; clone; "submodule"; "update"] >>!= fun () ->
