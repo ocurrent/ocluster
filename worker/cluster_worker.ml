@@ -42,7 +42,7 @@ type t = {
     switch:Lwt_switch.t ->
     log:Log_data.t ->
     src:string ->
-    build_args:string list ->
+    options:Cluster_api.Docker.Spec.options ->
     [ `Contents of string | `Path of string ] ->
     (string, Process.error) Lwt_result.t;
   prune_threshold : float option;      (* docker-prune when free space is lower than this (percentage) *)
@@ -94,7 +94,7 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; user; pass
 let build ~switch ~log t descr =
   let module R = Cluster_api.Raw.Reader.JobDescr in
   let cache_hint = R.cache_hint_get descr in
-  let Docker_build { dockerfile; build_args; push_to } = Cluster_api.Submission.get_action descr in
+  let Docker_build { dockerfile; options; push_to } = Cluster_api.Submission.get_action descr in
   Log.info (fun f ->
       match dockerfile with
       | `Contents contents -> f "Got request to build (%s):\n%s" cache_hint (String.trim contents)
@@ -102,7 +102,7 @@ let build ~switch ~log t descr =
     );
   begin
     Context.with_build_context ~switch ~log descr @@ fun src ->
-    t.build ~switch ~log ~src ~build_args dockerfile >>!= fun hash ->
+    t.build ~switch ~log ~src ~options dockerfile >>!= fun hash ->
     match push_to with
     | None -> Lwt_result.return ""
     | Some target -> docker_push ~switch ~log t hash target
@@ -253,7 +253,7 @@ let check_contains ~path src =
       aux ~src (Fpath.segs path)
     )
 
-let docker_build ~switch ~log ~src ~build_args dockerfile =
+let docker_build ~switch ~log ~src ~options dockerfile =
   let iid_file = Filename.temp_file "build-worker-" ".iid" in
   Lwt.finalize
     (fun () ->
@@ -266,12 +266,18 @@ let docker_build ~switch ~log ~src ~build_args dockerfile =
            | Ok path -> Lwt_result.return (path, None)
            | Error e -> Lwt_result.fail e
        end >>!= fun (dockerpath, stdin) ->
+       let { Cluster_api.Docker.Spec.build_args; squash; buildkit } = options in
        let args =
          List.concat_map (fun x -> ["--build-arg"; x]) build_args
+         @ (if squash then ["--squash"] else [])
          @ ["--pull"; "--iidfile"; iid_file; "-f"; dockerpath; src]
        in
        Logs.info (fun f -> f "docker build @[%a@]" Fmt.(list ~sep:sp (quote string)) args);
-       Process.exec ~switch ~log ?stdin ("docker" :: "build" :: args) >>!= fun () ->
+       let cmd =
+         if buildkit then "docker" :: "buildx" :: "build" :: args
+         else "docker" :: "build" :: args
+       in
+       Process.exec ~switch ~log ?stdin cmd >>!= fun () ->
        Lwt_result.return (String.trim (read_file iid_file))
     )
     (fun () ->

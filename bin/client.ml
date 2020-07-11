@@ -34,7 +34,7 @@ let run cap_path fn =
     Printf.eprintf "%s\n%!" msg;
     exit 1
 
-let submit submission_path pool dockerfile repository commits cache_hint urgent push_to build_args =
+let submit submission_path pool dockerfile repository commits cache_hint urgent push_to options =
   let src =
     match repository, commits with
     | None, [] -> None
@@ -49,7 +49,7 @@ let submit submission_path pool dockerfile repository commits cache_hint urgent 
       Lwt_io.(with_file ~mode:input) path (Lwt_io.read ?count:None) >|= fun data ->
       `Contents data
   end >>= fun dockerfile ->
-  let action = Cluster_api.Submission.docker_build ?push_to ~build_args dockerfile in
+  let action = Cluster_api.Submission.docker_build ?push_to ~options dockerfile in
   let job = Cluster_api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ?src in
   let result = Cluster_api.Job.result job in
   Fmt.pr "Tailing log:@.";
@@ -229,6 +229,20 @@ let build_args =
     ~docv:"ARG"
     ["build-arg"]
 
+let squash =
+  Arg.value @@
+  Arg.flag @@
+  Arg.info
+    ~doc:"Whether to squash the layers"
+    ["squash"]
+
+let buildkit =
+  Arg.value @@
+  Arg.flag @@
+  Arg.info
+    ~doc:"Whether to use BuildKit to build"
+    ["buildkit"]
+
 let push_to =
   let make target user password =
     match target, user, password with
@@ -241,9 +255,15 @@ let push_to =
   in
   Term.(pure make $ push_to $ push_user $ push_password_file)
 
+let build_options =
+  let make build_args squash buildkit =
+    { Cluster_api.Docker.Spec.build_args; squash; buildkit }
+  in
+  Term.(pure make $ build_args $ squash $ buildkit)
+
 let submit =
   let doc = "Submit a build to the scheduler" in
-  Term.(const submit $ connect_addr $ pool $ dockerfile $ repo $ commits $ cache_hint $ urgent $ push_to $ build_args),
+  Term.(const submit $ connect_addr $ pool $ dockerfile $ repo $ commits $ cache_hint $ urgent $ push_to $ build_options),
   Term.info "submit" ~doc
 
 let pool_pos =

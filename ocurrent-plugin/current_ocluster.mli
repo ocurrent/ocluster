@@ -22,21 +22,23 @@ val with_push_auth : (string * string) option -> t -> t
     sharing the same connection. *)
 
 val build : 
-  ?cache_hint:string option ->
+  ?cache_hint:string ->
   t ->
   pool:string ->
   src:Current_git.Commit_id.t list Current.t ->
+  options:Cluster_api.Docker.Spec.options ->
   [ `Contents of string Current.t | `Path of string ] ->
   unit Current.t
 (** [build t ~pool ~src dockerfile] builds [dockerfile] in context [src] using pool [pool] within build cluster [t].
     Note: all commits in [src] must be in the same repository. *)
 
 val build_and_push :
-  ?cache_hint:string option ->
+  ?cache_hint:string ->
   t ->
   push_target:Cluster_api.Docker.Image_id.t ->
   pool:string ->
   src:Current_git.Commit_id.t list Current.t ->
+  options:Cluster_api.Docker.Spec.options ->
   [ `Contents of string Current.t | `Path of string ] ->
   string Current.t
 (** [build_and_push] is like [build] but also uploads the resulting image to [push_target] on success.
@@ -45,19 +47,21 @@ val build_and_push :
 
 module Raw : sig
   val build : 
-    ?cache_hint:string option ->
+    ?cache_hint:string ->
     t ->
     pool:string ->
     src:Current_git.Commit_id.t list ->
+    options:Cluster_api.Docker.Spec.options ->
     [ `Contents of string | `Path of string ] ->
     unit Current.Primitive.t
 
   val build_and_push :
-    ?cache_hint:string option ->
+    ?cache_hint:string ->
     t ->
     push_target:Cluster_api.Docker.Image_id.t ->
     pool:string ->
     src:Current_git.Commit_id.t list ->
+    options:Cluster_api.Docker.Spec.options ->
     [ `Contents of string | `Path of string ] ->
     string Current.Primitive.t
 end

@@ -64,9 +64,11 @@ let setup ~pipeline fn =
 
 let pipeline_result = Alcotest.of_pp @@ Current_term.Output.pp (fun f () -> Fmt.string f "()")
 
+let options = Cluster_api.Docker.Spec.defaults
+
 let simple () =
   let spec = `Contents (Current.return "example1") in
-  let pipeline t = Current_ocluster.build t spec ~pool:"pool" ~src:(Current.return []) in
+  let pipeline t = Current_ocluster.build t spec ~pool:"pool" ~src:(Current.return []) ~options in
   setup ~pipeline @@ fun ~registry ~await_result ~break:_ ->
   let builder = Mock_builder.create () in
   Lwt_switch.with_switch @@ fun switch ->
@@ -79,7 +81,7 @@ let simple () =
 
 let disconnect_while_queued () =
   let spec = `Contents (Current.return "example2") in
-  let pipeline t = Current_ocluster.build t spec ~pool:"pool" ~src:(Current.return []) in
+  let pipeline t = Current_ocluster.build t spec ~pool:"pool" ~src:(Current.return []) ~options in
   setup ~pipeline @@ fun ~registry ~await_result ~break ->
   Lwt.pause () >>= fun () ->
   break () >>= fun () ->

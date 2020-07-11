@@ -30,7 +30,7 @@ let rec await t id =
     Lwt_condition.wait t.cond >>= fun () ->
     await t id
 
-let docker_build t ~switch ~log ~src:_ ~build_args:_ = function
+let docker_build t ~switch ~log ~src:_ ~options:_ = function
   | `Path _ -> assert false
   | `Contents dockerfile ->
     Logs.info (fun f -> f "Mock build got %S" dockerfile);

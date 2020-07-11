@@ -25,8 +25,8 @@ type t = X.t Capability.t
 type action =
   | Docker_build of Docker.Spec.t
 
-let docker_build ?push_to ?(build_args=[]) dockerfile =
-  Docker_build { Docker.Spec.dockerfile; build_args; push_to }
+let docker_build ?push_to ?(options=Docker.Spec.defaults) dockerfile =
+  Docker_build { Docker.Spec.dockerfile; options; push_to }
 
 let get_action descr =
   let module JD = Raw.Reader.JobDescr in

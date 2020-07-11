@@ -36,13 +36,25 @@ module Spec = struct
     password : string;
   }
 
+  type options = {
+    build_args : string list;
+    squash : bool;
+    buildkit: bool;
+  } [@@deriving yojson]
+
   type t = {
     dockerfile : [`Contents of string | `Path of string];
-    build_args : string list;
+    options : options;
     push_to : push option;
   }
 
-  let init b { dockerfile; build_args; push_to } =
+  let defaults = {
+    build_args = [];
+    squash = false;
+    buildkit = false;
+  }
+
+  let init b { dockerfile; options; push_to } =
     let module DB = Raw.Builder.DockerBuild in
     let module Dockerfile = Raw.Builder.DockerBuild.Dockerfile in
     begin
@@ -51,7 +63,10 @@ module Spec = struct
       | `Contents contents -> Dockerfile.contents_set dockerfile_b contents
       | `Path path -> Dockerfile.path_set dockerfile_b path
     end;
+    let { build_args; squash; buildkit } = options in
     DB.build_args_set_list b build_args |> ignore;
+    DB.squash_set b squash;
+    DB.buildkit_set b buildkit;
     push_to |> Option.iter (fun { target; user; password } ->
         DB.push_target_set b (Image_id.to_string target);
         DB.push_user_set b user;
@@ -71,6 +86,9 @@ module Spec = struct
     let user = R.push_user_get r in
     let password = R.push_password_get r in
     let build_args = R.build_args_get_list r in
+    let squash = R.squash_get r in
+    let buildkit = R.buildkit_get r in
+    let options = { build_args; squash; buildkit } in
     let push_to =
       match target, user, password with
       | "", "", "" -> None
@@ -82,5 +100,5 @@ module Spec = struct
         | Ok target -> Some { target; user; password }
         | Error (`Msg m) -> failwith m
     in
-    { dockerfile; build_args; push_to }
+    { dockerfile; options; push_to }
 end
