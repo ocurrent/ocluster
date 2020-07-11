@@ -253,19 +253,26 @@ let check_contains ~path src =
       aux ~src (Fpath.segs path)
     )
 
+let write_to_file ~path data =
+  Lwt_io.(with_file ~mode:output) ~flags:Unix.[O_TRUNC; O_CREAT; O_RDWR] path @@ fun ch ->
+  Lwt_io.write_from_string_exactly ch data 0 (String.length data)
+
 let docker_build ~switch ~log ~src ~options dockerfile =
   let iid_file = Filename.temp_file "build-worker-" ".iid" in
   Lwt.finalize
     (fun () ->
        begin
          match dockerfile with
-         | `Contents contents -> Lwt_result.return ("-", Some contents)
+         | `Contents contents ->
+           let path = src / "Dockerfile" in
+           write_to_file ~path contents >>= fun () ->
+           Lwt_result.return path
          | `Path "-" -> Lwt_result.fail (`Msg "Path cannot be '-'!")
          | `Path path ->
            match check_contains ~path src with
-           | Ok path -> Lwt_result.return (path, None)
+           | Ok path -> Lwt_result.return path
            | Error e -> Lwt_result.fail e
-       end >>!= fun (dockerpath, stdin) ->
+       end >>!= fun dockerpath ->
        let { Cluster_api.Docker.Spec.build_args; squash; buildkit } = options in
        let args =
          List.concat_map (fun x -> ["--build-arg"; x]) build_args
@@ -277,7 +284,7 @@ let docker_build ~switch ~log ~src ~options dockerfile =
          if buildkit then "docker" :: "buildx" :: "build" :: args
          else "docker" :: "build" :: args
        in
-       Process.exec ~switch ~log ?stdin cmd >>!= fun () ->
+       Process.exec ~switch ~log cmd >>!= fun () ->
        Lwt_result.return (String.trim (read_file iid_file))
     )
     (fun () ->
