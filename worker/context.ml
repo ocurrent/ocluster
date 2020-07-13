@@ -65,7 +65,10 @@ module Repo = struct
       else (
         Lwt_switch.with_switch @@ fun switch -> (* Don't let the user cancel these two. *)
         Process.exec ~switch ~log ["git"; "init"; local_repo] >>!= fun () ->
-        Process.exec ~switch ~log ["git"; "-C"; local_repo; "remote"; "add"; "origin"; "--mirror=fetch"; "--"; Uri.to_string t.url]
+        let config k v = Process.exec ~switch ~log ["git"; "-C"; local_repo; "config"; "--add"; k; v] in
+        config "remote.origin.url" (Uri.to_string t.url) >>!= fun () ->
+        config "remote.origin.fetch" "+refs/heads/*:refs/remotes/origin/*" >>!= fun () ->
+        config "remote.origin.fetch" "+refs/pull/*:refs/remotes/pull/*"
       )
     end >>!= fun () ->
     Process.exec ~switch ~log ["git"; "-C"; local_repo; "fetch"; "-q"; "--update-head-ok"; "origin"]
@@ -113,6 +116,7 @@ let build_context ~switch ~log ~tmpdir descr =
         (* Maybe we could remove this at some point, or make it optional, but
            the base image builder needs it for now: *)
         Process.exec ~switch ~log ["cp"; "-a"; clone / ".git"; tmpdir / ".git"] >>!= fun () ->
+        Process.exec ~switch ~log ["git"; "-C"; tmpdir; "config"; "--unset"; "remote.origin.fetch"; "/pull/"] >>!= fun () ->
         Lwt_result.return ()
       )
 
