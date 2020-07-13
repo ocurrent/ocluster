@@ -110,6 +110,9 @@ let build_context ~switch ~log ~tmpdir descr =
             | ".git" -> ()
             | name -> Unix.rename (clone / name) (tmpdir / name)
           );
+        (* Maybe we could remove this at some point, or make it optional, but
+           the base image builder needs it for now: *)
+        Process.exec ~switch ~log ["cp"; "-a"; clone / ".git"; tmpdir / ".git"] >>!= fun () ->
         Lwt_result.return ()
       )
 
