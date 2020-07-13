@@ -73,7 +73,11 @@ module Op = struct
       Current.Job.log job "Connecting to build cluster...";
       let rec aux () =
         Lwt.catch
-          (fun () -> Sturdy_ref.connect_exn conn.sr)
+          (fun () ->
+             Sturdy_ref.connect_exn conn.sr >>= fun cap ->
+             Capability.wait_until_settled cap >|= fun () ->
+             cap
+          )
           (fun ex ->
              Log.warn (fun f -> f "Error connecting to build cluster (will retry): %a" Fmt.exn ex);
              Lwt_unix.sleep 10.0 >>= fun () ->
@@ -113,7 +117,7 @@ module Op = struct
           (* The job failed but we're still connected to the scheduler. Report the error. *)
           Lwt.return build_job
         ) else (
-          aux ()
+          Lwt_unix.sleep 1.0 >>= aux
         )
     in
     aux (), cancel
