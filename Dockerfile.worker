@@ -1,6 +1,7 @@
 FROM ocurrent/opam:debian-10-ocaml-4.10@sha256:144b282ab4c04887bc883e4991a6d0c25660dde88e2cbec4588fe06bcc17a5e8 AS build
 RUN sudo apt-get update && sudo apt-get install libev-dev capnproto m4 pkg-config libsqlite3-dev libgmp-dev -y --no-install-recommends
 RUN cd ~/opam-repository && git pull origin -q master && git reset --hard f361b92e07ba1c96845372680c59b192999fedd6 && opam update
+RUN opam pin add -yn mirage-crypto.0.8.1 git+https://github.com/mirage/mirage-crypto.git#2a9fafe9d2b6bd16b9c8495ef6c00baa843f07c1
 COPY --chown=opam *.opam /src/
 WORKDIR /src
 RUN opam install -y --deps-only .
@@ -8,10 +9,7 @@ ADD --chown=opam . .
 RUN opam config exec -- dune build ./_build/install/default/bin/ocluster-worker
 
 FROM debian:10
-RUN apt-get update && apt-get install libev4 curl gnupg2 git libsqlite3-dev ca-certificates netbase -y --no-install-recommends
-RUN curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add -
-RUN echo 'deb https://download.docker.com/linux/debian buster stable' >> /etc/apt/sources.list
-RUN apt-get update && apt-get install docker-ce -y --no-install-recommends
+RUN apt-get update && apt-get install docker.io libev4 curl gnupg2 git libsqlite3-dev ca-certificates netbase -y --no-install-recommends
 WORKDIR /var/lib/ocluster-worker
 ENTRYPOINT ["/usr/local/bin/ocluster-worker"]
 COPY --from=build /src/_build/install/default/bin/ocluster-worker /usr/local/bin/
