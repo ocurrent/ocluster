@@ -14,16 +14,20 @@ type connection = {
   mutable sched : Cluster_api.Submission.t Lwt.t;
 }
 
+type urgency = [ `Auto | `Always | `Never ]
+
 (* This may be copied and modified per job. *)
 type t = {
   connection : connection;
   timeout : Duration.t option;
   push_auth : (string * string) option; (* Username/password for pushes *)
   cache_hint : string option;
+  urgent : urgency;
 }
 
 let with_push_auth push_auth t = { t with push_auth }
 let with_timeout timeout t = { t with timeout }
+let with_urgent urgent t = { t with urgent }
 
 let tail ~job build_job =
   let rec aux start =
@@ -100,7 +104,13 @@ module Op = struct
     in
     let rec aux () =
       sched ~job t >>= fun sched ->
-      let build_job = Cluster_api.Submission.submit ~urgent:(priority = `High) ?src sched ~pool ~action ~cache_hint in
+      let urgent =
+        match t.urgent with
+        | `Always -> true
+        | `Never -> false
+        | `Auto -> priority = `High
+      in
+      let build_job = Cluster_api.Submission.submit ~urgent ?src sched ~pool ~action ~cache_hint in
       job_ref := Some build_job;
       Current.Switch.add_hook_or_exec switch (fun () ->
           match !job_ref with
@@ -204,9 +214,9 @@ module Build = Current_cache.Make(Op)
 
 open Current.Syntax
 
-let v ?timeout ?push_auth sr =
+let v ?timeout ?push_auth ?(urgent=`Auto) sr =
   let connection = { sr; sched = Lwt.fail_with "init" } in
-  { connection; timeout; push_auth; cache_hint = None }
+  { connection; timeout; push_auth; cache_hint = None; urgent }
 
 let label dockerfile pool =
   match dockerfile with

@@ -5,13 +5,22 @@ open Capnp_rpc_lwt
 type t
 (** The configuration for accessing the build cluster. *)
 
+type urgency = [
+  | `Auto       (** Builds will be marked as urgent whenever there isn't some
+                    existing latched output that can be used while waiting. *)
+  | `Always     (** All builds will be marked as urgent. *)
+  | `Never      (** No builds will be urgent. *)
+]
+
 val v :
   ?timeout:Duration.t ->
   ?push_auth:(string * string) ->
+  ?urgent:urgency ->
   [ `Submission_f4e8a768b32a7c42 ] Sturdy_ref.t -> t
 (** [v submission_service] is a builder that submits jobs to [submission_service].
     @param push_auth : the username and password to use when pushing to the Docker Hub staging area.
-    @param timeout : default timeout *)
+    @param timeout : default timeout
+    @param urgent : when to mark builds as urgent (default [`Auto]). *)
 
 val with_timeout : Duration.t option -> t -> t
 (** [with_timeout x t] is a copy of [t] with the specified timeout, but still
@@ -20,6 +29,9 @@ val with_timeout : Duration.t option -> t -> t
 val with_push_auth : (string * string) option -> t -> t
 (** [with_push_auth x t] is a copy of [t] with the specified push settings, but still
     sharing the same connection. *)
+
+val with_urgent : urgency -> t -> t
+(** [with_urgent x t] is a copy of [t] with urgency policy [x]. *)
 
 val build : 
   ?cache_hint:string ->
