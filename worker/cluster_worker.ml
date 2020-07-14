@@ -273,7 +273,7 @@ let docker_build ~switch ~log ~src ~options dockerfile =
            | Ok path -> Lwt_result.return path
            | Error e -> Lwt_result.fail e
        end >>!= fun dockerpath ->
-       let { Cluster_api.Docker.Spec.build_args; squash; buildkit } = options in
+       let { Cluster_api.Docker.Spec.build_args; squash; buildkit; include_git = _ } = options in
        let args =
          List.concat_map (fun x -> ["--build-arg"; x]) build_args
          @ (if squash then ["--squash"] else [])
