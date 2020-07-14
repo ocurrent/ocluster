@@ -31,6 +31,9 @@ struct DockerBuild {
   # Use BuildKit for the build.
   # Note: buildkit builds shared caches, so clients using such builds must all
   # trust each other not to poison the caches.
+
+  includeGit   @8 :Bool;
+  # If set, include the .git directory in the build context.
 }
 
 struct JobDescr {

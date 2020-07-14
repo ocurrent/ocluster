@@ -243,6 +243,13 @@ let buildkit =
     ~doc:"Whether to use BuildKit to build"
     ["buildkit"]
 
+let include_git =
+  Arg.value @@
+  Arg.flag @@
+  Arg.info
+    ~doc:"Include the .git clone in the build context"
+    ["include-git"]
+
 let push_to =
   let make target user password =
     match target, user, password with
@@ -256,10 +263,10 @@ let push_to =
   Term.(pure make $ push_to $ push_user $ push_password_file)
 
 let build_options =
-  let make build_args squash buildkit =
-    { Cluster_api.Docker.Spec.build_args; squash; buildkit }
+  let make build_args squash buildkit include_git =
+    { Cluster_api.Docker.Spec.build_args; squash; buildkit; include_git }
   in
-  Term.(pure make $ build_args $ squash $ buildkit)
+  Term.(pure make $ build_args $ squash $ buildkit $ include_git)
 
 let submit =
   let doc = "Submit a build to the scheduler" in

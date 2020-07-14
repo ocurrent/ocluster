@@ -22,6 +22,7 @@ module Spec : sig
     build_args : string list;  (** "--build-arg" arguments. *)
     squash : bool;
     buildkit: bool;
+    include_git : bool;
   } [@@deriving yojson]
 
   type t = {

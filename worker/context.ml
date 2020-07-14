@@ -90,6 +90,10 @@ let rec lwt_result_list_iter_s f = function
     f x >>!= fun () ->
     lwt_result_list_iter_s f xs
 
+let include_git descr =
+  let Docker_build db = Cluster_api.Submission.get_action descr in
+  db.options.include_git
+
 let build_context ~switch ~log ~tmpdir descr =
   match Cluster_api.Raw.Reader.JobDescr.commits_get_list descr |> List.map Hash.of_hex with
   | [] ->
@@ -113,11 +117,13 @@ let build_context ~switch ~log ~tmpdir descr =
             | ".git" -> ()
             | name -> Unix.rename (clone / name) (tmpdir / name)
           );
-        (* Maybe we could remove this at some point, or make it optional, but
-           the base image builder needs it for now: *)
-        Process.exec ~switch ~log ["cp"; "-a"; clone / ".git"; tmpdir / ".git"] >>!= fun () ->
-        Process.exec ~switch ~log ["git"; "-C"; tmpdir; "config"; "--unset"; "remote.origin.fetch"; "/pull/"] >>!= fun () ->
-        Lwt_result.return ()
+        if include_git descr then (
+          Process.exec ~switch ~log ["cp"; "-a"; clone / ".git"; tmpdir / ".git"] >>!= fun () ->
+          Process.exec ~switch ~log ["git"; "-C"; tmpdir; "config"; "--unset"; "remote.origin.fetch"; "/pull/"] >>!= fun () ->
+          Lwt_result.return ()
+        ) else (
+          Lwt_result.return ()
+        )
       )
 
 let with_build_context ~switch ~log descr fn =

@@ -40,6 +40,7 @@ module Spec = struct
     build_args : string list;
     squash : bool;
     buildkit: bool;
+    include_git : bool [@default true];
   } [@@deriving yojson]
 
   type t = {
@@ -52,6 +53,7 @@ module Spec = struct
     build_args = [];
     squash = false;
     buildkit = false;
+    include_git = false;
   }
 
   let init b { dockerfile; options; push_to } =
@@ -63,10 +65,11 @@ module Spec = struct
       | `Contents contents -> Dockerfile.contents_set dockerfile_b contents
       | `Path path -> Dockerfile.path_set dockerfile_b path
     end;
-    let { build_args; squash; buildkit } = options in
+    let { build_args; squash; buildkit; include_git } = options in
     DB.build_args_set_list b build_args |> ignore;
     DB.squash_set b squash;
     DB.buildkit_set b buildkit;
+    DB.include_git_set b include_git;
     push_to |> Option.iter (fun { target; user; password } ->
         DB.push_target_set b (Image_id.to_string target);
         DB.push_user_set b user;
@@ -88,7 +91,8 @@ module Spec = struct
     let build_args = R.build_args_get_list r in
     let squash = R.squash_get r in
     let buildkit = R.buildkit_get r in
-    let options = { build_args; squash; buildkit } in
+    let include_git = R.include_git_get r in
+    let options = { build_args; squash; buildkit; include_git } in
     let push_to =
       match target, user, password with
       | "", "", "" -> None
