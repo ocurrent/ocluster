@@ -29,7 +29,7 @@ let read_log job =
   let buffer = Buffer.create 1024 in
   let rec aux start =
     Cluster_api.Job.log job start >>= function
-    | Error (`Capnp e) -> Fmt.failwith "Error tailing logs: %a" Capnp_rpc.Error.pp e
+    | Error (`Capnp e) -> Lwt.return (Fmt.strf "Error tailing logs: %a@." Capnp_rpc.Error.pp e)
     | Ok ("", _) -> Lwt.return (Buffer.contents buffer)
     | Ok (data, next) ->
       Buffer.add_string buffer data;
@@ -41,8 +41,9 @@ let submit service dockerfile =
   let action = Cluster_api.Submission.docker_build (`Contents dockerfile) in
   Capability.with_ref (Cluster_api.Submission.submit service ~pool:"pool" ~action ~cache_hint:"1" ?src:None) @@ fun ticket ->
   Capability.with_ref (Cluster_api.Ticket.job ticket) @@ fun job ->
+  let result = Cluster_api.Job.result job in
   read_log job >>= fun log ->
-  Cluster_api.Job.result job >|= function
+  result >|= function
   | Ok "" -> log
   | Ok x -> Fmt.failwith "Unexpected job output: %S" x
   | Error (`Capnp _) -> Fmt.strf "%sFAILED@." log
@@ -187,16 +188,15 @@ let client_disconnects () =
   let result = submit submission_service "example" in
   Mock_builder.await builder "example" >>= fun job_result ->
   (* Drop network *)
+  Logs.info (fun f -> f "Drop network");
   Lwt_switch.turn_off net_switch >>= fun () ->
-  Lwt_result.catch result >>= function
-  | Ok _ -> Alcotest.fail "Job should have failed!"
-  | Error ex ->
-    Logs.info (fun f -> f "Client got disconnected: %a" Fmt.exn ex);
-    (* Check job is cancelled. *)
-    Logs.info (fun f -> f "Wait for job to stop");
-    job_result >|= function
-    | Error `Cancelled -> ()
-    | _ -> Alcotest.fail "Job should have been cancelled!"
+  result >>= fun result ->
+  Alcotest.(check string) "Job failed!" "Error tailing logs: Disconnected: Connection closed\nFAILED\n" result;
+  (* Check job is cancelled. *)
+  Logs.info (fun f -> f "Wait for job to stop");
+  job_result >|= function
+  | Error `Cancelled -> ()
+  | _ -> Alcotest.fail "Job should have been cancelled!"
 
 (* The client cancels the job explicitly. *)
 let cancel () =
@@ -214,6 +214,44 @@ let cancel () =
   log >>= fun log ->
   Alcotest.(check string) "Check log" "Building on worker-1\nBuilding example\nJob cancelled\n" log;
   Cluster_api.Job.result job >>= fun result ->
+  let result = Result.map_error (fun (`Capnp e) -> Fmt.to_to_string Capnp_rpc.Error.pp e) result in
+  Alcotest.(check (result reject string)) "Check job failed" (Error "Failed: Build cancelled") result;
+  Lwt.return_unit
+
+(* The client cancels the ticket. *)
+let cancel_ticket () =
+  with_sched @@ fun ~submission_service ~registry:_ ->
+  let action = Cluster_api.Submission.docker_build (`Contents "example") in
+  Capability.with_ref (Cluster_api.Submission.submit submission_service ~pool:"pool" ~action ~cache_hint:"1" ?src:None) @@ fun ticket ->
+  Capability.with_ref (Cluster_api.Ticket.job ticket) @@ fun job ->
+  let result = Cluster_api.Job.result job in
+  let log = read_log job in
+  Cluster_api.Ticket.cancel ticket >>= fun cancel_result ->
+  Alcotest.(check (result unit reject)) "Cancel succeeds" (Ok ()) cancel_result;
+  log >>= fun log ->
+  Alcotest.(check string) "Check log" "Error tailing logs: Failed: Ticket cancelled\n" log;
+  result >>= fun result ->
+  let result = Result.map_error (fun (`Capnp e) -> Fmt.to_to_string Capnp_rpc.Error.pp e) result in
+  Alcotest.(check (result reject string)) "Check job failed" (Error "Failed: Ticket cancelled") result;
+  Lwt.return_unit
+
+(* The client cancels the ticket after the job is assigned. *)
+let cancel_ticket_late () =
+  with_sched @@ fun ~submission_service ~registry ->
+  let builder = Mock_builder.create () in
+  Lwt_switch.with_switch @@ fun switch ->
+  Mock_builder.run ~switch builder (Mock_network.sturdy registry);
+  let action = Cluster_api.Submission.docker_build (`Contents "example") in
+  Capability.with_ref (Cluster_api.Submission.submit submission_service ~pool:"pool" ~action ~cache_hint:"1" ?src:None) @@ fun ticket ->
+  Capability.with_ref (Cluster_api.Ticket.job ticket) @@ fun job ->
+  let result = Cluster_api.Job.result job in
+  let log = read_log job in
+  Mock_builder.await builder "example" >>= fun _ ->
+  Cluster_api.Ticket.cancel ticket >>= fun cancel_result ->
+  Alcotest.(check (result unit reject)) "Cancel succeeds" (Ok ()) cancel_result;
+  log >>= fun log ->
+  Alcotest.(check string) "Check log" "Building on worker-1\nBuilding example\nJob cancelled\n" log;
+  result >>= fun result ->
   let result = Result.map_error (fun (`Capnp e) -> Fmt.to_to_string Capnp_rpc.Error.pp e) result in
   Alcotest.(check (result reject string)) "Check job failed" (Error "Failed: Build cancelled") result;
   Lwt.return_unit
@@ -239,6 +277,8 @@ let () =
       test_case "worker_disconnects" worker_disconnects;
       test_case "client_disconnects" client_disconnects;
       test_case "cancel" cancel;
+      test_case "cancel_ticket" cancel_ticket;
+      test_case "cancel_ticket_late" cancel_ticket_late;
       test_case "admin" admin;
     ];
     "scheduling", Test_scheduling.suite;

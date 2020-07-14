@@ -9,6 +9,9 @@ module Make (Item : S.ITEM) : sig
   type t
   (** A pool of workers and queued jobs. *)
 
+  type ticket
+  (** A queued item. *)
+
   type worker
   (** A connected worker. *)
 
@@ -19,9 +22,12 @@ module Make (Item : S.ITEM) : sig
   val register : t -> name:string -> (worker, [> `Name_taken]) result
   (** [register t ~name] returns a queue for worker [name]. *)
 
-  val submit : urgent:bool -> t -> Item.t -> unit
+  val submit : urgent:bool -> t -> Item.t -> ticket
   (** [submit ~urgent t item] adds [item] to the incoming queue.
       [urgent] items will be processed before non-urgent ones. *)
+
+  val cancel : ticket -> (unit, [> `Not_queued ]) result
+  (** [cancel ticket] discards the item from the queue. *)
 
   val pop : worker -> (Item.t, [> `Finished]) Lwt_result.t
   (** [pop worker] gets the next item for [worker]. *)

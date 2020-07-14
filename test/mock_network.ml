@@ -16,22 +16,33 @@ module Flow = struct
   let pp_error _ = function (_ : error) -> .
   let pp_write_error = Mirage_flow.pp_write_error
 
-  let pair () =
-    let a, to_a = Lwt_stream.create () in
-    let b, to_b = Lwt_stream.create () in
-    { inbound = a; outbound = to_b; closed = false },
-    { inbound = b; outbound = to_a; closed = false }
+  let ensure_closed t =
+    if t.closed = false then (
+      t.closed <- true;
+      t.outbound None
+    )
 
   let close t =
     assert (t.closed = false);
-    t.closed <- true;
-    t.outbound None;
+    ensure_closed t;
     Lwt.return_unit
 
+  let pair ~switch () =
+    let a, to_a = Lwt_stream.create () in
+    let b, to_b = Lwt_stream.create () in
+    let e1 = { inbound = a; outbound = to_b; closed = false } in
+    let e2 = { inbound = b; outbound = to_a; closed = false } in
+    Lwt_switch.add_hook (Some switch) (fun () ->
+        ensure_closed e1;
+        ensure_closed e2;
+        Lwt.return_unit
+      );
+    e1, e2
+
   let write t data =
+    Lwt.pause () >>= fun () ->
     if t.closed then Lwt.return (Error `Closed)
     else (
-      Lwt.pause () >>= fun () ->
       t.outbound (Some data);
       Lwt.return (Ok ())
     )
@@ -64,7 +75,7 @@ let sturdy (cap : 'a Capability.t) : 'a Sturdy_ref.t =
 
 (* Stretch our local reference to [x] over a fake network link. *)
 let remote ~switch (x : 'a Capability.t) : 'a Sturdy_ref.t =
-  let local, remote = Flow.pair () in
+  let local, remote = Flow.pair ~switch () in
   let peer_id = Capnp_rpc_net.Auth.Digest.insecure in
   let local_ep = Capnp_rpc_net.Endpoint.of_flow ~switch (module Flow) local ~peer_id in
   let remote_ep = Capnp_rpc_net.Endpoint.of_flow ~switch (module Flow) remote ~peer_id in
