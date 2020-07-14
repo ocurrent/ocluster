@@ -39,12 +39,20 @@ module Pool_api = struct
     let workers = Hashtbl.create 10 in
     { pool; workers }
 
-  let submit t ~urgent (descr : Cluster_api.Queue.job_desc) : Cluster_api.Job.t =
+  let submit t ~urgent (descr : Cluster_api.Queue.job_desc) : Cluster_api.Ticket.t =
     let job, set_job = Capability.promise () in
+    let cancel () =
+      Log.info (fun f -> f "TODO: cancel queued job");
+      Cluster_api.Job.cancel job
+    in
+    let release () =
+      Log.info (fun f -> f "TODO: cancel job if still queued")
+    in
+    let ticket = Cluster_api.Ticket.local ~job ~cancel ~release in
     Log.info (fun f -> f "Received new job request (urgent=%b)" urgent);
     let item = { Item.descr; set_job } in
     Pool.submit ~urgent t.pool item;
-    job
+    ticket
 
   let pop q ~job =
     Pool.pop q >|= function

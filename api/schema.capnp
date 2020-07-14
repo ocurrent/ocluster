@@ -101,8 +101,17 @@ interface Registration {
   register @0 (name :Text, worker :Worker) -> (queue :Queue);
 }
 
+interface Ticket {
+  job    @0 () -> (job :Job);
+  # The job object at the build node. This will be a promise until the job has been accepted.
+
+  cancel @1 () -> ();
+  # Cancel the job request. If the job has already been assigned to a worker, this cancels
+  # the job itself.
+}
+
 interface Submission {
-  submit @0 (pool :Text, descr :JobDescr, urgent :Bool) -> (job :Job);
+  submit @0 (pool :Text, descr :JobDescr, urgent :Bool) -> (ticket :Ticket);
 }
 
 struct WorkerInfo {
