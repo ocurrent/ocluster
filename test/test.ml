@@ -256,6 +256,28 @@ let cancel_ticket_late () =
   Alcotest.(check (result reject string)) "Check job failed" (Error "Failed: Build cancelled") result;
   Lwt.return_unit
 
+(* The client releases the ticket after the job is assigned. *)
+let release_ticket () =
+  with_sched @@ fun ~submission_service ~registry ->
+  let builder = Mock_builder.create () in
+  Lwt_switch.with_switch @@ fun switch ->
+  Mock_builder.run ~switch builder (Mock_network.sturdy registry);
+  let action = Cluster_api.Submission.docker_build (`Contents "example") in
+  let ticket = Cluster_api.Submission.submit submission_service ~pool:"pool" ~action ~cache_hint:"1" ?src:None in
+  let job = Cluster_api.Ticket.job ticket in
+  let result = Cluster_api.Job.result job in
+  let log = read_log job in
+  Mock_builder.await builder "example" >>= fun _ ->
+  Capability.dec_ref ticket;
+  Mock_builder.set builder "example" @@ Ok "hash";
+  log >>= fun log ->
+  Alcotest.(check string) "Check log" "Building on worker-1\nBuilding example\nJob succeeded\n" log;
+  result >>= fun result ->
+  let result = Result.map_error (fun (`Capnp e) -> Fmt.to_to_string Capnp_rpc.Error.pp e) result in
+  Alcotest.(check (result string string)) "Check job passed" (Ok "") result;
+  Capability.dec_ref job;
+  Lwt.return_unit
+
 let test_case name fn =
   Alcotest_lwt.test_case name `Quick @@ fun _ () ->
   let problems = Logs.(warn_count () + err_count ()) in
@@ -279,6 +301,7 @@ let () =
       test_case "cancel" cancel;
       test_case "cancel_ticket" cancel_ticket;
       test_case "cancel_ticket_late" cancel_ticket_late;
+      test_case "release_ticket" release_ticket;
       test_case "admin" admin;
     ];
     "scheduling", Test_scheduling.suite;
