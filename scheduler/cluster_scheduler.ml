@@ -41,18 +41,23 @@ module Pool_api = struct
 
   let submit t ~urgent (descr : Cluster_api.Queue.job_desc) : Cluster_api.Ticket.t =
     let job, set_job = Capability.promise () in
-    let cancel () =
-      Log.info (fun f -> f "TODO: cancel queued job");
-      Cluster_api.Job.cancel job
-    in
-    let release () =
-      Log.info (fun f -> f "TODO: cancel job if still queued")
-    in
-    let ticket = Cluster_api.Ticket.local ~job ~cancel ~release in
     Log.info (fun f -> f "Received new job request (urgent=%b)" urgent);
     let item = { Item.descr; set_job } in
-    Pool.submit ~urgent t.pool item;
-    ticket
+    let ticket = Pool.submit ~urgent t.pool item in
+    let cancel () =
+      match Pool.cancel ticket with
+      | Ok () ->
+        Capability.resolve_exn set_job (Capnp_rpc.Exception.v "Ticket cancelled");
+        Lwt_result.return ()
+      | Error `Not_queued ->
+        Cluster_api.Job.cancel job
+    in
+    let release () =
+      match Pool.cancel ticket with
+      | Ok () -> Capability.resolve_exn set_job (Capnp_rpc.Exception.v "Ticket released (cancelled)")
+      | Error `Not_queued -> ()
+    in
+    Cluster_api.Ticket.local ~job ~cancel ~release
 
   let pop q ~job =
     Pool.pop q >|= function

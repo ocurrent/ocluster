@@ -63,7 +63,6 @@ module Repo = struct
     begin
       if dir_exists local_repo then Lwt_result.return ()
       else (
-        Lwt_switch.with_switch @@ fun switch -> (* Don't let the user cancel these two. *)
         Process.exec ~switch ~log ["git"; "init"; local_repo] >>!= fun () ->
         let config k v = Process.exec ~switch ~log ["git"; "-C"; local_repo; "config"; "--add"; k; v] in
         config "remote.origin.url" (Uri.to_string t.url) >>!= fun () ->
@@ -94,13 +93,14 @@ let include_git descr =
   let Docker_build db = Cluster_api.Submission.get_action descr in
   db.options.include_git
 
-let build_context ~switch ~log ~tmpdir descr =
+let build_context ~log ~tmpdir descr =
   match Cluster_api.Raw.Reader.JobDescr.commits_get_list descr |> List.map Hash.of_hex with
   | [] ->
     Lwt_result.return ()
   | (c :: cs) as commits ->
     let repository = repo (Cluster_api.Raw.Reader.JobDescr.repository_get descr) in
     Lwt_mutex.with_lock repository.lock (fun () ->
+        Lwt_switch.with_switch @@ fun switch -> (* Don't let the user cancel these operations. *)
         begin
           Repo.has_commits repository commits >>!= function
           | true -> Log_data.info log "All commits already cached"; Lwt_result.return ()
@@ -126,8 +126,8 @@ let build_context ~switch ~log ~tmpdir descr =
         )
       )
 
-let with_build_context ~switch ~log descr fn =
+let with_build_context ~log descr fn =
   let tmp = get_tmp_dir () in
   Lwt_io.with_temp_dir ~parent:tmp ~prefix:"build-context-" @@ fun tmpdir ->
-  build_context ~switch ~log ~tmpdir descr >>!= fun () ->
+  build_context ~log ~tmpdir descr >>!= fun () ->
   fn tmpdir

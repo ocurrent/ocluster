@@ -95,6 +95,38 @@ let disconnect_while_queued () =
   Alcotest.(check pipeline_result) "Retry succeeded" (Ok ()) x;
   Lwt.return_unit
 
+let two_jobs () =
+  let spec1 = `Contents (Current.return "spec1") in
+  let spec2 = `Contents (Current.return "spec2") in
+  let pipeline t =
+    let open Current.Syntax in
+    let* b1 = Current.state (Current_ocluster.build t spec1 ~pool:"pool" ~src:(Current.return []) ~options)
+    and* b2 = Current.state (Current_ocluster.build t spec2 ~pool:"pool" ~src:(Current.return []) ~options) in
+    Logs.info (fun f -> f "@[<v>b1 = %a@,b2 = %a@]"
+                  (Current_term.Output.pp (Fmt.unit "()")) b1
+                  (Current_term.Output.pp (Fmt.unit "()")) b2
+              );
+    match b1, b2 with
+    | Ok (), Error _
+    | Error _, Ok () -> Current.return ()
+    | _ -> Current.active `Running
+  in
+  setup ~pipeline @@ fun ~registry ~await_result ~break:_ ->
+  let builder = Mock_builder.create () in
+  Lwt_switch.with_switch @@ fun switch ->
+  Mock_builder.run_remote builder ~network_switch:switch ~builder_switch:switch registry;
+  Lwt.choose [Mock_builder.await builder "spec1";
+              Mock_builder.await builder "spec2"]
+  >>= fun _ ->
+  let jobs = Current.Job.jobs () |> Current.Job.Map.bindings in
+  let _, started_job = List.find (fun (_, j) -> not (Lwt.is_sleeping (Current.Job.start_time j))) jobs in
+  Current.Job.cancel started_job "Cancelled by user";
+  Mock_builder.set builder "spec1" @@ Ok "hash1";
+  Mock_builder.set builder "spec2" @@ Ok "hash2";
+  await_result () >>= fun x ->
+  Alcotest.(check (result pass reject)) "Pipeline successful" (Ok ()) x;
+  Lwt.return_unit
+
 let test_case name fn =
   Alcotest_lwt.test_case name `Quick @@ fun _ () ->
   fn () >|= fun () ->
@@ -114,4 +146,5 @@ let test_case name fn =
 let suite = [
   test_case "simple" simple;
   test_case "disconnect_while_queued" disconnect_while_queued;
+  test_case "two_jobs" two_jobs;
 ]

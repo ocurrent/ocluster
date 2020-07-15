@@ -101,7 +101,7 @@ let build ~switch ~log t descr =
       | `Path path -> f "Got request to build %S (%s)" path cache_hint
     );
   begin
-    Context.with_build_context ~switch ~log descr @@ fun src ->
+    Context.with_build_context ~log descr @@ fun src ->
     t.build ~switch ~log ~src ~options dockerfile >>!= fun hash ->
     match push_to with
     | None -> Lwt_result.return ""

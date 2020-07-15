@@ -100,7 +100,7 @@ module Op = struct
       | Some ticket ->
         Cluster_api.Ticket.cancel ticket >|= function
         | Ok () -> ()
-        | Error (`Capnp e) -> Current.Job.log job "Cancel failed: %a" Capnp_rpc.Error.pp e
+        | Error (`Capnp e) -> Current.Job.log job "Cancel ticket failed: %a" Capnp_rpc.Error.pp e
     in
     let rec aux () =
       sched ~job t >>= fun sched ->
@@ -121,15 +121,15 @@ module Op = struct
       Capability.wait_until_settled ticket >>= fun () ->
       Current.Job.log job "Job submitted to scheduler. Waiting for worker...";
       Capability.wait_until_settled build_job >>= fun () ->
-      Capability.dec_ref ticket;
+      !ticket_ref |> Option.iter Capability.dec_ref;
       ticket_ref := None;  (* Transfer ownership of build_job to caller. *)
       match Capability.problem build_job with
       | None -> Lwt.return build_job
-      | Some _ ->
+      | Some err ->
         Lwt.pause () >>= fun () ->
         if Capability.problem sched = None then (
           (* The job failed but we're still connected to the scheduler. Report the error. *)
-          Lwt.return build_job
+          Lwt.fail_with (Fmt.strf "%a" Capnp_rpc.Exception.pp err)
         ) else (
           aux ()
         )
