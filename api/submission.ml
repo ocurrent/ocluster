@@ -11,10 +11,10 @@ let local ~submit =
       let pool = Params.pool_get params in
       let descr = Params.descr_get params in
       let urgent = Params.urgent_get params in
-      let job = submit ~pool ~urgent descr in
+      let ticket = submit ~pool ~urgent descr in
       let response, results = Service.Response.create Results.init_pointer in
-      Results.job_set results (Some job);
-      Capability.dec_ref job;
+      Results.ticket_set results (Some ticket);
+      Capability.dec_ref ticket;
       Service.return response
   end
 
@@ -48,4 +48,4 @@ let submit ?src ?(urgent=false) t ~pool ~action ~cache_hint =
       let _ : _ Capnp.Array.t = JD.commits_set_list b commits in
       JD.repository_set b repo;
     );
-  Capability.call_for_caps t method_id request Results.job_get_pipelined
+  Capability.call_for_caps t method_id request Results.ticket_get_pipelined

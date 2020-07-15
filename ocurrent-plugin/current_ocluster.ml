@@ -93,12 +93,12 @@ module Op = struct
 
   (* This is called by [Current.Job] once the confirmation threshold allows the job to be submitted. *)
   let submit ~job ~pool ~action ~cache_hint ?src t ~priority ~switch =
-    let job_ref = ref None in
+    let ticket_ref = ref None in
     let cancel () =
-      match !job_ref with
+      match !ticket_ref with
       | None -> Lwt.return_unit
-      | Some build_job ->
-        Cluster_api.Job.cancel build_job >|= function
+      | Some ticket ->
+        Cluster_api.Ticket.cancel ticket >|= function
         | Ok () -> ()
         | Error (`Capnp e) -> Current.Job.log job "Cancel failed: %a" Capnp_rpc.Error.pp e
     in
@@ -110,15 +110,19 @@ module Op = struct
         | `Never -> false
         | `Auto -> priority = `High
       in
-      let build_job = Cluster_api.Submission.submit ~urgent ?src sched ~pool ~action ~cache_hint in
-      job_ref := Some build_job;
+      let ticket = Cluster_api.Submission.submit ~urgent ?src sched ~pool ~action ~cache_hint in
+      ticket_ref := Some ticket;
       Current.Switch.add_hook_or_exec switch (fun () ->
-          match !job_ref with
+          match !ticket_ref with
           | None -> Lwt.return_unit
-          | Some build_job -> Capability.dec_ref build_job; job_ref := None; Lwt.return_unit
+          | Some ticket -> Capability.dec_ref ticket; ticket_ref := None; Lwt.return_unit
         ) >>= fun () ->
+      let build_job = Cluster_api.Ticket.job ticket in
+      Capability.wait_until_settled ticket >>= fun () ->
+      Current.Job.log job "Job submitted to scheduler. Waiting for worker...";
       Capability.wait_until_settled build_job >>= fun () ->
-      job_ref := None;  (* Transfer ownership of build_job to caller. *)
+      Capability.dec_ref ticket;
+      ticket_ref := None;  (* Transfer ownership of build_job to caller. *)
       match Capability.problem build_job with
       | None -> Lwt.return build_job
       | Some _ ->
@@ -127,7 +131,7 @@ module Op = struct
           (* The job failed but we're still connected to the scheduler. Report the error. *)
           Lwt.return build_job
         ) else (
-          Lwt_unix.sleep 1.0 >>= aux
+          aux ()
         )
     in
     aux (), cancel

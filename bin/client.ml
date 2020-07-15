@@ -50,7 +50,8 @@ let submit submission_path pool dockerfile repository commits cache_hint urgent 
       `Contents data
   end >>= fun dockerfile ->
   let action = Cluster_api.Submission.docker_build ?push_to ~options dockerfile in
-  let job = Cluster_api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ?src in
+  Capability.with_ref (Cluster_api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ?src) @@ fun ticket ->
+  Capability.with_ref (Cluster_api.Ticket.job ticket) @@ fun job ->
   let result = Cluster_api.Job.result job in
   Fmt.pr "Tailing log:@.";
   tail job 0L >>= fun () ->
