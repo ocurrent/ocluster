@@ -23,9 +23,10 @@ let local ~job ~cancel ~release =
       let response = Service.Response.create_empty () in
       Lwt_result.return response
 
+    (* Note: we keep job alive until *after* calling [release]. *)
     method! release =
-      Capability.dec_ref job;
-      release ()
+      release ();
+      Capability.dec_ref job
   end
 
 module X = Raw.Client.Ticket
