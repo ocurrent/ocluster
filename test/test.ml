@@ -256,8 +256,25 @@ let cancel_ticket_late () =
   Alcotest.(check (result reject string)) "Check job failed" (Error "Failed: Build cancelled") result;
   Lwt.return_unit
 
-(* The client releases the ticket after the job is assigned. *)
+(* The client releases the ticket before the job is assigned. *)
 let release_ticket () =
+  with_sched @@ fun ~submission_service ~registry:_ ->
+  let action = Cluster_api.Submission.docker_build (`Contents "example") in
+  let ticket = Cluster_api.Submission.submit submission_service ~pool:"pool" ~action ~cache_hint:"1" ?src:None in
+  let job = Cluster_api.Ticket.job ticket in
+  let result = Cluster_api.Job.result job in
+  let log = read_log job in
+  Capability.dec_ref job;
+  Capability.dec_ref ticket;
+  log >>= fun log ->
+  Alcotest.(check string) "Check log" "Error tailing logs: Failed: Ticket released (cancelled)\n" log;
+  result >>= fun result ->
+  let result = Result.map_error (fun (`Capnp e) -> Fmt.to_to_string Capnp_rpc.Error.pp e) result in
+  Alcotest.(check (result string string)) "Check ticket cancelled" (Error "Failed: Ticket released (cancelled)") result;
+  Lwt.return_unit
+
+(* The client releases the ticket after the job is assigned. *)
+let release_ticket_late () =
   with_sched @@ fun ~submission_service ~registry ->
   let builder = Mock_builder.create () in
   Lwt_switch.with_switch @@ fun switch ->
@@ -268,14 +285,14 @@ let release_ticket () =
   let result = Cluster_api.Job.result job in
   let log = read_log job in
   Mock_builder.await builder "example" >>= fun _ ->
+  Capability.dec_ref job;
   Capability.dec_ref ticket;
   Mock_builder.set builder "example" @@ Ok "hash";
   log >>= fun log ->
-  Alcotest.(check string) "Check log" "Building on worker-1\nBuilding example\nJob succeeded\n" log;
+  Alcotest.(check string) "Check log" "Building on worker-1\nBuilding example\nJob cancelled\n" log;
   result >>= fun result ->
   let result = Result.map_error (fun (`Capnp e) -> Fmt.to_to_string Capnp_rpc.Error.pp e) result in
-  Alcotest.(check (result string string)) "Check job passed" (Ok "") result;
-  Capability.dec_ref job;
+  Alcotest.(check (result string string)) "Check job cancelled" (Error "Failed: Build cancelled") result;
   Lwt.return_unit
 
 let test_case name fn =
@@ -302,6 +319,7 @@ let () =
       test_case "cancel_ticket" cancel_ticket;
       test_case "cancel_ticket_late" cancel_ticket_late;
       test_case "release_ticket" release_ticket;
+      test_case "release_ticket_late" release_ticket_late;
       test_case "admin" admin;
     ];
     "scheduling", Test_scheduling.suite;
