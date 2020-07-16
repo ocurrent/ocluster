@@ -7,6 +7,7 @@ type error = [
 val exec :
   log:Log_data.t ->
   switch:Lwt_switch.t ->
+  ?env:string array ->
   ?stdin:string ->
   ?stderr:Lwt_process.redirection ->
   string list ->

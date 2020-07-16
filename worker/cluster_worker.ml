@@ -21,6 +21,10 @@ module Self_update = struct
   let tag = "live"
 end
 
+let buildkit_env =
+  let orig = Unix.environment () |> Array.to_list in
+  "DOCKER_BUILDKIT=1" :: orig |> Array.of_list
+
 let ( >>!= ) = Lwt_result.bind
 let ( / ) = Filename.concat
 
@@ -280,11 +284,8 @@ let docker_build ~switch ~log ~src ~options dockerfile =
          @ ["--pull"; "--iidfile"; iid_file; "-f"; dockerpath; src]
        in
        Logs.info (fun f -> f "docker build @[%a@]" Fmt.(list ~sep:sp (quote string)) args);
-       let cmd =
-         if buildkit then "docker" :: "buildx" :: "build" :: args
-         else "docker" :: "build" :: args
-       in
-       Process.exec ~switch ~log cmd >>!= fun () ->
+       let env = if buildkit then Some buildkit_env else None in
+       Process.exec ?env ~switch ~log ("docker" :: "build" :: args) >>!= fun () ->
        Lwt_result.return (String.trim (read_file iid_file))
     )
     (fun () ->
