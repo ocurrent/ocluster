@@ -9,7 +9,7 @@ depends: [
   "dune" {>= "2.5"}
   "ocluster-api" {= version}
   "lwt"
-  "capnp-rpc-unix" {>= "0.7.0"}
+  "capnp-rpc-unix" {>= "0.8.0"}
   "logs"
   "fmt"
   "conf-libev"
