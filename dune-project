@@ -13,7 +13,7 @@
  (synopsis "Cap'n Proto API for OCluster")
  (depends
   lwt
-  (capnp-rpc-lwt (>= 0.7.0))
+  (capnp-rpc-lwt (>= 0.8.0))
   fmt
   (ocaml (>= 4.10.0))
 ))
@@ -24,7 +24,7 @@
  (depends
   (ocluster-api (= :version))
   lwt
-  (capnp-rpc-unix (>= 0.7.0))
+  (capnp-rpc-unix (>= 0.8.0))
   logs
   fmt
   conf-libev

@@ -92,7 +92,7 @@ module Op = struct
       conn.sched
 
   (* This is called by [Current.Job] once the confirmation threshold allows the job to be submitted. *)
-  let submit ~job ~pool ~action ~cache_hint ?src t ~priority ~switch =
+  let submit ~job ~pool ~action ~cache_hint ?src t ~priority ~switch:_ =
     let ticket_ref = ref None in
     let cancel () =
       match !ticket_ref with
@@ -111,22 +111,17 @@ module Op = struct
         | `Auto -> priority = `High
       in
       let ticket = Cluster_api.Submission.submit ~urgent ?src sched ~pool ~action ~cache_hint in
-      ticket_ref := Some ticket;
-      Current.Switch.add_hook_or_exec switch (fun () ->
-          match !ticket_ref with
-          | None -> Lwt.return_unit
-          | Some ticket -> Capability.dec_ref ticket; ticket_ref := None; Lwt.return_unit
-        ) >>= fun () ->
       let build_job = Cluster_api.Ticket.job ticket in
+      ticket_ref := Some ticket;        (* Allow the user to cancel it now. *)
       Capability.wait_until_settled ticket >>= fun () ->
       Current.Job.log job "Job submitted to scheduler. Waiting for worker...";
       Capability.wait_until_settled build_job >>= fun () ->
-      !ticket_ref |> Option.iter Capability.dec_ref;
-      ticket_ref := None;  (* Transfer ownership of build_job to caller. *)
+      ticket_ref := None;
+      Capability.dec_ref ticket;
+      Lwt.pause () >>= fun () ->
       match Capability.problem build_job with
       | None -> Lwt.return build_job
       | Some err ->
-        Lwt.pause () >>= fun () ->
         if Capability.problem sched = None then (
           (* The job failed but we're still connected to the scheduler. Report the error. *)
           Lwt.fail_with (Fmt.strf "%a" Capnp_rpc.Exception.pp err)
@@ -159,6 +154,10 @@ module Op = struct
       | _ ->
         None
     in
+    begin match dockerfile with
+      | `Contents content -> Current.Job.write job (Fmt.strf "@.Dockerfile:@.@.\o033[34m%s\o033[0m@.@." content)
+      | `Path _ -> ()
+    end;
     let action = Cluster_api.Submission.docker_build ?push_to ~options dockerfile in
     let src = single_repo src in
     let cache_hint =
