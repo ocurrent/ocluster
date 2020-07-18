@@ -48,7 +48,7 @@ type t = {
     src:string ->
     options:Cluster_api.Docker.Spec.options ->
     [ `Contents of string | `Path of string ] ->
-    (string, Process.error) Lwt_result.t;
+    (string, [`Cancelled | `Msg of string]) Lwt_result.t;
   prune_threshold : float option;      (* docker-prune when free space is lower than this (percentage) *)
   registration_service : Cluster_api.Raw.Client.Registration.t Sturdy_ref.t;
   capacity : int;
@@ -75,14 +75,14 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; user; pass
     Lwt_mutex.with_lock docker_push_lock @@ fun () ->
     Lwt_io.with_temp_dir ~prefix:"build-worker-" ~suffix:"-docker" @@ fun config_dir ->
     let docker args = "docker" :: "--config" :: config_dir :: args in
-    Process.exec ~switch ~log ~stdin:password ~stderr:`Keep @@ docker ["login"; "--password-stdin"; "--username"; user] >>= function
+    let login_cmd = docker ["login"; "--password-stdin"; "--username"; user] in
+    Process.exec ~label:"docker-login" ~switch ~log ~stdin:password ~stderr:`Keep login_cmd >>= function
     | Error (`Exit_code _) ->
       Lwt_result.fail (`Msg (Fmt.strf "Failed to docker-login as %S" user))
-    | Error _ as e ->
-      Lwt.return e
+    | Error (`Msg _ | `Cancelled as e) -> Lwt_result.fail e
     | Ok () ->
-      Process.exec ~switch ~log @@ docker ["tag"; "--"; hash; target] >>!= fun () ->
-      Process.exec ~switch ~log @@ docker ["push"; "--"; target] >>!= fun () ->
+      Process.check_call ~label:"docker-tag" ~switch ~log @@ docker ["tag"; "--"; hash; target] >>!= fun () ->
+      Process.check_call ~label:"docker-push" ~switch ~log @@ docker ["push"; "--"; target] >>!= fun () ->
       Lwt_process.pread_line ("", [| "docker"; "image"; "inspect"; "-f"; "{{ range index .RepoDigests }}{{ . }} {{ end }}"; "--"; target |]) >>= function
       | "" -> Lwt_result.fail (`Msg "Failed to read RepoDigests for newly-pushed image!")
       | ids ->
@@ -120,10 +120,6 @@ let build ~switch ~log t descr =
     Log_data.write log "Job succeeded\n";
     Log.info (fun f -> f "Job succeeded");
     Ok output
-  | Error (`Exit_code n) ->
-    Log_data.write log (Fmt.strf "Docker build exited with status %d\n" n);
-    Log.info (fun f -> f "Job failed");
-    Error (`Msg "Build failed")
   | Error (`Msg msg) ->
     Log_data.write log (msg ^ "\n");
     Log.info (fun f -> f "Job failed: %s" msg);
@@ -285,7 +281,7 @@ let docker_build ~switch ~log ~src ~options dockerfile =
        in
        Logs.info (fun f -> f "docker build @[%a@]" Fmt.(list ~sep:sp (quote string)) args);
        let env = if buildkit then Some buildkit_env else None in
-       Process.exec ?env ~switch ~log ("docker" :: "build" :: args) >>!= fun () ->
+       Process.check_call ~label:"docker-build" ?env ~switch ~log ("docker" :: "build" :: args) >>!= fun () ->
        Lwt_result.return (String.trim (read_file iid_file))
     )
     (fun () ->

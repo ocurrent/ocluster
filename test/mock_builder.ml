@@ -1,6 +1,6 @@
 open Lwt.Infix
 
-type outcome = (string, Cluster_worker.Process.error) result
+type outcome = (string, [`Cancelled | `Msg of string]) result
 
 type t = {
   replies : (string, (outcome Lwt.t * outcome Lwt.u)) Hashtbl.t;
