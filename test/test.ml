@@ -84,10 +84,10 @@ let fails () =
   Lwt_switch.with_switch @@ fun switch ->
   Mock_builder.run ~switch builder (Mock_network.sturdy registry);
   let result = submit submission_service "example2" in
-  Mock_builder.set builder "example2" @@ Error (`Exit_code 1);
+  Mock_builder.set builder "example2" @@ Error (`Msg "Build failed!");
   result >>= fun result ->
   Logs.app (fun f -> f "Result: %S" result);
-  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example2\nDocker build exited with status 1\nFAILED\n" result;
+  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example2\nBuild failed!\nFAILED\n" result;
   Lwt.return_unit
 
 (* The job is submitted before any builders are registered. *)

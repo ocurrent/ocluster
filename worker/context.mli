@@ -19,7 +19,7 @@
 val with_build_context :
   log:Log_data.t ->
   Cluster_api.Raw.Reader.JobDescr.t ->
-  (string -> ('a, Process.error) Lwt_result.t) ->
-  ('a, Process.error) Lwt_result.t
+  (string -> ('a, [`Cancelled | `Msg of string]) Lwt_result.t) ->
+  ('a, [`Cancelled | `Msg of string]) Lwt_result.t
 (** [with_build_context ~log descr fn] runs [fn dir], where [dir] is a
     temporary directory containing the requested build context. *)

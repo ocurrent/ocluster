@@ -63,14 +63,14 @@ module Repo = struct
     begin
       if dir_exists local_repo then Lwt_result.return ()
       else (
-        Process.exec ~switch ~log ["git"; "init"; local_repo] >>!= fun () ->
-        let config k v = Process.exec ~switch ~log ["git"; "-C"; local_repo; "config"; "--add"; k; v] in
+        Process.check_call ~label:"git-init" ~switch ~log ["git"; "init"; local_repo] >>!= fun () ->
+        let config k v = Process.check_call ~label:"git-config" ~switch ~log ["git"; "-C"; local_repo; "config"; "--add"; k; v] in
         config "remote.origin.url" (Uri.to_string t.url) >>!= fun () ->
         config "remote.origin.fetch" "+refs/heads/*:refs/remotes/origin/*" >>!= fun () ->
         config "remote.origin.fetch" "+refs/pull/*:refs/remotes/pull/*"
       )
     end >>!= fun () ->
-    Process.exec ~switch ~log ["git"; "-C"; local_repo; "fetch"; "-q"; "--update-head-ok"; "origin"]
+    Process.check_call ~label:"git-fetch" ~switch ~log ["git"; "-C"; local_repo; "fetch"; "-q"; "--update-head-ok"; "origin"]
 end
 
 let repos = Hashtbl.create 1000
@@ -107,19 +107,19 @@ let build_context ~log ~tmpdir descr =
           | false -> Repo.fetch ~switch ~log repository
         end >>!= fun () ->
         let clone = Repo.local_copy repository in
-        Process.exec ~switch ~log ["git"; "-C"; clone; "reset"; "--hard"; Hash.to_hex c] >>!= fun () ->
-        Process.exec ~switch ~log ["git"; "-C"; clone; "clean"; "-fdx"] >>!= fun () ->
-        let merge c = Process.exec ~switch ~log ["git"; "-C"; clone; "merge"; Hash.to_hex c] in
+        Process.check_call ~label:"git-reset" ~switch ~log ["git"; "-C"; clone; "reset"; "--hard"; Hash.to_hex c] >>!= fun () ->
+        Process.check_call ~label:"git-clean" ~switch ~log ["git"; "-C"; clone; "clean"; "-fdx"] >>!= fun () ->
+        let merge c = Process.check_call ~label:"git-merge" ~switch ~log ["git"; "-C"; clone; "merge"; Hash.to_hex c] in
         cs |> lwt_result_list_iter_s merge >>!= fun () ->
-        Process.exec ~switch ~log ["git"; "-C"; clone; "submodule"; "init"] >>!= fun () ->
-        Process.exec ~switch ~log ["git"; "-C"; clone; "submodule"; "update"] >>!= fun () ->
+        Process.check_call ~label:"git-submodule-init" ~switch ~log ["git"; "-C"; clone; "submodule"; "init"] >>!= fun () ->
+        Process.check_call ~label:"git-submodule-update" ~switch ~log ["git"; "-C"; clone; "submodule"; "update"] >>!= fun () ->
         Sys.readdir clone |> Array.iter (function
             | ".git" -> ()
             | name -> Unix.rename (clone / name) (tmpdir / name)
           );
         if include_git descr then (
-          Process.exec ~switch ~log ["cp"; "-a"; clone / ".git"; tmpdir / ".git"] >>!= fun () ->
-          Process.exec ~switch ~log ["git"; "-C"; tmpdir; "config"; "--unset"; "remote.origin.fetch"; "/pull/"] >>!= fun () ->
+          Process.check_call ~label:"cp .git" ~switch ~log ["cp"; "-a"; clone / ".git"; tmpdir / ".git"] >>!= fun () ->
+          Process.check_call ~label:"git-config" ~switch ~log ["git"; "-C"; tmpdir; "config"; "--unset"; "remote.origin.fetch"; "/pull/"] >>!= fun () ->
           Lwt_result.return ()
         ) else (
           Lwt_result.return ()
