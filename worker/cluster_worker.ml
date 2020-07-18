@@ -279,7 +279,7 @@ let docker_build ~switch ~log ~src ~options dockerfile =
          @ (if squash then ["--squash"] else [])
          @ ["--pull"; "--iidfile"; iid_file; "-f"; dockerpath; src]
        in
-       Logs.info (fun f -> f "docker build @[%a@]" Fmt.(list ~sep:sp (quote string)) args);
+       Log.info (fun f -> f "docker build @[%a@]" Fmt.(list ~sep:sp (quote string)) args);
        let env = if buildkit then Some buildkit_env else None in
        Process.check_call ~label:"docker-build" ?env ~switch ~log ("docker" :: "build" :: args) >>!= fun () ->
        Lwt_result.return (String.trim (read_file iid_file))

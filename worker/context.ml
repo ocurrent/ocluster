@@ -70,6 +70,8 @@ module Repo = struct
         config "remote.origin.fetch" "+refs/pull/*:refs/remotes/pull/*"
       )
     end >>!= fun () ->
+    (* This reset might avoid `fatal: cannot chdir to '../../../ocurrent': No such file or directory` errors *)
+    Process.check_call ~label:"git-reset" ~switch ~log ["git"; "-C"; local_repo; "reset"; "--hard"] >>!= fun () ->
     Process.check_call ~label:"git-fetch" ~switch ~log ["git"; "-C"; local_repo; "fetch"; "-q"; "--update-head-ok"; "origin"]
 end
 
