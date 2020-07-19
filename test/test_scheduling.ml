@@ -370,6 +370,7 @@ let test_case name fn =
       if Astring.String.is_prefix ~affix:"scheduler_pool_" line then (
         match Astring.String.cut ~sep:"} " line with
         | None -> Fmt.failwith "Bad metrics line: %S" line
+        | Some (key, _) when Astring.String.is_infix ~affix:"_total{" key -> ()
         | Some (key, value) ->
           if float_of_string value <> 0.0 then
             Fmt.failwith "Non-zero metric after test: %s=%s" key value
