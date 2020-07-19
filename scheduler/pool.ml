@@ -3,7 +3,7 @@ open Lwt.Infix
 module Metrics = struct
   open Prometheus
 
-  let namespace = "scheduler"
+  let namespace = "ocluster"
   let subsystem = "pool"
 
   let jobs_submitted =

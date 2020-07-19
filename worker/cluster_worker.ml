@@ -7,7 +7,7 @@ module Process = Process
 module Metrics = struct
   open Prometheus
 
-  let namespace = "scheduler"
+  let namespace = "ocluster"
   let subsystem = "worker"
 
   let jobs_accepted =
