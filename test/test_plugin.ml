@@ -29,16 +29,17 @@ let test_pipeline =
   let** make_pipeline = SVar.get selected in
   make_pipeline ()
 
+let engine_cond = Lwt_condition.create ()       (* Fires after each update *)
+
 let setup ~pipeline fn =
   with_sched @@ fun ~submission_service ~registry ->
   let submission_service, break = Mock_network.remote_breakable submission_service in
   let t = Current_ocluster.v submission_service in
   let state = ref (Error (`Msg "(init)")) in
-  let cond = Lwt_condition.create () in
   SVar.set selected (Ok (fun () -> pipeline t));
   let trace ~next:_ (results : Current.Engine.results) =
     state := results.value;
-    Lwt_condition.broadcast cond ();
+    Lwt_condition.broadcast engine_cond ();
     if results.value = Ok () then raise Exit;
     Lwt.return_unit
   in
@@ -55,7 +56,7 @@ let setup ~pipeline fn =
     );
   let rec await_result () =
     match !state with
-    | Error (`Active _) -> Lwt_condition.wait cond >>= await_result
+    | Error (`Active _) -> Lwt_condition.wait engine_cond >>= await_result
     | Ok _ | Error (`Msg _) as x -> Lwt.return x
   in
   fn ~registry ~await_result ~break >>= fun () ->
@@ -107,11 +108,13 @@ let two_jobs () =
                   (Current_term.Output.pp (Fmt.unit "()")) b2
               );
     match b1, b2 with
-    | Ok (), Error _
-    | Error _, Ok () -> Current.return ()
+    | Ok (), Error (`Msg _)
+    | Error (`Msg _), Ok () -> Current.return ()
+    | Error (`Msg x), Error (`Msg y) -> Current.fail (Fmt.strf "%s,%s" x y)
     | _ -> Current.active `Running
   in
   setup ~pipeline @@ fun ~registry ~await_result ~break:_ ->
+  Gc.full_major ();
   let builder = Mock_builder.create () in
   Lwt_switch.with_switch @@ fun switch ->
   Mock_builder.run_remote builder ~network_switch:switch ~builder_switch:switch registry;
@@ -119,12 +122,20 @@ let two_jobs () =
               Mock_builder.await builder "spec2"]
   >>= fun _ ->
   let jobs = Current.Job.jobs () |> Current.Job.Map.bindings in
-  let _, started_job = List.find (fun (_, j) -> not (Lwt.is_sleeping (Current.Job.start_time j))) jobs in
+  let is_queued j = Lwt.is_sleeping (Current.Job.start_time j) in
+  let rec wait () =
+    match List.find_opt (fun (_, j) -> not (is_queued j)) jobs with
+    | Some (_, j) -> Lwt.return j
+    | None -> Lwt_condition.wait engine_cond >>= wait
+  in
+  wait () >>= fun started_job ->
+  Lwt.pause () >>= fun () ->
+  Gc.full_major ();
   Current.Job.cancel started_job "Cancelled by user";
   Mock_builder.set builder "spec1" @@ Ok "hash1";
   Mock_builder.set builder "spec2" @@ Ok "hash2";
   await_result () >>= fun x ->
-  Alcotest.(check (result pass reject)) "Pipeline successful" (Ok ()) x;
+  Alcotest.(check pipeline_result) "Pipeline successful" (Ok ()) x;
   Lwt.return_unit
 
 let test_case name fn =
