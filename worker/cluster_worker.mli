@@ -5,7 +5,7 @@ val run :
                  src:string ->
                  options:Cluster_api.Docker.Spec.options ->
                  [ `Contents of string | `Path of string ] ->
-                 (string, Process.error) Lwt_result.t) ->
+                 (string, [`Cancelled | `Msg of string]) Lwt_result.t) ->
   ?allow_push:string list ->
   ?prune_threshold:float ->
   capacity:int ->
