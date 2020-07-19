@@ -174,7 +174,12 @@ let rec maybe_prune t queue =
     drain () >>= fun () ->
     Log.info (fun f -> f "All jobs finished. Pruning...");
     Prometheus.Summary.time Metrics.docker_prune_time Unix.gettimeofday
-      (fun () -> Lwt_process.exec ("", [| "docker"; "system"; "prune"; "-af" |]))
+      (fun () ->
+         Lwt_process.exec ("", [| "docker"; "system"; "prune"; "-af" |]) >>= function
+         | Unix.WEXITED 0 ->
+           Lwt_process.exec ("", [| "docker"; "builder"; "prune"; "-af" |])
+         | e -> Lwt.return e
+      )
     >>= function
     | Unix.WEXITED 0 ->
       begin
