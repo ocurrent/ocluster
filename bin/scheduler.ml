@@ -148,6 +148,6 @@ let listen_prometheus =
 let cmd =
   let doc = "Manage build workers" in
   Term.(const main $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir $ pools $ listen_prometheus $ state_dir),
-  Term.info "build-scheduler" ~doc
+  Term.info "ocluster-scheduler" ~doc ~version:Version.t
 
 let () = Term.(exit @@ eval cmd)
