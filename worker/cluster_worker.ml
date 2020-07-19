@@ -10,6 +10,22 @@ module Metrics = struct
   let namespace = "scheduler"
   let subsystem = "worker"
 
+  let jobs_accepted =
+    let help = "Number of jobs accepted in total" in
+    Counter.v ~help ~namespace ~subsystem "jobs_accepted_total"
+
+  let job_time =
+    let help = "Time jobs ran for" in
+    Summary.v_label ~label_name:"result" ~help ~namespace ~subsystem "job_time_seconds"
+
+  let docker_push_time =
+    let help = "Time uploading to Docker Hub" in
+    Summary.v ~help ~namespace ~subsystem "docker_push_time_seconds"
+
+  let docker_prune_time =
+    let help = "Time spent pruning Docker cache" in
+    Summary.v ~help ~namespace ~subsystem "docker_prune_time_seconds"
+
   let running_jobs =
     let help = "Number of jobs currently running" in
     Gauge.v ~help ~namespace ~subsystem "running_jobs"
@@ -109,21 +125,23 @@ let build ~switch ~log t descr =
     t.build ~switch ~log ~src ~options dockerfile >>!= fun hash ->
     match push_to with
     | None -> Lwt_result.return ""
-    | Some target -> docker_push ~switch ~log t hash target
+    | Some target ->
+      Prometheus.Summary.time Metrics.docker_push_time Unix.gettimeofday
+        (fun () -> docker_push ~switch ~log t hash target)
   end
   >|= function
   | Error `Cancelled ->
     Log_data.write log "Job cancelled\n";
     Log.info (fun f -> f "Job cancelled");
-    Error (`Msg "Build cancelled")
+    Error (`Msg "Build cancelled"), "cancelled"
   | Ok output ->
     Log_data.write log "Job succeeded\n";
     Log.info (fun f -> f "Job succeeded");
-    Ok output
+    Ok output, "ok"
   | Error (`Msg msg) ->
     Log_data.write log (msg ^ "\n");
     Log.info (fun f -> f "Job failed: %s" msg);
-    Error (`Msg "Build failed")
+    Error (`Msg "Build failed"), "fail"
 
 let check_docker_partition t =
   match t.prune_threshold with
@@ -155,7 +173,9 @@ let rec maybe_prune t queue =
     in
     drain () >>= fun () ->
     Log.info (fun f -> f "All jobs finished. Pruning...");
-    Lwt_process.exec ("", [| "docker"; "system"; "prune"; "-af" |]) >>= function
+    Prometheus.Summary.time Metrics.docker_prune_time Unix.gettimeofday
+      (fun () -> Lwt_process.exec ("", [| "docker"; "system"; "prune"; "-af" |]))
+    >>= function
     | Unix.WEXITED 0 ->
       begin
         check_docker_partition t >>= function
@@ -196,19 +216,25 @@ let loop ~switch t queue =
         pop >>= fun request ->
         t.in_use <- t.in_use + 1;
         Prometheus.Gauge.set Metrics.running_jobs (float_of_int t.in_use);
+        Prometheus.Counter.inc_one Metrics.jobs_accepted;
         Lwt.async (fun () ->
             Lwt.finalize
               (fun () ->
+                 let t0 = Unix.gettimeofday () in
                  Lwt.try_bind
                    (fun () ->
                       Log_data.info log "Building on %s" t.name;
                       build ~switch ~log t request
                    )
-                   (fun outcome ->
+                   (fun (outcome, metric_label) ->
+                      let t1 = Unix.gettimeofday () in
+                      Prometheus.Summary.observe (Metrics.job_time metric_label) (t1 -. t0);
                       Log_data.close log;
                       Lwt.wakeup set_outcome outcome;
                       Lwt.return_unit)
                    (fun ex ->
+                      let t1 = Unix.gettimeofday () in
+                      Prometheus.Summary.observe (Metrics.job_time "error") (t1 -. t0);
                       Log.warn (fun f -> f "Build failed: %a" Fmt.exn ex);
                       Log_data.write log (Fmt.strf "Uncaught exception: %a@." Fmt.exn ex);
                       Log_data.close log;
