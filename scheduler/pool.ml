@@ -3,8 +3,20 @@ open Lwt.Infix
 module Metrics = struct
   open Prometheus
 
-  let namespace = "scheduler"
+  let namespace = "ocluster"
   let subsystem = "pool"
+
+  let jobs_submitted =
+    let help = "Number of jobs submitted to the pool" in
+    Counter.v_label ~label_name:"pool" ~help ~namespace ~subsystem "jobs_submitted_total"
+
+  let jobs_cancelled =
+    let help = "Number of jobs cancelled while queued" in
+    Counter.v_label ~label_name:"pool" ~help ~namespace ~subsystem "jobs_cancelled_total"
+
+  let jobs_accepted =
+    let help = "Number of jobs accepted by workers" in
+    Counter.v_label ~label_name:"pool" ~help ~namespace ~subsystem "jobs_accepted_total"
 
   let workers_connected =
     let help = "Number of connected workers" in
@@ -114,20 +126,21 @@ module Make (Item : S.ITEM) = struct
       in
       queue, Prometheus.Gauge.labels Metrics.incoming_queue_length [pool; priority]
 
-    let cancel ~metric node () =
+    let cancel ~metric ~pool node () =
       Lwt_dllist.remove node;
+      Prometheus.Counter.inc_one (Metrics.jobs_cancelled pool);
       Prometheus.Gauge.dec_one metric
 
     let enqueue ~pool ticket t =
       let queue, metric = choose_queue ~ticket ~pool t in
       let node = Lwt_dllist.add_l ticket queue in
-      set_cancel ticket (cancel ~metric node);
+      set_cancel ticket (cancel ~metric ~pool node);
       Prometheus.Gauge.inc_one metric
 
     let push_back ~pool ticket t =
       let queue, metric = choose_queue ~ticket ~pool t in
       let node = Lwt_dllist.add_r ticket queue in
-      set_cancel ticket (cancel ~metric node);
+      set_cancel ticket (cancel ~metric ~pool node);
       Prometheus.Gauge.inc_one metric
 
     let dequeue_opt ~pool t =
@@ -181,6 +194,7 @@ module Make (Item : S.ITEM) = struct
     set_cancel ticket (fun () ->
         Lwt_dllist.remove node;
         Prometheus.Gauge.dec_one metric;
+        Prometheus.Counter.inc_one (Metrics.jobs_cancelled worker.parent.pool);
         worker.workload <- worker.workload - cost;
       )
 
@@ -252,6 +266,7 @@ module Make (Item : S.ITEM) = struct
           let item = ticket.item in
           Log.info (fun f -> f "%S takes %a from its local queue" worker.name Item.pp item);
           mark_cached ticket.item worker;
+          Prometheus.Counter.inc_one (Metrics.jobs_accepted t.pool);
           Lwt_result.return ticket.item
         | None ->
           (* Try the global queue instead. *)
@@ -277,6 +292,7 @@ module Make (Item : S.ITEM) = struct
                 let item = ticket.item in
                 Log.info (fun f -> f "%S takes %a from the main queue" worker.name Item.pp item);
                 mark_cached item worker;
+                Prometheus.Counter.inc_one (Metrics.jobs_accepted t.pool);
                 Lwt_result.return item
               )
     in
@@ -339,6 +355,7 @@ module Make (Item : S.ITEM) = struct
       )
 
   let submit ~urgent t item =
+    Prometheus.Counter.inc_one (Metrics.jobs_submitted t.pool);
     let ticket = { item; urgent; cancel = None } in
     add t ticket;
     ticket
