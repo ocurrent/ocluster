@@ -315,6 +315,6 @@ let default_cmd =
   let doc = "a command-lint client for the build-scheduler" in
   let sdocs = Manpage.s_common_options in
   Term.(ret (const (`Help (`Pager, None)))),
-  Term.info "build-client" ~doc ~sdocs
+  Term.info "ocluster-client" ~doc ~sdocs ~version:Version.t
 
 let () = Term.(exit @@ eval_choice default_cmd cmds)
