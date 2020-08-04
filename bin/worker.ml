@@ -59,6 +59,6 @@ let allow_push =
 let cmd =
   let doc = "Run a build worker" in
   Term.(const main $ connect_addr $ capacity $ worker_name $ allow_push $ prune_threshold),
-  Term.info "build-worker" ~doc
+  Term.info "ocluster-worker" ~doc ~version:Version.t
 
 let () = Term.(exit @@ eval cmd)
