@@ -30,8 +30,8 @@ let rec stream t ~start =
     let chunk = min avail max_chunk_size in
     let next = Int64.add start chunk in
     let start = Int64.to_int start in
-    let avail = Int64.to_int avail in
-    Lwt.return (Buffer.sub t.data start avail, next)
+    let chunk = Int64.to_int chunk in
+    Lwt.return (Buffer.sub t.data start chunk, next)
   )
 
 let write t data =
