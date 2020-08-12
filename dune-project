@@ -23,6 +23,7 @@
  (name ocluster)
  (synopsis "Distribute build jobs to workers")
  (depends
+  dune-build-info
   (ocluster-api (= :version))
   lwt
   (capnp-rpc-unix (>= 0.8.0))
