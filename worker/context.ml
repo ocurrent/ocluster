@@ -92,8 +92,9 @@ let rec lwt_result_list_iter_s f = function
     lwt_result_list_iter_s f xs
 
 let include_git descr =
-  let Docker_build db = Cluster_api.Submission.get_action descr in
-  db.options.include_git
+  match Cluster_api.Submission.get_action descr with
+  | Docker_build db -> db.options.include_git
+  | Obuilder_build _ -> false
 
 let build_context ~log ~tmpdir descr =
   match Cluster_api.Raw.Reader.JobDescr.commits_get_list descr |> List.map Hash.of_hex with

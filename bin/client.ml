@@ -34,7 +34,29 @@ let run cap_path fn =
     Printf.eprintf "%s\n%!" msg;
     exit 1
 
-let submit submission_path pool dockerfile repository commits cache_hint urgent push_to options =
+type submit_options_common = {
+  submission_path : string;
+  pool : string;
+  repository : string option;
+  commits : string list;
+  cache_hint : string;
+  urgent : bool;
+}
+
+let get_action = function
+  | `Docker (dockerfile, push_to, options) ->
+    begin match dockerfile with
+      | `Context_path path -> Lwt.return (`Path path)
+      | `Local_path path ->
+        Lwt_io.(with_file ~mode:input) path (Lwt_io.read ?count:None) >|= fun data ->
+        `Contents data
+    end >|= fun dockerfile ->
+    Cluster_api.Submission.docker_build ?push_to ~options dockerfile
+  | `Obuilder path ->
+    Lwt_io.(with_file ~mode:input) path (Lwt_io.read ?count:None) >|= fun spec ->
+    Cluster_api.Submission.obuilder_build spec
+
+let submit { submission_path; pool; repository; commits; cache_hint; urgent } spec =
   let src =
     match repository, commits with
     | None, [] -> None
@@ -43,13 +65,7 @@ let submit submission_path pool dockerfile repository commits cache_hint urgent 
     | Some repo, commits -> Some (repo, commits)
   in
   run submission_path @@ fun submission_service ->
-  begin match dockerfile with
-    | `Context_path path -> Lwt.return (`Path path)
-    | `Local_path path ->
-      Lwt_io.(with_file ~mode:input) path (Lwt_io.read ?count:None) >|= fun data ->
-      `Contents data
-  end >>= fun dockerfile ->
-  let action = Cluster_api.Submission.docker_build ?push_to ~options dockerfile in
+  get_action spec >>= fun action ->
   Capability.with_ref (Cluster_api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ?src) @@ fun ticket ->
   Capability.with_ref (Cluster_api.Ticket.job ticket) @@ fun job ->
   let result = Cluster_api.Job.result job in
@@ -131,6 +147,14 @@ let connect_addr =
     ~doc:"Path of .cap file from build-scheduler"
     ~docv:"ADDR"
     []
+
+let local_obuilder =
+  Arg.required @@
+  Arg.opt Arg.(some file) None @@
+  Arg.info
+    ~doc:"Path of the local OBuilder spec to submit"
+    ~docv:"PATH"
+    ["local-file"]
 
 let local_dockerfile =
   Arg.value @@
@@ -269,10 +293,33 @@ let build_options =
   in
   Term.(pure make $ build_args $ squash $ buildkit $ include_git)
 
-let submit =
-  let doc = "Submit a build to the scheduler" in
-  Term.(const submit $ connect_addr $ pool $ dockerfile $ repo $ commits $ cache_hint $ urgent $ push_to $ build_options),
-  Term.info "submit" ~doc
+let submit_options_common =
+  let make submission_path pool repository commits cache_hint urgent =
+    { submission_path; pool; repository; commits; cache_hint; urgent }
+  in
+  Term.(pure make $ connect_addr $ pool $ repo $ commits $ cache_hint $ urgent)
+
+let submit_docker_options =
+  let make dockerfile push_to build_options =
+    `Docker (dockerfile, push_to, build_options)
+  in
+  Term.(pure make $ dockerfile $ push_to $ build_options)
+
+let submit_docker =
+  let doc = "Submit a Docker build to the scheduler" in
+  Term.(const submit $ submit_options_common $ submit_docker_options),
+  Term.info "submit-docker" ~doc
+
+let submit_obuilder_options =
+  let make spec =
+    `Obuilder spec
+  in
+  Term.(pure make $ local_obuilder)
+
+let submit_obuilder =
+  let doc = "Submit an OBuilder build to the scheduler" in
+  Term.(const submit $ submit_options_common $ submit_obuilder_options),
+  Term.info "submit-obuilder" ~doc
 
 let pool_pos =
   Arg.pos 1 Arg.(some string) None @@
@@ -309,7 +356,7 @@ let update =
   Term.(const update $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "update" ~doc
 
-let cmds = [submit; show; pause; unpause; update]
+let cmds = [submit_docker; submit_obuilder; show; pause; unpause; update]
 
 let default_cmd =
   let doc = "a command-lint client for the build-scheduler" in
