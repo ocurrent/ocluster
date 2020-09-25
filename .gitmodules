@@ -1,0 +1,3 @@
+[submodule "obuilder"]
+	path = obuilder
+	url = https://github.com/ocurrent/obuilder.git

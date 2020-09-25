@@ -20,6 +20,8 @@ depends: [
   "prometheus-app"
   "cohttp-lwt-unix"
   "sqlite3"
+  "obuilder"
+  "mirage-crypto" {>= "0.8.5"}
   "ocaml" {>= "4.10.0"}
   "current_ocluster" {= version & with-test}
   "alcotest" {>= "1.0.0" & with-test}

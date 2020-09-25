@@ -36,9 +36,16 @@ struct DockerBuild {
   # If set, include the .git directory in the build context.
 }
 
+struct OBuilder {
+  spec @0 :Text;
+  # The contents of the OBuilder spec to build.
+}
+
 struct JobDescr {
-  dockerBuild @0 :DockerBuild;
-  # Note: wrap this field in "action :union { }" to add more action types later.
+  action :union {
+    dockerBuild @0 :DockerBuild;
+    obuilder    @4 :OBuilder;
+  }
 
   cacheHint @1 :Text;
   # Try to place jobs with the same cache_hint on the same node.

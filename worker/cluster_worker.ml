@@ -56,14 +56,18 @@ let read_file path =
 
 let min_reconnect_time = 10.0   (* Don't try to connect more than once per 10 seconds *)
 
+type job_spec = [ 
+  | `Docker of [ `Contents of string | `Path of string ] * Cluster_api.Docker.Spec.options
+  | `Obuilder of [ `Contents of string ]
+]
+
 type t = {
   name : string;
   build :
     switch:Lwt_switch.t ->
     log:Log_data.t ->
     src:string ->
-    options:Cluster_api.Docker.Spec.options ->
-    [ `Contents of string | `Path of string ] ->
+    job_spec ->
     (string, [`Cancelled | `Msg of string]) Lwt_result.t;
   prune_threshold : float option;      (* docker-prune when free space is lower than this (percentage) *)
   registration_service : Cluster_api.Raw.Client.Registration.t Sturdy_ref.t;
@@ -114,20 +118,28 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; user; pass
 let build ~switch ~log t descr =
   let module R = Cluster_api.Raw.Reader.JobDescr in
   let cache_hint = R.cache_hint_get descr in
-  let Docker_build { dockerfile; options; push_to } = Cluster_api.Submission.get_action descr in
-  Log.info (fun f ->
-      match dockerfile with
-      | `Contents contents -> f "Got request to build (%s):\n%s" cache_hint (String.trim contents)
-      | `Path path -> f "Got request to build %S (%s)" path cache_hint
-    );
-  begin
-    Context.with_build_context ~log descr @@ fun src ->
-    t.build ~switch ~log ~src ~options dockerfile >>!= fun hash ->
-    match push_to with
-    | None -> Lwt_result.return ""
-    | Some target ->
-      Prometheus.Summary.time Metrics.docker_push_time Unix.gettimeofday
-        (fun () -> docker_push ~switch ~log t hash target)
+  begin match Cluster_api.Submission.get_action descr with
+    | Docker_build { dockerfile; options; push_to } ->
+      Log.info (fun f ->
+          match dockerfile with
+          | `Contents contents -> f "Got request to build (%s):\n%s" cache_hint (String.trim contents)
+          | `Path path -> f "Got request to build %S (%s)" path cache_hint
+        );
+      begin
+        Context.with_build_context ~log descr @@ fun src ->
+        t.build ~switch ~log ~src (`Docker (dockerfile, options)) >>!= fun hash ->
+        match push_to with
+        | None -> Lwt_result.return ""
+        | Some target ->
+          Prometheus.Summary.time Metrics.docker_push_time Unix.gettimeofday
+            (fun () -> docker_push ~switch ~log t hash target)
+      end
+    | Obuilder_build { spec = `Contents spec } ->
+      Log.info (fun f ->
+          f "Got request to build (%s):\n%s" cache_hint (String.trim spec)
+        );
+      Context.with_build_context ~log descr @@ fun src ->
+      t.build ~switch ~log ~src (`Obuilder (`Contents spec))
   end
   >|= function
   | Error `Cancelled ->
@@ -288,37 +300,43 @@ let write_to_file ~path data =
   Lwt_io.(with_file ~mode:output) ~flags:Unix.[O_TRUNC; O_CREAT; O_RDWR] path @@ fun ch ->
   Lwt_io.write_from_string_exactly ch data 0 (String.length data)
 
-let docker_build ~switch ~log ~src ~options dockerfile =
-  let iid_file = Filename.temp_file "build-worker-" ".iid" in
-  Lwt.finalize
-    (fun () ->
-       begin
-         match dockerfile with
-         | `Contents contents ->
-           let path = src / "Dockerfile" in
-           write_to_file ~path contents >>= fun () ->
-           Lwt_result.return path
-         | `Path "-" -> Lwt_result.fail (`Msg "Path cannot be '-'!")
-         | `Path path ->
-           match check_contains ~path src with
-           | Ok path -> Lwt_result.return path
-           | Error e -> Lwt_result.fail e
-       end >>!= fun dockerpath ->
-       let { Cluster_api.Docker.Spec.build_args; squash; buildkit; include_git = _ } = options in
-       let args =
-         List.concat_map (fun x -> ["--build-arg"; x]) build_args
-         @ (if squash then ["--squash"] else [])
-         @ ["--pull"; "--iidfile"; iid_file; "-f"; dockerpath; src]
-       in
-       Log.info (fun f -> f "docker build @[%a@]" Fmt.(list ~sep:sp (quote string)) args);
-       let env = if buildkit then Some buildkit_env else None in
-       Process.check_call ~label:"docker-build" ?env ~switch ~log ("docker" :: "build" :: args) >>!= fun () ->
-       Lwt_result.return (String.trim (read_file iid_file))
-    )
-    (fun () ->
-       if Sys.file_exists iid_file then Lwt_unix.unlink iid_file
-       else Lwt.return_unit
-    )
+let default_build ?obuilder ~switch ~log ~src = function
+  | `Docker (dockerfile, options) ->
+    let iid_file = Filename.temp_file "build-worker-" ".iid" in
+    Lwt.finalize
+      (fun () ->
+         begin
+           match dockerfile with
+           | `Contents contents ->
+             let path = src / "Dockerfile" in
+             write_to_file ~path contents >>= fun () ->
+             Lwt_result.return path
+           | `Path "-" -> Lwt_result.fail (`Msg "Path cannot be '-'!")
+           | `Path path ->
+             match check_contains ~path src with
+             | Ok path -> Lwt_result.return path
+             | Error e -> Lwt_result.fail e
+         end >>!= fun dockerpath ->
+         let { Cluster_api.Docker.Spec.build_args; squash; buildkit; include_git = _ } = options in
+         let args =
+           List.concat_map (fun x -> ["--build-arg"; x]) build_args
+           @ (if squash then ["--squash"] else [])
+           @ ["--pull"; "--iidfile"; iid_file; "-f"; dockerpath; src]
+         in
+         Log.info (fun f -> f "docker build @[%a@]" Fmt.(list ~sep:sp (quote string)) args);
+         let env = if buildkit then Some buildkit_env else None in
+         Process.check_call ~label:"docker-build" ?env ~switch ~log ("docker" :: "build" :: args) >>!= fun () ->
+         Lwt_result.return (String.trim (read_file iid_file))
+      )
+      (fun () ->
+         if Sys.file_exists iid_file then Lwt_unix.unlink iid_file
+         else Lwt.return_unit
+      )
+  | `Obuilder (`Contents spec) ->
+    let spec = Obuilder.Spec.stage_of_sexp (Sexplib.Sexp.of_string spec) in
+    match obuilder with
+    | None -> Fmt.failwith "This worker is not configured for use with OBuilder!"
+    | Some builder -> Obuilder_build.build builder ~switch ~log ~spec ~src_dir:src
 
 let metrics = function
   | `Agent ->
@@ -394,17 +412,26 @@ let self_update t queue =
         Ok true
     )
 
-let run ?switch ?(docker_build=docker_build) ?(allow_push=[]) ?prune_threshold ~capacity ~name registration_service =
+let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~capacity ~name registration_service =
+  begin match obuilder with
+    | None -> Lwt.return_none
+    | Some config -> Obuilder_build.create config >|= Option.some
+  end >>= fun obuilder ->
   begin match prune_threshold with
     | None -> Log.info (fun f -> f "Prune threshold not set. Will not check for low disk-space!")
     | Some frac when frac < 0.0 || frac > 100.0 -> Fmt.invalid_arg "prune_threshold must be in the range 0 to 100"
     | Some _ -> ()
   end;
+  let build =
+    match build with
+    | Some x -> x
+    | None -> default_build ?obuilder
+  in
   let t = {
     name;
     prune_threshold;
     registration_service;
-    build = docker_build;
+    build;
     cond = Lwt_condition.create ();
     capacity;
     in_use = 0;

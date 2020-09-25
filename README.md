@@ -82,16 +82,20 @@ To submit a job, you need:
 
 - the `submission.cap` from the scheduler (granting you permission to submit jobs),
 - the name of the pool to use, and
-- a `Dockerfile` describing what to build.
+- a description of the job (depending on the job type; see below).
 
 There is a command-line client (for testing), and a plugin for use in [OCurrent](https://github.com/ocurrent/ocurrent) pipelines.
+
+### Docker jobs
+
+To submit a Docker job, you also need a `Dockerfile` describing what to build.
 
 You can run a job like this:
 
 ```
 echo -e "FROM busybox\nRUN date\n" > Dockerfile.test
 dune exec -- ocluster-client \
-  submit ./capnp-secrets/submission.cap \
+  submit-docker ./capnp-secrets/submission.cap \
   --cache-hint tutorial \
   --pool=linux-x86_64 \
   --local-dockerfile Dockerfile.test
@@ -109,7 +113,7 @@ and checkout the commit, using that as the Docker build context. e.g.
 
 ```
 dune exec -- ocluster-client \
-  submit ./capnp-secrets/submission.cap \
+  submit-docker ./capnp-secrets/submission.cap \
   --cache-hint tutorial \
   --pool=linux-x86_64 \
   --local-dockerfile Dockerfile \
@@ -122,6 +126,22 @@ specify `--local-dockerfile`).
 
 If you list multiple commit hashes then the builder will merge them together.
 This is useful for e.g. testing a pull request merged with the master branch's head.
+
+### OBuilder jobs
+
+This is similar to submitting a Docker job, except that you provide an [OBuilder][] spec file
+instead of a Dockerfile, e.g.
+
+```
+echo -e '((from busybox) (shell /bin/sh -c) (run (shell date)))' > OBuilder.test
+dune exec -- ocluster-client \
+  submit-obuilder ./capnp-secrets/submission.cap \
+  --cache-hint tutorial \
+  --pool=linux-x86_64 \
+  --local-file OBuilder.test
+```
+
+### Admin
 
 The client executable can also be used to manage the service using `admin.cap`.
 To get a list of the available pools:
@@ -226,3 +246,5 @@ The endpoints available are:
 
 The worker agent and worker host metrics are fetched over the workers Cap'n Proto connection, so there is no need
 to allow incoming network connections to the workers for this.
+
+[OBuilder]: https://github.com/ocurrent/obuilder
