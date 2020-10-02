@@ -57,18 +57,7 @@ let allow_push =
     ["allow-push"]
 
 module Obuilder_config = struct
-  let store_t =
-    let parse s =
-      match Astring.String.cut s ~sep:":" with
-      | Some ("zfs", pool) -> Ok (`Zfs pool)
-      | Some ("btrfs", path) -> Ok (`Btrfs path)
-      | _ -> Error (`Msg "Store must start with zfs: or btrfs:")
-    in
-    let pp f = function
-      | `Zfs pool -> Fmt.pf f "zfs:%s" pool
-      | `Btrfs path -> Fmt.pf f "btrfs:%s" path
-    in
-    Arg.conv (parse, pp)
+  let store_t = Arg.conv Obuilder.Store_spec.(of_string, pp)
 
   let v =
     Arg.value @@

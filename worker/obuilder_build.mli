@@ -1,6 +1,6 @@
 type t
 
-val create : [< `Btrfs of string | `Zfs of string ] -> t Lwt.t
+val create : Obuilder.Store_spec.t -> t Lwt.t
 
 val build : t ->
   switch:Lwt_switch.t ->
