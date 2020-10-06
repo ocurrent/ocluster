@@ -2,7 +2,7 @@ FROM ocurrent/opam:ubuntu-20.04-ocaml-4.10@sha256:be90dc531fa6693060f65576f587cd
 RUN sudo apt-get update && sudo apt-get install libev-dev capnproto m4 pkg-config libsqlite3-dev libgmp-dev -y --no-install-recommends
 RUN cd ~/opam-repository && git pull origin -q master && git reset --hard 3332c004db65ef784f67efdadc50982f000b718f && opam update
 COPY --chown=opam ocluster-api.opam ocluster.opam /src/
-COPY --chown=opam obuilder/obuilder.opam /src/obuilder/
+COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/
 WORKDIR /src
 RUN opam install -y --deps-only .
