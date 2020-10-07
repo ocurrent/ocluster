@@ -1,7 +1,5 @@
 # OCluster
 
-Status: **experimental**
-
 OCluster manages a pool of build workers.
 A build scheduler service accepts build jobs from clients and distributes them to worker machines using Cap'n Proto.
 Workers register themselves by connecting to the scheduler (and workers do not need to be able to accept incoming network connections).
@@ -225,9 +223,9 @@ therefore not be able to compromise its host (assuming it's running in a contain
 
 Users (with access to the submission endpoint) can only submit jobs, and should not
 be able to use this to compromise the scheduler or the worker services. Users should
-not be able to compromise the jobs of other users, unless the builders are configured
-to use Docker BuildKit, in which case poisoning of BuildKit's build caches may
-be possible.
+not be able to compromise the jobs of other users. However, if your job requests
+use of a shared cache then be aware that other jobs could write to that cache, so the
+contents may not be trustworthy.
 
 All communication uses TLS. The `.cap` files contain both the fingerprint of scheduler's key
 (allowing clients and builders to verify that they are connected to the real
