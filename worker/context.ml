@@ -114,8 +114,7 @@ let build_context ~log ~tmpdir descr =
         Process.check_call ~label:"git-clean" ~switch ~log ["git"; "-C"; clone; "clean"; "-fdx"] >>!= fun () ->
         let merge c = Process.check_call ~label:"git-merge" ~switch ~log ["git"; "-C"; clone; "merge"; Hash.to_hex c] in
         cs |> lwt_result_list_iter_s merge >>!= fun () ->
-        Process.check_call ~label:"git-submodule-init" ~switch ~log ["git"; "-C"; clone; "submodule"; "init"] >>!= fun () ->
-        Process.check_call ~label:"git-submodule-update" ~switch ~log ["git"; "-C"; clone; "submodule"; "update"] >>!= fun () ->
+        Process.check_call ~label:"git-submodule-update" ~switch ~log ["git"; "-C"; clone; "submodule"; "update"; "--init"; "--recursive"] >>!= fun () ->
         Sys.readdir clone |> Array.iter (function
             | ".git" -> ()
             | name -> Unix.rename (clone / name) (tmpdir / name)
