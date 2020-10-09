@@ -13,6 +13,7 @@ val run :
   ?allow_push:string list ->
   ?prune_threshold:float ->
   ?obuilder:[ `Zfs of string | `Btrfs of string ] ->
+  update:(unit -> (unit -> unit Lwt.t) Lwt.t) ->
   capacity:int ->
   name:string ->
   Cluster_api.Raw.Client.Registration.t Capnp_rpc_lwt.Sturdy_ref.t ->
@@ -22,6 +23,10 @@ val run :
     @param switch Turning this off causes the builder to exit (for unit-tests)
     @param build Used to override the default build action (for unit-tests)
     @param allow_push Docker repositories to which results can be pushed
+    @param update Function to run on "selfUpdate" requests. It should do any preparation (such as downloading new images),
+                  then return a function to do the actual update. This is so that the first part can run while the node
+                  finishes its remaining jobs. The second part is called once all jobs are finished.
+                  If the second function returns, the process will exit.
     @param prune_threshold Stop and run "docker system prune -af" if free-space is less than this percentage (0 to 100). *)
 
 module Process = Process

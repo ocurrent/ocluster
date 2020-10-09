@@ -36,10 +36,15 @@ module Make (Item : S.ITEM) : sig
   (** [set_active worker active] sets the worker's active flag.
       When set to [true], items can be added from the main queue.
       When changed to [false], any entries on the queue are pushed back to the
-      main queue, and the queue stops accepting new items. *)
+      main queue, and the queue stops accepting new items.
+      If the worker is marked as shutting down then this has no effect. *)
 
   val is_active : worker -> bool
   (** [is_active worker] returns [worker]'s active flag. *)
+
+  val shutdown : worker -> unit
+  (** [shutdown worker] marks [worker] as shutting down. The worker is
+      set to inactive, and cannot become active again. *)
 
   val connected_workers : t -> worker Astring.String.Map.t
   (** [connected_workers t] is the set of workers currently connected, whether active or not,

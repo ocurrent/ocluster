@@ -1,3 +1,5 @@
+open Lwt.Infix
+
 let () =
   Logging.init ()
 
@@ -5,11 +7,48 @@ let or_die = function
   | Ok x -> x
   | Error `Msg m -> failwith m
 
+let check_exit_status = function
+  | Unix.WEXITED 0 -> ()
+  | Unix.WEXITED x -> Fmt.failwith "Sub-process failed with exit code %d" x
+  | Unix.WSIGNALED x -> Fmt.failwith "Sub-process failed with signal %d" x
+  | Unix.WSTOPPED x -> Fmt.failwith "Sub-process stopped with signal %d" x
+
+module Self_update = struct
+  let service = "builder_agent"
+  let repo = "ocurrent/ocluster-worker"
+  let tag = "live"
+end
+
+let update_docker () =
+  let image_name = Printf.sprintf "%s:%s" Self_update.repo Self_update.tag in
+  Lwt_process.exec ("", [| "docker"; "pull"; image_name |]) >|= check_exit_status >>= fun () ->
+  Lwt_process.pread_line ("", [| "docker"; "image"; "inspect"; "-f";
+                                 "{{ range index .RepoDigests }}{{ . }} {{ end }}"; "--"; image_name |]) >|= fun new_repo_ids ->
+  let new_repo_ids = Astring.String.cuts ~sep:" " new_repo_ids in
+  let affix = Self_update.repo ^ "@" in
+  match List.find_opt (Astring.String.is_prefix ~affix) new_repo_ids with
+  | None ->
+    Fmt.failwith "No new image starts with %S!" affix
+  | Some id ->
+    Logs.info (fun f -> f "Latest service version is %s" id);
+    fun () ->
+      Lwt_process.exec ("", [| "docker"; "service"; "update"; "--image"; id; Self_update.service |])
+      >|= check_exit_status
+
+(* Respond to update requests by doing nothing, on the assumption that the
+   admin has updated the local package version. *)
+let update_normal () =
+  Lwt.return (fun () -> Lwt.return ())
+
 let main registration_path capacity name allow_push prune_threshold obuilder =
+  let update =
+    if Sys.file_exists "/.dockerenv" then update_docker
+    else update_normal
+  in
   Lwt_main.run begin
     let vat = Capnp_rpc_unix.client_only_vat () in
     let sr = Capnp_rpc_unix.Cap_file.load vat registration_path |> or_die in
-    Cluster_worker.run ~capacity ~name ~allow_push ?prune_threshold ?obuilder sr
+    Cluster_worker.run ~capacity ~name ~allow_push ?prune_threshold ?obuilder ~update sr
   end
 
 (* Command-line parsing *)

@@ -29,15 +29,11 @@ let local ~metrics ~self_update =
       | Undefined _ -> Service.fail "Unknown metrics source"
 
     method self_update_impl _params release_param_caps =
-      let open X.SelfUpdate in
       release_param_caps ();
       Service.return_lwt @@ fun () ->
       self_update () >|= function
       | Error (`Msg m) -> Error (`Capnp (Capnp_rpc.Error.exn "%s" m))
-      | Ok x ->
-        let response, results = Service.Response.create Results.init_pointer in
-        Results.updating_set results x;
-        Ok response
+      | Ok () -> Ok (Service.Response.create_empty ())
   end
 
 module X = Raw.Client.Worker
@@ -59,4 +55,7 @@ let metrics t ~source =
 let self_update t =
   let open X.SelfUpdate in
   let request = Capability.Request.create_no_args () in
-  Capability.call_for_value_exn t method_id request >|= Results.updating_get
+  Capability.call_for_unit t method_id request >|= function
+  | Ok () -> failwith "update reported success, but should have failed with a disconnection error!"
+  | Error (`Capnp (`Exception {ty = `Disconnected; _})) -> Ok ()
+  | Error _ as e -> e

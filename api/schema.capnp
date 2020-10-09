@@ -97,11 +97,10 @@ interface Worker {
   metrics    @0 (source :MetricsSource) -> (contentType :Text, data :Text);
   # Get Prometheus metrics.
 
-  selfUpdate @1 () -> (updating : Bool);
-  # Check for updates and restart if necessary.
-  # Returns false if there are no updates, or true if updates were found and
-  # the service is preparing to restart. This may take a while, as it will
-  # finish existing jobs first.
+  selfUpdate @1 () -> ();
+  # Finish any running jobs and then restart, running the latest version.
+  # This call does not return. Instead, it will fail when the jobs have
+  # finished and the worker reconnects.
 }
 
 interface Registration {
@@ -131,6 +130,9 @@ interface PoolAdmin {
   workers   @1 () -> (workers : List(WorkerInfo));
   worker    @3 (worker :Text) -> (worker :Worker);
   setActive @2 (worker :Text, active :Bool) -> ();
+
+  update    @4 (worker :Text) -> ();
+  # Drain worker, ask it to restart with the latest version, and return when it comes back.
 }
 
 interface Admin {

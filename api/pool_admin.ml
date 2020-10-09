@@ -6,7 +6,7 @@ type worker_info = {
   active : bool;
 }
 
-let local ~dump ~workers ~worker ~set_active =
+let local ~dump ~workers ~worker ~set_active ~update =
   let module X = Raw.Service.PoolAdmin in
   X.local @@ object
     inherit X.service
@@ -52,6 +52,12 @@ let local ~dump ~workers ~worker ~set_active =
         Results.worker_set results (Some cap);
         Capability.dec_ref cap;
         Service.return response
+
+    method update_impl params release_param_caps =
+      let open X.Update in
+      let name = Params.worker_get params in
+      release_param_caps ();
+      update name
   end
 
 module X = Raw.Client.PoolAdmin
@@ -85,3 +91,9 @@ let set_active t worker active =
   Params.worker_set params worker;
   Params.active_set params active;
   Capability.call_for_unit_exn t method_id request
+
+let update t worker =
+  let open X.Update in
+  let request, params = Capability.Request.create Params.init_pointer in
+  Params.worker_set params worker;
+  Capability.call_for_unit t method_id request

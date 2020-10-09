@@ -179,6 +179,7 @@ module Make (Item : S.ITEM) = struct
                     | `Inactive of unit Lwt.t * unit Lwt.u  (* ready/set_ready for resume *)
                     | `Finished ];
     mutable workload : int;     (* Total cost of items in worker's queue. *)
+    mutable shutdown : bool;    (* Worker is paused because it is shutting down. *)
   }
 
   let enqueue_node item queue metric =
@@ -320,6 +321,7 @@ module Make (Item : S.ITEM) = struct
         name;
         state = `Inactive (ready, set_ready);
         workload = 0;
+        shutdown = false;
       } in
       t.workers <- Worker_map.add name q t.workers;
       Prometheus.Gauge.inc_one (Metrics.workers_connected t.pool);
@@ -395,6 +397,8 @@ module Make (Item : S.ITEM) = struct
 
   let set_active w = function
     | false -> set_inactive w
+    | true when w.shutdown ->
+      Log.info (fun f -> f "Ignoring request to activate %S as it is shutting down" w.name);
     | true ->
       match w.state with
       | `Finished -> failwith "Queue already closed!"
@@ -404,6 +408,11 @@ module Make (Item : S.ITEM) = struct
         Prometheus.Gauge.dec_one (Metrics.workers_paused w.parent.pool);
         w.state <- `Running (Lwt_dllist.create (), Lwt_condition.create ());
         Lwt.wakeup set_ready ()
+
+  let shutdown w =
+    Log.info (fun f -> f "Worker %S is shutting down" w.name);
+    w.shutdown <- true;
+    set_active w false
 
   (* Worker [w] has disconnected. *)
   let release w =
@@ -451,13 +460,14 @@ module Make (Item : S.ITEM) = struct
     Fmt.pf f "%a(%d%s)" pp_ticket ticket cost urgent
 
   let pp_state f = function
-    | `Finished -> Fmt.string f "(finished)"
-    | `Inactive _ -> Fmt.string f "(inactive)"
-    | `Running (q, _) -> dump_queue pp_cost_item f q
+    | { state = `Finished; _ } -> Fmt.string f "(finished)"
+    | { shutdown = true; _ } -> Fmt.string f "(shutting down)"
+    | { state = `Inactive _; _ } -> Fmt.string f "(inactive)"
+    | { state = `Running (q, _); _} -> dump_queue pp_cost_item f q
 
   let dump_workers f x =
     let pp_item f (id, w) =
-      Fmt.pf f "@,%s (%d): @[%a@]" id w.workload pp_state w.state in
+      Fmt.pf f "@,%s (%d): @[%a@]" id w.workload pp_state w in
     Worker_map.bindings x
     |> Fmt.(list ~sep:nop) pp_item f
 
