@@ -2,6 +2,8 @@ open Astring
 open Lwt.Infix
 open Capnp_rpc_lwt
 
+let restart_timeout = 600.0   (* Maximum time to wait for a worker to reconnect after it disconnects. *)
+
 module Item = struct
   type t = {
     descr : Cluster_api.Queue.job_desc;
@@ -32,12 +34,14 @@ module Pool_api = struct
   type t = {
     pool : Pool.t;
     workers : (string, Cluster_api.Worker.t) Hashtbl.t;
+    cond : unit Lwt_condition.t;    (* Fires when a worker joins *)
   }
 
   let create ~name ~db =
     let pool = Pool.create ~name ~db in
     let workers = Hashtbl.create 10 in
-    { pool; workers }
+    let cond = Lwt_condition.create () in
+    { pool; workers; cond }
 
   let submit t ~urgent (descr : Cluster_api.Queue.job_desc) : Cluster_api.Ticket.t =
     let job, set_job = Capability.promise () in
@@ -75,6 +79,7 @@ module Pool_api = struct
       Pool.set_active q true;
       Log.info (fun f -> f "Registered new worker %S" name);
       Hashtbl.add t.workers name worker;
+      Lwt_condition.broadcast t.cond ();
       Cluster_api.Queue.local
         ~pop:(pop q)
         ~set_active:(Pool.set_active q)
@@ -110,7 +115,31 @@ module Pool_api = struct
       | Some worker -> Pool.set_active worker active; Ok ()
       | None -> Error `Unknown_worker
     in
-    Cluster_api.Pool_admin.local ~dump ~workers ~worker:(worker t) ~set_active
+    let update name =
+      match Astring.String.Map.find_opt name (Pool.connected_workers t.pool) with
+      | None -> Service.fail "Unknown worker"
+      | Some w ->
+        let cap = Option.get (worker t name) in
+        Pool.shutdown w;        (* Prevent any new items being assigned to it. *)
+        Service.return_lwt @@ fun () ->
+        Capability.with_ref cap @@ fun worker ->
+        Log.info (fun f -> f "Restarting %S" name);
+        Cluster_api.Worker.self_update worker >>= function
+        | Error _ as e -> Lwt.return e
+        | Ok () ->
+          Log.info (fun f -> f "Waiting for %S to reconnect after update" name);
+          let rec aux () =
+            match Astring.String.Map.find_opt name (Pool.connected_workers t.pool) with
+            | Some new_w when new_w != w -> Lwt_result.return (Service.Response.create_empty ())
+            | _ -> Lwt_condition.wait t.cond >>= aux
+          in
+          let timeout = 
+            Lwt_unix.sleep restart_timeout >|= fun () ->
+            Error (`Capnp (Capnp_rpc.Error.exn "Timeout waiting for worker to reconnect!"))
+          in
+          Lwt.pick [ aux (); timeout ]
+    in
+    Cluster_api.Pool_admin.local ~dump ~workers ~worker:(worker t) ~set_active ~update
 end
 
 type t = {

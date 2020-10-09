@@ -48,15 +48,19 @@ let docker_build t ~switch ~log ~src:_ = function
       Hashtbl.remove t.replies dockerfile;
       reply
 
+let update () =
+  Logs.info (fun f -> f "Mock download updates...");
+  Lwt.return (fun () -> failwith "Mock restart")
+
 let run ?(capacity=1) ?(name="worker-1") ~switch t registration_service =
-  let thread = Cluster_worker.run ~switch ~capacity ~name ~build:(docker_build t) registration_service in
+  let thread = Cluster_worker.run ~switch ~capacity ~name ~build:(docker_build t) ~update registration_service in
   Lwt.on_failure thread
     (fun ex -> if Lwt_switch.is_on switch then raise ex)
 
 let run_remote ~builder_switch ~network_switch ?(capacity=1) ?(name="worker-1") t registration_service =
   let thread =
     let registration_service = Mock_network.remote ~switch:network_switch registration_service in
-    Cluster_worker.run ~switch:builder_switch ~capacity ~name ~build:(docker_build t) registration_service
+    Cluster_worker.run ~switch:builder_switch ~capacity ~name ~build:(docker_build t) ~update registration_service
   in
   Lwt.on_failure thread
     (fun ex ->

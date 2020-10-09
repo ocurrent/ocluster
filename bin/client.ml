@@ -112,29 +112,45 @@ let set_active active cap_path pool worker =
         Fmt.(list ~sep:cut pp_worker_info) workers;
       exit 1
 
+let pp_worker_info f { Cluster_api.Pool_admin.name; _ } =
+  Fmt.string f name
+
 let update cap_path pool worker =
   run cap_path @@ fun admin_service ->
   Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
   match worker with
   | Some worker ->
     begin
-      Capability.with_ref (Cluster_api.Pool_admin.worker pool worker) @@ fun worker ->
-      Cluster_api.Worker.self_update worker >|= function
-      | false -> Fmt.pr "No updates found.@."
-      | true -> Fmt.pr "Updates found. Service will restart once jobs have finished.@."
+      Cluster_api.Pool_admin.update pool worker >|= function
+      | Ok () -> Fmt.pr "Restarted@."
+      | Error (`Capnp ex) ->
+        Fmt.pr "%a@." Capnp_rpc.Error.pp ex;
+        exit 1
     end
   | None ->
-    Cluster_api.Pool_admin.workers pool >|= function
+    Cluster_api.Pool_admin.workers pool >>= function
     | [] ->
       Fmt.epr "No workers connected to pool!@.";
       exit 1
-    | workers ->
-      let pp_worker_info f { Cluster_api.Pool_admin.name; active = _ } =
-        Fmt.pf f "%s" name
-      in
-      Fmt.epr "@[<v>Specify which worker you want to update. Candidates are:@,%a@."
-        Fmt.(list ~sep:cut pp_worker_info) workers;
-      exit 1
+    | w :: ws ->
+      Fmt.pr "Testing update on first worker in pool: %S@." w.name;
+      Cluster_api.Pool_admin.update pool w.name >>= function
+      | Error (`Capnp ex) ->
+        Fmt.pr "%a@." Capnp_rpc.Error.pp ex;
+        exit 1
+      | Ok () ->
+        Fmt.pr "Canary updated OK. Updating the others: [%a]@."
+          Fmt.(list ~sep:sp pp_worker_info) ws;
+        ws
+        |> List.map (fun (w:Cluster_api.Pool_admin.worker_info) ->
+            Cluster_api.Pool_admin.update pool w.name >|= function
+            | Ok () -> Fmt.pr "%S restarted OK.@." w.name
+            | Error (`Capnp ex) ->
+              Fmt.pr "%S: %a@." w.name Capnp_rpc.Error.pp ex;
+              failwith "Failed update(s)"
+          )
+        |> Lwt.join >|= fun () ->
+        Fmt.pr "All pool workers restarted.@."
 
 (* Command-line parsing *)
 
@@ -352,7 +368,7 @@ let unpause =
   Term.info "unpause" ~doc
 
 let update =
-  let doc = "Ask a worker to check for updates to itself" in
+  let doc = "Drain and then update worker(s)" in
   Term.(const update $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "update" ~doc
 
