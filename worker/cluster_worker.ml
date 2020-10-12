@@ -153,19 +153,10 @@ let check_docker_partition t =
   match t.prune_threshold with
   | None -> Lwt_result.return ()
   | Some prune_threshold ->
-    Lwt_process.pread ("", [| "df"; "/var/lib/docker"; "--output=pcent" |]) >|= fun lines ->
-    match String.split_on_char '\n' (String.trim lines) with
-    | [_; result] ->
-      let used =
-        try Scanf.sscanf result " %f%%" Fun.id
-        with _ -> Fmt.failwith "Expected %S, got %S" "xx%" result
-      in
-      let free = 100. -. used in
-      Log.info (fun f -> f "Docker partition: %.0f%% free" free);
-      if free < prune_threshold then Error `Disk_space_low
-      else Ok ()
-    | _ ->
-      Fmt.failwith "Expected two lines from df, but got:@,%S" lines
+    Df.free_space_percent "/var/lib/docker" >|= fun free ->
+    Log.info (fun f -> f "Docker partition: %.0f%% free" free);
+    if free < prune_threshold then Error `Disk_space_low
+    else Ok ()
 
 let rec maybe_prune t queue =
   check_docker_partition t >>= function
