@@ -1,6 +1,6 @@
 type t
 
-val create : Obuilder.Store_spec.t -> t Lwt.t
+val create : ?prune_threshold:float -> Obuilder.Store_spec.t -> t Lwt.t
 
 val build : t ->
   switch:Lwt_switch.t ->

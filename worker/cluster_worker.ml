@@ -373,15 +373,15 @@ let self_update ~update t =
     )
 
 let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~update ~capacity ~name registration_service =
-  begin match obuilder with
-    | None -> Lwt.return_none
-    | Some config -> Obuilder_build.create config >|= Option.some
-  end >>= fun obuilder ->
   begin match prune_threshold with
     | None -> Log.info (fun f -> f "Prune threshold not set. Will not check for low disk-space!")
     | Some frac when frac < 0.0 || frac > 100.0 -> Fmt.invalid_arg "prune_threshold must be in the range 0 to 100"
     | Some _ -> ()
   end;
+  begin match obuilder with
+    | None -> Lwt.return_none
+    | Some config -> Obuilder_build.create ?prune_threshold config >|= Option.some
+  end >>= fun obuilder ->
   let build =
     match build with
     | Some x -> x
