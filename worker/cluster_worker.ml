@@ -153,19 +153,10 @@ let check_docker_partition t =
   match t.prune_threshold with
   | None -> Lwt_result.return ()
   | Some prune_threshold ->
-    Lwt_process.pread ("", [| "df"; "/var/lib/docker"; "--output=pcent" |]) >|= fun lines ->
-    match String.split_on_char '\n' (String.trim lines) with
-    | [_; result] ->
-      let used =
-        try Scanf.sscanf result " %f%%" Fun.id
-        with _ -> Fmt.failwith "Expected %S, got %S" "xx%" result
-      in
-      let free = 100. -. used in
-      Log.info (fun f -> f "Docker partition: %.0f%% free" free);
-      if free < prune_threshold then Error `Disk_space_low
-      else Ok ()
-    | _ ->
-      Fmt.failwith "Expected two lines from df, but got:@,%S" lines
+    Df.free_space_percent "/var/lib/docker" >|= fun free ->
+    Log.info (fun f -> f "Docker partition: %.0f%% free" free);
+    if free < prune_threshold then Error `Disk_space_low
+    else Ok ()
 
 let rec maybe_prune t queue =
   check_docker_partition t >>= function
@@ -382,15 +373,15 @@ let self_update ~update t =
     )
 
 let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~update ~capacity ~name registration_service =
-  begin match obuilder with
-    | None -> Lwt.return_none
-    | Some config -> Obuilder_build.create config >|= Option.some
-  end >>= fun obuilder ->
   begin match prune_threshold with
     | None -> Log.info (fun f -> f "Prune threshold not set. Will not check for low disk-space!")
     | Some frac when frac < 0.0 || frac > 100.0 -> Fmt.invalid_arg "prune_threshold must be in the range 0 to 100"
     | Some _ -> ()
   end;
+  begin match obuilder with
+    | None -> Lwt.return_none
+    | Some config -> Obuilder_build.create ?prune_threshold config >|= Option.some
+  end >>= fun obuilder ->
   let build =
     match build with
     | Some x -> x
