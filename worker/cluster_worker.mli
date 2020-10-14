@@ -16,9 +16,10 @@ val run :
   update:(unit -> (unit -> unit Lwt.t) Lwt.t) ->
   capacity:int ->
   name:string ->
+  state_dir:string ->
   Cluster_api.Raw.Client.Registration.t Capnp_rpc_lwt.Sturdy_ref.t ->
   unit Lwt.t
-(** [run ~capacity ~name registry] runs a builder that connects to registry and runs up to [capacity] jobs at once.
+(** [run ~capacity ~name ~state_dir registry] runs a builder that connects to registry and runs up to [capacity] jobs at once.
     The builder registers using the unique ID [name].
     @param switch Turning this off causes the builder to exit (for unit-tests)
     @param build Used to override the default build action (for unit-tests)
@@ -27,6 +28,7 @@ val run :
                   then return a function to do the actual update. This is so that the first part can run while the node
                   finishes its remaining jobs. The second part is called once all jobs are finished.
                   If the second function returns, the process will exit.
+    @param state_dir A persistent directory for Git caches, etc.
     @param prune_threshold Stop and run "docker system prune -af" if free-space is less than this percentage (0 to 100). *)
 
 module Process = Process

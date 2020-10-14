@@ -40,7 +40,7 @@ let update_docker () =
 let update_normal () =
   Lwt.return (fun () -> Lwt.return ())
 
-let main registration_path capacity name allow_push prune_threshold obuilder =
+let main registration_path capacity name allow_push prune_threshold state_dir obuilder =
   let update =
     if Sys.file_exists "/.dockerenv" then update_docker
     else update_normal
@@ -48,7 +48,7 @@ let main registration_path capacity name allow_push prune_threshold obuilder =
   Lwt_main.run begin
     let vat = Capnp_rpc_unix.client_only_vat () in
     let sr = Capnp_rpc_unix.Cap_file.load vat registration_path |> or_die in
-    Cluster_worker.run ~capacity ~name ~allow_push ?prune_threshold ?obuilder ~update sr
+    Cluster_worker.run ~capacity ~name ~allow_push ?prune_threshold ?obuilder ~state_dir ~update sr
   end
 
 (* Command-line parsing *)
@@ -95,6 +95,14 @@ let allow_push =
     ~docv:"REPO"
     ["allow-push"]
 
+let state_dir =
+  Arg.required @@
+  Arg.opt Arg.(some string) None @@
+  Arg.info
+    ~doc:"Directory for caches, etc (e.g. /var/lib/ocluster-worker)"
+    ~docv:"PATH"
+    ["state-dir"]
+
 module Obuilder_config = struct
   let store_t = Arg.conv Obuilder.Store_spec.(of_string, pp)
 
@@ -109,7 +117,7 @@ end
 
 let cmd =
   let doc = "Run a build worker" in
-  Term.(const main $ connect_addr $ capacity $ worker_name $ allow_push $ prune_threshold $ Obuilder_config.v),
+  Term.(const main $ connect_addr $ capacity $ worker_name $ allow_push $ prune_threshold $ state_dir $ Obuilder_config.v),
   Term.info "ocluster-worker" ~doc ~version:Version.t
 
 let () = Term.(exit @@ eval cmd)

@@ -57,6 +57,7 @@ type job_spec = [
 
 type t = {
   name : string;
+  context : Context.t;
   build :
     switch:Lwt_switch.t ->
     log:Log_data.t ->
@@ -120,7 +121,7 @@ let build ~switch ~log t descr =
           | `Path path -> f "Got request to build %S (%s)" path cache_hint
         );
       begin
-        Context.with_build_context ~log descr @@ fun src ->
+        Context.with_build_context t.context ~log descr @@ fun src ->
         t.build ~switch ~log ~src (`Docker (dockerfile, options)) >>!= fun hash ->
         match push_to with
         | None -> Lwt_result.return ""
@@ -132,7 +133,7 @@ let build ~switch ~log t descr =
       Log.info (fun f ->
           f "Got request to build (%s):\n%s" cache_hint (String.trim spec)
         );
-      Context.with_build_context ~log descr @@ fun src ->
+      Context.with_build_context t.context ~log descr @@ fun src ->
       t.build ~switch ~log ~src (`Obuilder (`Contents spec))
   end
   >|= function
@@ -372,7 +373,7 @@ let self_update ~update t =
        Lwt_result.fail (`Msg (Printexc.to_string ex))
     )
 
-let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~update ~capacity ~name registration_service =
+let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~update ~capacity ~name ~state_dir registration_service =
   begin match prune_threshold with
     | None -> Log.info (fun f -> f "Prune threshold not set. Will not check for low disk-space!")
     | Some frac when frac < 0.0 || frac > 100.0 -> Fmt.invalid_arg "prune_threshold must be in the range 0 to 100"
@@ -389,6 +390,7 @@ let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~update ~capa
   in
   let t = {
     name;
+    context = Context.v ~state_dir;
     prune_threshold;
     registration_service;
     build;
