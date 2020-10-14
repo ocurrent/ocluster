@@ -5,8 +5,11 @@ module Hash = Digestif.SHA1
 let ( / ) = Filename.concat
 let ( >>!= ) = Lwt_result.bind
 
-let state_dir = Sys.getcwd () / "var"
-let repos_dir = state_dir / "git"
+type t = {
+  state_dir : string;
+}
+
+let repos_dir t = t.state_dir / "git"
 
 let dir_exists d =
   match Unix.lstat d with
@@ -17,14 +20,12 @@ let dir_exists d =
 let ensure_dir path =
   if not (dir_exists path) then Unix.mkdir path 0o700
 
-let get_tmp_dir () =
-  ensure_dir state_dir;
-  let tmp = state_dir / "tmp" in
-  ensure_dir tmp;
-  tmp
+let get_tmp_dir t =
+  t.state_dir / "tmp"
 
 module Repo = struct
-  type t = {
+  type nonrec t = {
+    context : t;
     url : Uri.t;
     lock : Lwt_mutex.t;
   }
@@ -35,12 +36,12 @@ module Repo = struct
     Fmt.strf "%s-%s" base (Hash.to_hex digest)
 
   let local_copy t =
-    repos_dir / id t
+    repos_dir t.context / id t
 
-  let v url =
+  let v context url =
     let url = Uri.of_string url in
     match Uri.scheme url with
-    | Some "git" | Some "http" | Some "https" -> { url; lock = Lwt_mutex.create () }
+    | Some "git" | Some "http" | Some "https" -> { context; url; lock = Lwt_mutex.create () }
     | Some x -> Fmt.failwith "Unsupported scheme %S in URL %a" x Uri.pp url
     | None -> Fmt.failwith "Missing scheme in URL %a" Uri.pp url
 
@@ -77,11 +78,11 @@ end
 
 let repos = Hashtbl.create 1000
 
-let repo url =
+let repo t url =
   match Hashtbl.find_opt repos url with
   | Some x -> x
   | None ->
-    let repo = Repo.v url in
+    let repo = Repo.v t url in
     Hashtbl.add repos url repo;
     repo
 
@@ -96,12 +97,12 @@ let include_git descr =
   | Docker_build db -> db.options.include_git
   | Obuilder_build _ -> false
 
-let build_context ~log ~tmpdir descr =
+let build_context t ~log ~tmpdir descr =
   match Cluster_api.Raw.Reader.JobDescr.commits_get_list descr |> List.map Hash.of_hex with
   | [] ->
     Lwt_result.return ()
   | (c :: cs) as commits ->
-    let repository = repo (Cluster_api.Raw.Reader.JobDescr.repository_get descr) in
+    let repository = repo t (Cluster_api.Raw.Reader.JobDescr.repository_get descr) in
     Lwt_mutex.with_lock repository.lock (fun () ->
         Lwt_switch.with_switch @@ fun switch -> (* Don't let the user cancel these operations. *)
         begin
@@ -128,8 +129,14 @@ let build_context ~log ~tmpdir descr =
         )
       )
 
-let with_build_context ~log descr fn =
-  let tmp = get_tmp_dir () in
+let with_build_context t ~log descr fn =
+  let tmp = get_tmp_dir t in
   Lwt_io.with_temp_dir ~parent:tmp ~prefix:"build-context-" @@ fun tmpdir ->
-  build_context ~log ~tmpdir descr >>!= fun () ->
+  build_context t ~log ~tmpdir descr >>!= fun () ->
   fn tmpdir
+
+let v ~state_dir =
+  ensure_dir state_dir;
+  let t = { state_dir } in
+  ensure_dir (get_tmp_dir t);
+  t

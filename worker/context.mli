@@ -16,10 +16,16 @@
     4. Finally, we move all the checked-out files to our desired temporary
        directory (on the same FS) and release the repository lock. *)
 
+type t
+
+val v : state_dir:string -> t
+(** @param state_dir Used for temporary checkouts and Git cache. *)
+
 val with_build_context :
+  t ->
   log:Log_data.t ->
   Cluster_api.Raw.Reader.JobDescr.t ->
   (string -> ('a, [`Cancelled | `Msg of string]) Lwt_result.t) ->
   ('a, [`Cancelled | `Msg of string]) Lwt_result.t
-(** [with_build_context ~log descr fn] runs [fn dir], where [dir] is a
+(** [with_build_context t ~log descr fn] runs [fn dir], where [dir] is a
     temporary directory containing the requested build context. *)
