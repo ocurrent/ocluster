@@ -18,8 +18,8 @@ let ( / ) = Filename.concat
 
 let log_to log_data tag msg =
   match tag with
-  | `Heading -> Log_data.info log_data "%s" msg
-  | `Note -> Log_data.info log_data "%s" msg
+  | `Heading -> Log_data.info log_data "\n\027[01;34m%s\027[0m" msg
+  | `Note -> Log_data.info log_data "\027[01;2m\027[01;35m%s\027[0m" msg
   | `Output -> Log_data.write log_data msg
 
 let create ?prune_threshold spec =
