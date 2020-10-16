@@ -73,6 +73,7 @@ module Repo = struct
     end >>!= fun () ->
     (* This reset might avoid `fatal: cannot chdir to '../../../ocurrent': No such file or directory` errors *)
     Process.check_call ~label:"git-reset" ~switch ~log ["git"; "-C"; local_repo; "reset"; "--hard"] >>!= fun () ->
+    Process.check_call ~label:"git-submodule-deinit" ~switch ~log ["git"; "-C"; local_repo; "submodule"; "deinit"; "--all"; "-f"] >>!= fun () ->
     Process.check_call ~label:"git-fetch" ~switch ~log ["git"; "-C"; local_repo; "fetch"; "-q"; "--update-head-ok"; "origin"]
 end
 
@@ -112,6 +113,7 @@ let build_context t ~log ~tmpdir descr =
         end >>!= fun () ->
         let clone = Repo.local_copy repository in
         Process.check_call ~label:"git-reset" ~switch ~log ["git"; "-C"; clone; "reset"; "--hard"; Hash.to_hex c] >>!= fun () ->
+        Process.check_call ~label:"git-submodule-deinit" ~switch ~log ["git"; "-C"; clone; "submodule"; "deinit"; "--all"; "-f"] >>!= fun () ->
         Process.check_call ~label:"git-clean" ~switch ~log ["git"; "-C"; clone; "clean"; "-fdx"] >>!= fun () ->
         let merge c = Process.check_call ~label:"git-merge" ~switch ~log ["git"; "-C"; clone; "merge"; Hash.to_hex c] in
         cs |> lwt_result_list_iter_s merge >>!= fun () ->
