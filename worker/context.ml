@@ -74,7 +74,8 @@ module Repo = struct
     (* This reset might avoid `fatal: cannot chdir to '../../../ocurrent': No such file or directory` errors *)
     Process.check_call ~label:"git-reset" ~switch ~log ["git"; "-C"; local_repo; "reset"; "--hard"] >>!= fun () ->
     Process.check_call ~label:"git-submodule-deinit" ~switch ~log ["git"; "-C"; local_repo; "submodule"; "deinit"; "--all"; "-f"] >>!= fun () ->
-    Process.check_call ~label:"git-fetch" ~switch ~log ["git"; "-C"; local_repo; "fetch"; "-q"; "--update-head-ok"; "origin"]
+    Process.check_call ~label:"git-fetch" ~switch ~log
+      ["git"; "-C"; local_repo; "fetch"; "-q"; "--update-head-ok"; "--recurse-submodules=no"; "origin"]
 end
 
 let repos = Hashtbl.create 1000
