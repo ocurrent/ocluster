@@ -56,6 +56,7 @@
   duration
   logs
   fmt
+  prometheus
   ppx_deriving_yojson
   (ocaml (>= 4.10.0))
 ))

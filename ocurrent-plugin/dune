@@ -6,6 +6,7 @@
    current.cache
    current_git
    duration
+   prometheus
    fmt
    logs
    lwt

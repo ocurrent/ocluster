@@ -4,6 +4,22 @@ open Capnp_rpc_lwt
 let src = Logs.Src.create "current_ocluster" ~doc:"OCurrent OCluster plugin"
 module Log = (val Logs.src_log src : Logs.LOG)
 
+module Metrics = struct
+  open Prometheus
+
+  let namespace = "ocluster"
+  let subsystem = "ocurrent"
+
+  let queue =
+    let help = "Items in cluster queue by state" in
+    Gauge.v_label ~label_name:"state" ~help ~namespace ~subsystem "queue_state_total"
+
+  let queue_connect = queue "connect"
+  let queue_rate_limit = queue "rate-limit"
+  let queue_get_ticket = queue "get-ticket"
+  let queue_get_worker = queue "get-worker"
+end
+
 module Git = Current_git
 
 let ( >>!= ) = Lwt_result.bind
@@ -12,6 +28,10 @@ let ( >>!= ) = Lwt_result.bind
 type connection = {
   sr : [`Submission_f4e8a768b32a7c42] Sturdy_ref.t;
   mutable sched : Cluster_api.Submission.t Lwt.t;
+  (* Limit how many items we queue up at the scheduler (including assigned to workers)
+     for each (OCluster pool, urgency). *)
+  rate_limits : ((string * bool), unit Lwt_pool.t) Hashtbl.t;
+  max_pipeline : int;
 }
 
 type urgency = [ `Auto | `Always | `Never ]
@@ -91,33 +111,61 @@ module Op = struct
       conn.sched <- aux ();
       conn.sched
 
+  let rate_limit t pool urgent =
+    let key = (pool, urgent) in
+    match Hashtbl.find_opt t.connection.rate_limits key with
+    | Some limiter -> limiter
+    | None ->
+      let limiter = Lwt_pool.create t.connection.max_pipeline Lwt.return in
+      Hashtbl.add t.connection.rate_limits key limiter;
+      limiter
+
   (* This is called by [Current.Job] once the confirmation threshold allows the job to be submitted. *)
   let submit ~job ~pool ~action ~cache_hint ?src t ~priority ~switch:_ =
-    let ticket_ref = ref None in
+    let limiter_thread = ref None in
+    let stage = ref `Init in
     let cancel () =
-      match !ticket_ref with
-      | None -> Lwt.return_unit
-      | Some ticket ->
+      match !stage with
+      | `Init | `Got_worker -> Lwt.return_unit
+      | `Rate_limit ->
+        Option.iter Lwt.cancel !limiter_thread;         (* Waiting for [Pool.use] *)
+        Lwt.return_unit
+      | `Get_ticket ticket ->                          (* Waiting for worker *)
         Cluster_api.Ticket.cancel ticket >|= function
         | Ok () -> ()
         | Error (`Capnp e) -> Current.Job.log job "Cancel ticket failed: %a" Capnp_rpc.Error.pp e
     in
     let rec aux () =
+      Prometheus.Gauge.inc_one Metrics.queue_connect;
       sched ~job t >>= fun sched ->
+      Prometheus.Gauge.dec_one Metrics.queue_connect;
       let urgent =
         match t.urgent with
         | `Always -> true
         | `Never -> false
         | `Auto -> priority = `High
       in
-      let ticket = Cluster_api.Submission.submit ~urgent ?src sched ~pool ~action ~cache_hint in
-      let build_job = Cluster_api.Ticket.job ticket in
-      ticket_ref := Some ticket;        (* Allow the user to cancel it now. *)
-      Capability.wait_until_settled ticket >>= fun () ->
-      Current.Job.log job "Job submitted to scheduler. Waiting for worker...";
-      Capability.wait_until_settled build_job >>= fun () ->
-      ticket_ref := None;
-      Capability.dec_ref ticket;
+      stage := `Rate_limit;
+      Prometheus.Gauge.inc_one Metrics.queue_rate_limit;
+      let use_thread = Lwt_pool.use (rate_limit t pool urgent)
+          (fun () ->
+             Prometheus.Gauge.dec_one Metrics.queue_rate_limit;
+             let ticket = Cluster_api.Submission.submit ~urgent ?src sched ~pool ~action ~cache_hint in
+             let build_job = Cluster_api.Ticket.job ticket in
+             stage := `Get_ticket ticket;       (* Allow the user to cancel it now. *)
+             Prometheus.Gauge.inc_one Metrics.queue_get_ticket;
+             Capability.wait_until_settled ticket >>= fun () ->
+             Prometheus.Gauge.dec_one Metrics.queue_get_ticket;
+             Current.Job.log job "Waiting for worker...";
+             Prometheus.Gauge.inc_one Metrics.queue_get_worker;
+             Capability.wait_until_settled build_job >>= fun () ->
+             Prometheus.Gauge.dec_one Metrics.queue_get_worker;
+             Capability.dec_ref ticket;
+             stage := `Got_worker;
+             Lwt.return build_job
+          ) in
+      limiter_thread := Some use_thread;
+      use_thread >>= fun build_job ->
       Lwt.pause () >>= fun () ->
       match Capability.problem build_job with
       | None -> Lwt.return build_job
@@ -126,6 +174,8 @@ module Op = struct
           (* The job failed but we're still connected to the scheduler. Report the error. *)
           Lwt.fail_with (Fmt.strf "%a" Capnp_rpc.Exception.pp err)
         ) else (
+          limiter_thread := None;
+          stage := `Init;
           aux ()
         )
     in
@@ -217,8 +267,9 @@ module Build = Current_cache.Make(Op)
 
 open Current.Syntax
 
-let v ?timeout ?push_auth ?(urgent=`Auto) sr =
-  let connection = { sr; sched = Lwt.fail_with "init" } in
+let v ?timeout ?push_auth ?(urgent=`Auto) ?(max_pipeline=200) sr =
+  let rate_limits = Hashtbl.create 10 in
+  let connection = { sr; sched = Lwt.fail_with "init"; rate_limits; max_pipeline } in
   { connection; timeout; push_auth; cache_hint = None; urgent }
 
 let label dockerfile pool =
