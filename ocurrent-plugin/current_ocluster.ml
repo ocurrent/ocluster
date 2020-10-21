@@ -1,44 +1,16 @@
 open Lwt.Infix
 open Capnp_rpc_lwt
 
-let src = Logs.Src.create "current_ocluster" ~doc:"OCurrent OCluster plugin"
-module Log = (val Logs.src_log src : Logs.LOG)
-
-module Metrics = struct
-  open Prometheus
-
-  let namespace = "ocluster"
-  let subsystem = "ocurrent"
-
-  let queue =
-    let help = "Items in cluster queue by state" in
-    Gauge.v_label ~label_name:"state" ~help ~namespace ~subsystem "queue_state_total"
-
-  let queue_connect = queue "connect"
-  let queue_rate_limit = queue "rate-limit"
-  let queue_get_ticket = queue "get-ticket"
-  let queue_get_worker = queue "get-worker"
-end
-
 module Git = Current_git
+module Connection = Connection
 
 let ( >>!= ) = Lwt_result.bind
-
-(* This is shared by all jobs. *)
-type connection = {
-  sr : [`Submission_f4e8a768b32a7c42] Sturdy_ref.t;
-  mutable sched : Cluster_api.Submission.t Lwt.t;
-  (* Limit how many items we queue up at the scheduler (including assigned to workers)
-     for each (OCluster pool, urgency). *)
-  rate_limits : ((string * bool), unit Lwt_pool.t) Hashtbl.t;
-  max_pipeline : int;
-}
 
 type urgency = [ `Auto | `Always | `Never ]
 
 (* This may be copied and modified per job. *)
 type t = {
-  connection : connection;
+  connection : Connection.t;
   timeout : Duration.t option;
   push_auth : (string * string) option; (* Username/password for pushes *)
   cache_hint : string option;
@@ -48,16 +20,6 @@ type t = {
 let with_push_auth push_auth t = { t with push_auth }
 let with_timeout timeout t = { t with timeout }
 let with_urgent urgent t = { t with urgent }
-
-let tail ~job build_job =
-  let rec aux start =
-    Cluster_api.Job.log build_job start >>= function
-    | Error (`Capnp e) -> Lwt.return @@ Fmt.error_msg "%a" Capnp_rpc.Error.pp e
-    | Ok ("", _) -> Lwt_result.return ()
-    | Ok (data, next) ->
-      Current.Job.write job data;
-      aux next
-  in aux 0L
 
 module Op = struct
   let id = "ocluster-build"
@@ -83,103 +45,6 @@ module Op = struct
   end
 
   module Value = Current.String
-
-  (* Return a proxy to the scheduler, starting a new connection if we don't
-     currently have a working one. *)
-  let sched ~job t =
-    let conn = t.connection in
-    match Lwt.state conn.sched with
-    | Lwt.Return cap when Capability.problem cap = None -> Lwt.return cap
-    | Lwt.Sleep ->
-      Current.Job.log job "Connecting to build cluster...";
-      conn.sched      (* Already connecting; join that effort *)
-    | _ ->
-      Current.Job.log job "Connecting to build cluster...";
-      let rec aux () =
-        Lwt.catch
-          (fun () ->
-             Sturdy_ref.connect_exn conn.sr >>= fun cap ->
-             Capability.wait_until_settled cap >|= fun () ->
-             cap
-          )
-          (fun ex ->
-             Log.warn (fun f -> f "Error connecting to build cluster (will retry): %a" Fmt.exn ex);
-             Lwt_unix.sleep 10.0 >>= fun () ->
-             aux ()
-          )
-      in
-      conn.sched <- aux ();
-      conn.sched
-
-  let rate_limit t pool urgent =
-    let key = (pool, urgent) in
-    match Hashtbl.find_opt t.connection.rate_limits key with
-    | Some limiter -> limiter
-    | None ->
-      let limiter = Lwt_pool.create t.connection.max_pipeline Lwt.return in
-      Hashtbl.add t.connection.rate_limits key limiter;
-      limiter
-
-  (* This is called by [Current.Job] once the confirmation threshold allows the job to be submitted. *)
-  let submit ~job ~pool ~action ~cache_hint ?src t ~priority ~switch:_ =
-    let limiter_thread = ref None in
-    let stage = ref `Init in
-    let cancel () =
-      match !stage with
-      | `Init | `Got_worker -> Lwt.return_unit
-      | `Rate_limit ->
-        Option.iter Lwt.cancel !limiter_thread;         (* Waiting for [Pool.use] *)
-        Lwt.return_unit
-      | `Get_ticket ticket ->                          (* Waiting for worker *)
-        Cluster_api.Ticket.cancel ticket >|= function
-        | Ok () -> ()
-        | Error (`Capnp e) -> Current.Job.log job "Cancel ticket failed: %a" Capnp_rpc.Error.pp e
-    in
-    let rec aux () =
-      Prometheus.Gauge.inc_one Metrics.queue_connect;
-      sched ~job t >>= fun sched ->
-      Prometheus.Gauge.dec_one Metrics.queue_connect;
-      let urgent =
-        match t.urgent with
-        | `Always -> true
-        | `Never -> false
-        | `Auto -> priority = `High
-      in
-      stage := `Rate_limit;
-      Prometheus.Gauge.inc_one Metrics.queue_rate_limit;
-      let use_thread = Lwt_pool.use (rate_limit t pool urgent)
-          (fun () ->
-             Prometheus.Gauge.dec_one Metrics.queue_rate_limit;
-             let ticket = Cluster_api.Submission.submit ~urgent ?src sched ~pool ~action ~cache_hint in
-             let build_job = Cluster_api.Ticket.job ticket in
-             stage := `Get_ticket ticket;       (* Allow the user to cancel it now. *)
-             Prometheus.Gauge.inc_one Metrics.queue_get_ticket;
-             Capability.wait_until_settled ticket >>= fun () ->
-             Prometheus.Gauge.dec_one Metrics.queue_get_ticket;
-             Current.Job.log job "Waiting for worker...";
-             Prometheus.Gauge.inc_one Metrics.queue_get_worker;
-             Capability.wait_until_settled build_job >>= fun () ->
-             Prometheus.Gauge.dec_one Metrics.queue_get_worker;
-             Capability.dec_ref ticket;
-             stage := `Got_worker;
-             Lwt.return build_job
-          ) in
-      limiter_thread := Some use_thread;
-      use_thread >>= fun build_job ->
-      Lwt.pause () >>= fun () ->
-      match Capability.problem build_job with
-      | None -> Lwt.return build_job
-      | Some err ->
-        if Capability.problem sched = None then (
-          (* The job failed but we're still connected to the scheduler. Report the error. *)
-          Lwt.fail_with (Fmt.strf "%a" Capnp_rpc.Exception.pp err)
-        ) else (
-          limiter_thread := None;
-          stage := `Init;
-          aux ()
-        )
-    in
-    aux (), cancel
 
   (* Convert a list of commits in the same repository to a [(repo, hashes)] pair.
      Raises an exception if there are commits from different repositories. *)
@@ -226,28 +91,24 @@ module Op = struct
           | None -> ""
     in
     Current.Job.log job "Using cache hint %S" cache_hint;
-    let build_pool = Current.Pool.of_fn ~label:"OCluster" @@ submit ~job ~pool ~action ~cache_hint ?src t in
+    let urgent priority =
+      match t.urgent with
+      | `Always -> true
+      | `Never -> false
+      | `Auto -> priority = `High
+    in
+    let build_pool = Connection.pool ~job ~pool ~action ~cache_hint ~urgent ?src t.connection in
     let level = if push_target = None then Current.Level.Average else Current.Level.Above_average in
     Current.Job.start_with ~pool:build_pool job ?timeout:t.timeout ~level >>= fun build_job ->
     Capability.with_ref build_job @@ fun build_job ->
-    let on_cancel _ =
-      Cluster_api.Job.cancel build_job >|= function
-      | Ok () -> ()
-      | Error (`Capnp e) -> Current.Job.log job "Cancel failed: %a" Capnp_rpc.Error.pp e
-    in
-    Current.Job.with_handler job ~on_cancel @@ fun () ->
-    let result = Cluster_api.Job.result build_job in
-    tail ~job build_job >>!= fun () ->
-    result >>= function
-    | Error (`Capnp e) -> Lwt_result.fail (`Msg (Fmt.to_to_string Capnp_rpc.Error.pp e))
-    | Ok repo_id ->
-      begin match push_target with
-        | Some target when t.push_auth = None ->
-          Current.Job.log job "Not pushing to %a as staging password not configured"
-            Cluster_api.Docker.Image_id.pp target
-        | _ -> ()
-      end;
-      Lwt_result.return repo_id
+    Connection.run_job ~job build_job >>!= fun repo_id ->
+    begin match push_target with
+      | Some target when t.push_auth = None ->
+        Current.Job.log job "Not pushing to %a as staging password not configured"
+          Cluster_api.Docker.Image_id.pp target
+      | _ -> ()
+    end;
+    Lwt_result.return repo_id
 
   let pp f {Key.dockerfile; src; options = _; pool; push_target = _} =
     match dockerfile with
@@ -267,9 +128,7 @@ module Build = Current_cache.Make(Op)
 
 open Current.Syntax
 
-let v ?timeout ?push_auth ?(urgent=`Auto) ?(max_pipeline=200) sr =
-  let rate_limits = Hashtbl.create 10 in
-  let connection = { sr; sched = Lwt.fail_with "init"; rate_limits; max_pipeline } in
+let v ?timeout ?push_auth ?(urgent=`Auto) connection =
   { connection; timeout; push_auth; cache_hint = None; urgent }
 
 let label dockerfile pool =
