@@ -34,7 +34,7 @@ let engine_cond = Lwt_condition.create ()       (* Fires after each update *)
 let setup ~pipeline fn =
   with_sched @@ fun ~submission_service ~registry ->
   let submission_service, break = Mock_network.remote_breakable submission_service in
-  let t = Current_ocluster.v submission_service in
+  let t = Current_ocluster.v (Current_ocluster.Connection.create submission_service) in
   let state = ref (Error (`Msg "(init)")) in
   SVar.set selected (Ok (fun () -> pipeline t));
   let trace ~next:_ (results : Current.Engine.results) =

@@ -1,6 +1,6 @@
 (** This module provides an OCurrent plugin for building with OCluster. *)
 
-open Capnp_rpc_lwt
+module Connection = Connection
 
 type t
 (** The configuration for accessing the build cluster. *)
@@ -16,13 +16,12 @@ val v :
   ?timeout:Duration.t ->
   ?push_auth:(string * string) ->
   ?urgent:urgency ->
-  ?max_pipeline:int ->
-  [ `Submission_f4e8a768b32a7c42 ] Sturdy_ref.t -> t
-(** [v submission_service] is a builder that submits jobs to [submission_service].
+  Connection.t ->
+  t
+(** [v conn] is a builder that submits jobs using [conn].
     @param push_auth : the username and password to use when pushing to the Docker Hub staging area.
     @param timeout : default timeout
-    @param urgent : when to mark builds as urgent (default [`Auto]).
-    @param max_pipeline : how many items to queue up at the scheduler per (pool, urgency). *)
+    @param urgent : when to mark builds as urgent (default [`Auto]). *)
 
 val with_timeout : Duration.t option -> t -> t
 (** [with_timeout x t] is a copy of [t] with the specified timeout, but still
