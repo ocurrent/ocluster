@@ -73,11 +73,12 @@ type t = {
   allow_push : string list;            (* Repositories users can push to *)
 }
 
-let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; user; password } =
+let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; auth } =
   let repo = Cluster_api.Docker.Image_id.repo target in
   let target = Cluster_api.Docker.Image_id.to_string target in
-  Log.info (fun f -> f "Push %S to %S as user %S" hash target user);
-  Log_data.info log "Pushing %S to %S as user %S" hash target user;
+  let pp_auth = Fmt.option (Fmt.using fst (Fmt.fmt " as user %S")) in
+  Log.info (fun f -> f "Push %S to %S%a" hash target pp_auth auth);
+  Log_data.info log "Pushing %S to %S%a" hash target pp_auth auth;
   (* "docker push" rather stupidly requires us to tag the image locally with the same
      name that we're trying to push to before we can push. However, until we push we
      don't know whether the user has permission to access that repository. For example,
@@ -90,12 +91,7 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; user; pass
     Lwt_mutex.with_lock docker_push_lock @@ fun () ->
     Lwt_io.with_temp_dir ~prefix:"build-worker-" ~suffix:"-docker" @@ fun config_dir ->
     let docker args = "docker" :: "--config" :: config_dir :: args in
-    let login_cmd = docker ["login"; "--password-stdin"; "--username"; user] in
-    Process.exec ~label:"docker-login" ~switch ~log ~stdin:password ~stderr:`Keep login_cmd >>= function
-    | Error (`Exit_code _) ->
-      Lwt_result.fail (`Msg (Fmt.strf "Failed to docker-login as %S" user))
-    | Error (`Msg _ | `Cancelled as e) -> Lwt_result.fail e
-    | Ok () ->
+    let tag_and_push () =
       Process.check_call ~label:"docker-tag" ~switch ~log @@ docker ["tag"; "--"; hash; target] >>!= fun () ->
       Process.check_call ~label:"docker-push" ~switch ~log @@ docker ["push"; "--"; target] >>!= fun () ->
       Lwt_process.pread_line ("", [| "docker"; "image"; "inspect"; "-f"; "{{ range index .RepoDigests }}{{ . }} {{ end }}"; "--"; target |]) >>= function
@@ -107,7 +103,16 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; user; pass
            We don't want to return a multi-arch image here, because "docker manifest" would reject that. *)
         match List.find_opt (String.is_prefix ~affix:(repo ^ "@")) (String.cuts ~sep:" " ids) with
         | Some repo_id -> Lwt_result.return repo_id
-        | None -> Lwt_result.fail (`Msg (Fmt.strf "Can't find target repository '%s@...' in list %S!" repo ids))
+        | None -> Lwt_result.fail (`Msg (Fmt.strf "Can't find target repository '%s@...' in list %S!" repo ids)) in
+    match auth with
+    | None -> tag_and_push ()
+    | Some (user, password) ->
+      let login_cmd = docker ["login"; "--password-stdin"; "--username"; user] in
+      Process.exec ~label:"docker-login" ~switch ~log ~stdin:password ~stderr:`Keep login_cmd >>= function
+      | Error (`Exit_code _) ->
+        Lwt_result.fail (`Msg (Fmt.strf "Failed to docker-login as %S" user))
+      | Error (`Msg _ | `Cancelled as e) -> Lwt_result.fail e
+      | Ok () -> tag_and_push ()
   )
 
 let build ~switch ~log t descr =
