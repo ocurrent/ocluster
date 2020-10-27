@@ -23,6 +23,13 @@ let ensure_dir path =
 let get_tmp_dir t =
   t.state_dir / "tmp"
 
+let git_merge_env =
+  let orig = Unix.environment () |> Array.to_list in
+  "GIT_AUTHOR_NAME=ocluster" ::
+  "GIT_COMMITTER_NAME=ocluster" ::
+  "EMAIL=ocluster@ocurrent.org" :: orig
+  |> Array.of_list
+
 module Repo = struct
   type nonrec t = {
     context : t;
@@ -116,7 +123,7 @@ let build_context t ~log ~tmpdir descr =
         Process.check_call ~label:"git-reset" ~switch ~log ["git"; "-C"; clone; "reset"; "--hard"; Hash.to_hex c] >>!= fun () ->
         Process.check_call ~label:"git-submodule-deinit" ~switch ~log ["git"; "-C"; clone; "submodule"; "deinit"; "--all"; "-f"] >>!= fun () ->
         Process.check_call ~label:"git-clean" ~switch ~log ["git"; "-C"; clone; "clean"; "-fdx"] >>!= fun () ->
-        let merge c = Process.check_call ~label:"git-merge" ~switch ~log ["git"; "-C"; clone; "merge"; Hash.to_hex c] in
+        let merge c = Process.check_call ~label:"git-merge" ~switch ~log ~env:git_merge_env ["git"; "-C"; clone; "merge"; Hash.to_hex c] in
         cs |> lwt_result_list_iter_s merge >>!= fun () ->
         Process.check_call ~label:"git-submodule-update" ~switch ~log ["git"; "-C"; clone; "submodule"; "update"; "--init"; "--recursive"] >>!= fun () ->
         Sys.readdir clone |> Array.iter (function
