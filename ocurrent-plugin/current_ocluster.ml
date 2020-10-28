@@ -63,9 +63,9 @@ module Op = struct
   let build t job { Key.dockerfile; src; options; pool; push_target } =
     let push_to =
       match push_target, t.push_auth with
-      | Some target, Some (user, password) ->
+      | Some target, auth ->
         Current.Job.log job "Will push staging image to %a" Cluster_api.Docker.Image_id.pp target;
-        Some { Cluster_api.Docker.Spec.target; user; password }
+        Some { Cluster_api.Docker.Spec.target; auth }
       | _ ->
         None
     in

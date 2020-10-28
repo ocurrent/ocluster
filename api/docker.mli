@@ -14,8 +14,7 @@ end
 module Spec : sig
   type push = {
     target : Image_id.t;
-    user : string;
-    password : string;
+    auth : (string * string) option;
   }
 
   type options = {

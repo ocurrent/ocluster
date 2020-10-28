@@ -32,8 +32,7 @@ end
 module Spec = struct
   type push = {
     target : Image_id.t;
-    user : string;
-    password : string;
+    auth : (string * string) option;
   }
 
   type options = {
@@ -70,10 +69,12 @@ module Spec = struct
     DB.squash_set b squash;
     DB.buildkit_set b buildkit;
     DB.include_git_set b include_git;
-    push_to |> Option.iter (fun { target; user; password } ->
+    push_to |> Option.iter (fun { target; auth } ->
         DB.push_target_set b (Image_id.to_string target);
-        DB.push_user_set b user;
-        DB.push_password_set b password;
+        Option.iter (fun (user, password) ->
+          DB.push_user_set b user;
+          DB.push_password_set b password;
+        ) auth;
       )
 
   let read r =
@@ -96,13 +97,15 @@ module Spec = struct
     let push_to =
       match target, user, password with
       | "", "", "" -> None
-      | "", _, _
-      | _, "", _
-      | _, _, "" -> Fmt.failwith "push-target, push-user and push-password must be given (or not given) together"
+      | "", _, _ -> Fmt.failwith "push-user and push-password must be given with push-target"
       | target, user, password ->
-        match Image_id.of_string target with
-        | Ok target -> Some { target; user; password }
-        | Error (`Msg m) -> failwith m
+        if (user = "") <> (password = "") then
+          Fmt.failwith "push-user and push-password must be given (or not given) together"
+        else
+          let auth = if user = "" then None else Some (user, password) in
+          match Image_id.of_string target with
+          | Ok target -> Some { target; auth }
+          | Error (`Msg m) -> failwith m
     in
     { dockerfile; options; push_to }
 end

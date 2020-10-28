@@ -294,12 +294,16 @@ let include_git =
 let push_to =
   let make target user password =
     match target, user, password with
-    | None, _, _ -> None
+    | None, None, None -> None
+    | None, _, _ ->
+      Fmt.failwith "Must use --push-to with --push-user/--push-password"
     | Some target, Some user, Some password_file ->
       let password = read_first_line password_file in
-      Some { Cluster_api.Docker.Spec.target; user; password }
-    | Some _, None, _ -> Fmt.failwith "Must use --push-user with --push-to"
-    | Some _, Some _, None -> Fmt.failwith "Must use --push-password with --push-to"
+      Some { Cluster_api.Docker.Spec.target; auth = Some (user, password) }
+    | Some target, None, None ->
+      Some { Cluster_api.Docker.Spec.target; auth = None }
+    | _, None, Some _
+    | _, Some _, None -> Fmt.failwith "Must use --push-user with --push-password"
   in
   Term.(pure make $ push_to $ push_user $ push_password_file)
 
