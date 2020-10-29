@@ -29,7 +29,7 @@
   (capnp-rpc-unix (>= 0.8.0))
   logs
   fmt
-  conf-libev
+  (conf-libev (<> :os "win32"))
   digestif
   fpath
   lwt-dllist
