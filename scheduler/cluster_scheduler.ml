@@ -101,7 +101,7 @@ module Pool_api = struct
       Some w
 
   let admin_service t =
-    let dump () = Fmt.to_to_string Pool.dump t.pool in
+    let show () = Fmt.to_to_string Pool.show t.pool in
     let workers () =
       Pool.connected_workers t.pool
       |> Astring.String.Map.bindings
@@ -139,7 +139,7 @@ module Pool_api = struct
           in
           Lwt.pick [ aux (); timeout ]
     in
-    Cluster_api.Pool_admin.local ~dump ~workers ~worker:(worker t) ~set_active ~update
+    Cluster_api.Pool_admin.local ~show ~workers ~worker:(worker t) ~set_active ~update
 end
 
 type t = {

@@ -6,16 +6,16 @@ type worker_info = {
   active : bool;
 }
 
-let local ~dump ~workers ~worker ~set_active ~update =
+let local ~show ~workers ~worker ~set_active ~update =
   let module X = Raw.Service.PoolAdmin in
   X.local @@ object
     inherit X.service
 
-    method dump_impl _params release_param_caps =
-      let open X.Dump in
+    method show_impl _params release_param_caps =
+      let open X.Show in
       release_param_caps ();
       let response, results = Service.Response.create Results.init_pointer in
-      Results.state_set results (dump ());
+      Results.state_set results (show ());
       Service.return response
 
     method workers_impl _params release_param_caps =
@@ -64,8 +64,8 @@ module X = Raw.Client.PoolAdmin
 
 type t = X.t Capability.t
 
-let dump t =
-  let open X.Dump in
+let show t =
+  let open X.Show in
   let request = Capability.Request.create_no_args () in
   Capability.call_for_value_exn t method_id request >|= Results.state_get
 

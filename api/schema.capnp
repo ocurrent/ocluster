@@ -126,7 +126,7 @@ struct WorkerInfo {
 }
 
 interface PoolAdmin {
-  dump      @0 () -> (state :Text);
+  show      @0 () -> (state :Text);
   workers   @1 () -> (workers : List(WorkerInfo));
   worker    @3 (worker :Text) -> (worker :Worker);
   setActive @2 (worker :Text, active :Bool) -> ();

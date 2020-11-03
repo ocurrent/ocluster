@@ -131,7 +131,7 @@ let admin () =
   Cluster_api.Admin.pools admin >>= fun pools ->
   Alcotest.(check (list string)) "Check pools" ["pool"] pools;
   Capability.with_ref (Cluster_api.Admin.pool admin "pool") @@ fun pool ->
-  Cluster_api.Pool_admin.dump pool >>= fun state ->
+  Cluster_api.Pool_admin.show pool >>= fun state ->
   Logs.info (fun f -> f "Pool state:\n%s" state);
   Lwt.return_unit
 
