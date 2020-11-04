@@ -54,5 +54,10 @@ module Make (Item : S.ITEM) : sig
   (** [release worker] marks [worker] as disconnected.
       [worker] cannot be used again after this (use [register] to get a new one). *)
 
+  val show : t Fmt.t
+  (** [show] shows the state of the system, including registered workers and queued jobs. *)
+
   val dump : t Fmt.t
+  (** [dump] is similar to [show], but also dumps the contents of the database.
+      It is probably only useful for unit-tests. *)
 end

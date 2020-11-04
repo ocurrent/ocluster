@@ -86,7 +86,7 @@ let show cap_path pool =
     List.iter print_endline pools
   | Some pool ->
     Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
-    Cluster_api.Pool_admin.dump pool >|= fun status ->
+    Cluster_api.Pool_admin.show pool >|= fun status ->
     print_endline (String.trim status)
 
 let set_active active cap_path pool worker =

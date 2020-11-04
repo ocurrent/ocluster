@@ -479,6 +479,11 @@ module Make (Item : S.ITEM) = struct
     | `Ready q ->
       Fmt.pf f "(ready) %a" (dump_queue pp_worker) q
 
+  let show f {pool = _; db = _; main; workers} =
+    Fmt.pf f "@[<v>queue: @[%a@]@,@[<v2>registered:%a@]@]@."
+      dump_main main
+      dump_workers workers
+
   let dump f {pool; db; main; workers} =
     Fmt.pf f "@[<v>queue: @[%a@]@,@[<v2>registered:%a@]@,cached: @[%a@]@]@."
       dump_main main

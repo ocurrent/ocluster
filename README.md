@@ -6,8 +6,9 @@ Workers register themselves by connecting to the scheduler (and workers do not n
 
 The scheduler can manage multiple pools (e.g. `linux-x86_64` and `linux-arm32`).
 Clients say which pool should handle their requests.
-At the moment, the only build type provided is building a Dockerfile in the context of some Git commit.
-The scheduler tries to schedule similar builds on the same machine, to benefit from Docker's build caching.
+At the moment, two build types are provided: building a Dockerfile, or building an [OBuilder][] spec.
+In either case, the build may done in the context of some Git commit.
+The scheduler tries to schedule similar builds on the same machine, to benefit from caching.
 
 ## The scheduler service
 
@@ -245,7 +246,7 @@ The endpoints available are:
 - `http://...:PORT/pool/{pool}/worker/{worker}/metrics` provides the metrics for the given worker
 - `http://...:PORT/pool/{pool}/worker/{worker}/host-metrics` gets the worker's prometheus-node-exporter metrics
 
-The worker agent and worker host metrics are fetched over the workers Cap'n Proto connection, so there is no need
+The worker agent and worker host metrics are fetched over the worker's Cap'n Proto connection, so there is no need
 to allow incoming network connections to the workers for this.
 
 [OBuilder]: https://github.com/ocurrent/obuilder
