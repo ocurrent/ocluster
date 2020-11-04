@@ -11,7 +11,7 @@ module Metrics = struct
 
   let queue =
     let help = "Items in cluster queue by state" in
-    Gauge.v_label ~label_name:"state" ~help ~namespace ~subsystem "queue_state_total"
+    Gauge.v_label ~label_name:"state" ~help ~namespace ~subsystem "queue_state"
 
   let queue_connect = queue "connect"
   let queue_rate_limit = queue "rate-limit"
@@ -74,7 +74,9 @@ let submit ~job ~pool ~action ~cache_hint ?src ~urgent t ~priority ~switch:_ =
   let urgent = urgent priority in
   let limiter_thread = ref None in
   let stage = ref `Init in
+  let cancelled, set_cancelled = Lwt.wait () in
   let cancel () =
+    if Lwt.is_sleeping cancelled then Lwt.wakeup set_cancelled (Error `Cancelled);
     match !stage with
     | `Init | `Got_worker -> Lwt.return_unit
     | `Rate_limit ->
@@ -87,41 +89,58 @@ let submit ~job ~pool ~action ~cache_hint ?src ~urgent t ~priority ~switch:_ =
   in
   let rec aux () =
     Prometheus.Gauge.inc_one Metrics.queue_connect;
-    sched ~job t >>= fun sched ->
+    let sched = sched ~job t >|= Result.ok in
+    Lwt.choose [sched; cancelled] >>= fun sched ->
     Prometheus.Gauge.dec_one Metrics.queue_connect;
-    stage := `Rate_limit;
-    Prometheus.Gauge.inc_one Metrics.queue_rate_limit;
-    let use_thread = Lwt_pool.use (rate_limit t pool urgent)
-        (fun () ->
-           Prometheus.Gauge.dec_one Metrics.queue_rate_limit;
-           let ticket = Cluster_api.Submission.submit ~urgent ?src sched ~pool ~action ~cache_hint in
-           let build_job = Cluster_api.Ticket.job ticket in
-           stage := `Get_ticket ticket;       (* Allow the user to cancel it now. *)
-           Prometheus.Gauge.inc_one Metrics.queue_get_ticket;
-           Capability.wait_until_settled ticket >>= fun () ->
-           Prometheus.Gauge.dec_one Metrics.queue_get_ticket;
-           Current.Job.log job "Waiting for worker...";
-           Prometheus.Gauge.inc_one Metrics.queue_get_worker;
-           Capability.wait_until_settled build_job >>= fun () ->
-           Prometheus.Gauge.dec_one Metrics.queue_get_worker;
-           Capability.dec_ref ticket;
-           stage := `Got_worker;
-           Lwt.return build_job
-        ) in
-    limiter_thread := Some use_thread;
-    use_thread >>= fun build_job ->
-    Lwt.pause () >>= fun () ->
-    match Capability.problem build_job with
-    | None -> Lwt.return build_job
-    | Some err ->
-      if Capability.problem sched = None then (
-        (* The job failed but we're still connected to the scheduler. Report the error. *)
-        Lwt.fail_with (Fmt.strf "%a" Capnp_rpc.Exception.pp err)
-      ) else (
-        limiter_thread := None;
-        stage := `Init;
-        aux ()
-      )
+    match sched with
+    | Error `Cancelled -> Lwt.(fail Canceled)
+    | Ok sched ->
+      stage := `Rate_limit;
+      Prometheus.Gauge.inc_one Metrics.queue_rate_limit;
+      let use_thread =
+        Lwt.catch
+          (fun () ->
+             Lwt_pool.use (rate_limit t pool urgent)
+               (fun () ->
+                  Prometheus.Gauge.dec_one Metrics.queue_rate_limit;
+                  let ticket = Cluster_api.Submission.submit ~urgent ?src sched ~pool ~action ~cache_hint in
+                  let build_job = Cluster_api.Ticket.job ticket in
+                  stage := `Get_ticket ticket;       (* Allow the user to cancel it now. *)
+                  Prometheus.Gauge.inc_one Metrics.queue_get_ticket;
+                  Capability.wait_until_settled ticket >>= fun () ->
+                  Prometheus.Gauge.dec_one Metrics.queue_get_ticket;
+                  Current.Job.log job "Waiting for worker...";
+                  Prometheus.Gauge.inc_one Metrics.queue_get_worker;
+                  Capability.wait_until_settled build_job >>= fun () ->
+                  Prometheus.Gauge.dec_one Metrics.queue_get_worker;
+                  Capability.dec_ref ticket;
+                  stage := `Got_worker;
+                  Lwt.return build_job
+               )
+          )
+          (function
+            | Lwt.Canceled as ex ->
+              if !stage = `Rate_limit then Prometheus.Gauge.dec_one Metrics.queue_rate_limit
+              else Log.warn (fun f -> f "Cancelled at unexpected point!");
+              Lwt.fail ex
+            | ex ->
+              Lwt.fail ex
+          )
+      in
+      limiter_thread := Some use_thread;
+      use_thread >>= fun build_job ->
+      Lwt.pause () >>= fun () ->
+      match Capability.problem build_job with
+      | None -> Lwt.return build_job
+      | Some err ->
+        if Capability.problem sched = None then (
+          (* The job failed but we're still connected to the scheduler. Report the error. *)
+          Lwt.fail_with (Fmt.strf "%a" Capnp_rpc.Exception.pp err)
+        ) else (
+          limiter_thread := None;
+          stage := `Init;
+          aux ()
+        )
   in
   aux (), cancel
 
