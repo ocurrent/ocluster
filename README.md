@@ -10,6 +10,22 @@ At the moment, two build types are provided: building a Dockerfile, or building 
 In either case, the build may done in the context of some Git commit.
 The scheduler tries to schedule similar builds on the same machine, to benefit from caching.
 
+## Contents
+
+<!-- vim-markdown-toc GFM -->
+
+* [The scheduler service](#the-scheduler-service)
+* [Workers](#workers)
+* [Clients](#clients)
+	* [Docker jobs](#docker-jobs)
+	* [OBuilder jobs](#obuilder-jobs)
+* [Admin](#admin)
+* [API](#api)
+* [Security model](#security-model)
+* [Prometheus metrics](#prometheus-metrics)
+
+<!-- vim-markdown-toc -->
+
 ## The scheduler service
 
 To run the scheduler:
@@ -127,62 +143,6 @@ specify `--local-dockerfile`).
 If you list multiple commit hashes then the builder will merge them together.
 This is useful for e.g. testing a pull request merged with the master branch's head.
 
-### OBuilder jobs
-
-This is similar to submitting a Docker job, except that you provide an [OBuilder][] spec file
-instead of a Dockerfile, e.g.
-
-```
-echo -e '((from busybox) (shell /bin/sh -c) (run (shell date)))' > OBuilder.test
-dune exec -- ocluster-client \
-  submit-obuilder ./capnp-secrets/submission.cap \
-  --cache-hint tutorial \
-  --pool=linux-x86_64 \
-  --local-file OBuilder.test
-```
-
-### Admin
-
-The client executable can also be used to manage the service using `admin.cap`.
-To get a list of the available pools:
-
-```
-dune exec -- ocluster-client \
-  show ./capnp-secrets/admin.cap
-```
-
-To show the state of one pool:
-
-```
-dune exec -- ocluster-client \
-  show ./capnp-secrets/admin.cap linux-x86_64
-```
-
-To pause a worker, give the pool and the worker's name, e.g.:
-
-```
-dune exec -- ocluster-client \
-  pause ./capnp-secrets/admin.cap linux-x86_64 my-host
-```
-
-A paused worker will not be assigned any more items until it is unpaused, but
-it will continue with any jobs it is already running. Use `unpause` to resume it.
-
-To update all workers in a pool:
-
-```
-dune exec -- ocluster-client \
-  update ./capnp-secrets/admin.cap linux-x86_64
-```
-
-This will test the update by restarting one worker first. If that succeeds, it will restart the others in
-parallel. Note that restarting a worker involves letting it finish any jobs currently in progress, so this
-may take a while. The `restart` command waits until the worker has reconnected before reporting success.
-
-You can also give the name of a worker as an extra argument to update just that worker.
-
-### Publishing the result
-
 You can ask the builder to push the resulting image somewhere. The client provides three options for this:
 
 ```
@@ -203,6 +163,61 @@ locally before pushing, and it would be unfortunate if a user asked it to tag
 an image as e.g. `ocurrent/ocluster-worker:latest`.
 
 The client is responsible for deleting the image once it is no longer needed.
+
+### OBuilder jobs
+
+This is similar to submitting a Docker job, except that you provide an [OBuilder][] spec file
+instead of a Dockerfile, e.g.
+
+```
+echo -e '((from busybox) (shell /bin/sh -c) (run (shell date)))' > OBuilder.test
+dune exec -- ocluster-client \
+  submit-obuilder ./capnp-secrets/submission.cap \
+  --cache-hint tutorial \
+  --pool=linux-x86_64 \
+  --local-file OBuilder.test
+```
+
+## Admin
+
+The `ocluster-admin` executable can be used to manage the service using `admin.cap`.
+To get a list of the available pools:
+
+```
+dune exec -- ocluster-admin \
+  show ./capnp-secrets/admin.cap
+```
+
+To show the state of one pool:
+
+```
+dune exec -- ocluster-admin \
+  show ./capnp-secrets/admin.cap linux-x86_64
+```
+
+To pause a worker, give the pool and the worker's name, e.g.:
+
+```
+dune exec -- ocluster-admin \
+  pause ./capnp-secrets/admin.cap linux-x86_64 my-host
+```
+
+A paused worker will not be assigned any more items until it is unpaused, but
+it will continue with any jobs it is already running. Use `unpause` to resume it.
+
+To update all workers in a pool:
+
+```
+dune exec -- ocluster-admin \
+  update ./capnp-secrets/admin.cap linux-x86_64
+```
+
+This will test the update by restarting one worker first. If that succeeds, it will restart the others in
+parallel. Note that restarting a worker involves letting it finish any jobs currently in progress, so this
+may take a while. The `restart` command waits until the worker has reconnected before reporting success.
+
+You can also give the name of a worker as an extra argument to update just that worker.
+
 
 ## API
 
