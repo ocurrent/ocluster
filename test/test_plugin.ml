@@ -138,6 +138,52 @@ let two_jobs () =
   Alcotest.(check pipeline_result) "Pipeline successful" (Ok ()) x;
   Lwt.return_unit
 
+let cancel_rate_limit () =
+  let sched, set_sched = Lwt.wait () in
+  let sched_sr =
+    Capnp_rpc_lwt.Cast.sturdy_of_raw @@ object
+      method connect = sched
+      method to_uri_with_secrets = failwith "mock to_uri_with_secrets"
+    end
+  in
+  let conn = Current_ocluster.Connection.create ~max_pipeline:0 sched_sr in
+  (* Test cancelling while connecting to scheduler. *)
+  let submit () =
+    let action = Cluster_api.Submission.docker_build (`Path "Dockerfile") in
+    let switch = Current.Switch.create ~label:"job" () in
+    let config = Current.Config.v () in
+    let job = Current.Job.create ~switch ~label:"job" ~config () in
+    let pool = Current_ocluster.Connection.pool ~job ~pool:"test" ~action ~cache_hint:"" conn in
+    job, Current.Job.use_pool ~switch job pool
+  in
+  let job, resource = submit () in
+  (* We are now trying to connect to the scheduler. Cancel the job. *)
+  Current.Job.cancel job "Test cancelling";
+  Lwt.try_bind
+    (fun () -> resource)
+    (fun _ -> failwith "Should have failed!")
+    (function
+      | Lwt.Canceled -> Lwt.return_unit
+      | ex -> Lwt.fail ex)
+  >>= fun () ->
+  (* Finish connecting to the scheduler. *)
+  let sched =
+    let submit ~pool:_ ~urgent:_ _job = assert false in
+    Cluster_api.Submission.local ~submit
+  in
+  Lwt.wakeup set_sched (Ok (Cast.cap_to_raw sched));
+  (* Submit another job. *)
+  let job, resource = submit () in
+  Current.Job.cancel job "Test cancelling";
+  Lwt.try_bind
+    (fun () -> resource)
+    (fun _ -> failwith "Should have failed!")
+    (function
+      | Lwt.Canceled -> Lwt.return_unit
+      | ex -> Lwt.fail ex)
+  >>= fun () ->
+  Lwt.return_unit
+
 let test_case name fn =
   Alcotest_lwt.test_case name `Quick @@ fun _ () ->
   fn () >|= fun () ->
@@ -145,7 +191,9 @@ let test_case name fn =
   |> Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output
   |> String.split_on_char '\n'
   |> List.iter (fun line ->
-      if Astring.String.is_prefix ~affix:"scheduler_pool_" line then (
+      if Astring.String.is_prefix ~affix:"scheduler_pool_" line ||
+         Astring.String.is_prefix ~affix:"ocluster_ocurrent_" line
+      then (
         match Astring.String.cut ~sep:"} " line with
         | None -> Fmt.failwith "Bad metrics line: %S" line
         | Some (key, _) when Astring.String.is_infix ~affix:"_total{" key -> ()
@@ -159,4 +207,5 @@ let suite = [
   test_case "simple" simple;
   test_case "disconnect_while_queued" disconnect_while_queued;
   test_case "two_jobs" two_jobs;
+  test_case "cancel_rate_limit" cancel_rate_limit;
 ]
