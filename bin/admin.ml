@@ -20,6 +20,22 @@ let run cap_path fn =
     Printf.eprintf "%s\n%!" msg;
     exit 1
 
+let add_client cap_path id =
+  run cap_path @@ fun admin_service ->
+  Capability.with_ref (Cluster_api.Admin.add_client admin_service id) @@ fun client ->
+  Persistence.save_exn client >|= fun uri ->
+  print_endline (Uri.to_string uri)
+
+let remove_client cap_path id =
+  run cap_path @@ fun admin_service ->
+  Cluster_api.Admin.remove_client admin_service id
+
+let list_clients cap_path =
+  run cap_path @@ fun admin_service ->
+  Cluster_api.Admin.list_clients admin_service >|= function
+  | [] -> Fmt.epr "No clients.@."
+  | clients -> List.iter print_endline clients
+
 let show cap_path pool =
   run cap_path @@ fun admin_service ->
   match pool with
@@ -124,6 +140,13 @@ let connect_addr =
     ~docv:"ADDR"
     []
 
+let client_id =
+  Arg.pos 1 Arg.(some string) None @@
+  Arg.info
+    ~doc:"Unique name or ID for the client"
+    ~docv:"ID"
+    []
+
 let pool_pos =
   Arg.pos 1 Arg.(some string) None @@
   Arg.info
@@ -146,6 +169,21 @@ let all =
     ~doc:"All workers"
     ["all"]
 
+let add_client =
+  let doc = "Create a new client endpoint for submitting jobs" in
+  Term.(const add_client $ connect_addr $ Arg.required client_id),
+  Term.info "add-client" ~doc
+
+let remove_client =
+  let doc = "Unregister a client." in
+  Term.(const remove_client $ connect_addr $ Arg.required client_id),
+  Term.info "remove-client" ~doc
+
+let list_clients =
+  let doc = "List registered clients" in
+  Term.(const list_clients $ connect_addr),
+  Term.info "list-clients" ~doc
+
 let show =
   let doc = "Show information about a service, pool or worker" in
   Term.(const show $ connect_addr $ Arg.value pool_pos),
@@ -166,7 +204,7 @@ let update =
   Term.(const update $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "update" ~doc
 
-let cmds = [show; pause; unpause; update]
+let cmds = [add_client; remove_client; list_clients; show; pause; unpause; update]
 
 let default_cmd =
   let doc = "a command-line admin client for the build-scheduler" in

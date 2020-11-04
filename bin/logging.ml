@@ -9,7 +9,7 @@ let reporter =
     let k _ = over (); k () in
     let src = Logs.Src.name src in
     msgf @@ fun ?header ?tags:_ fmt ->
-    Fmt.kpf k Fmt.stdout ("%a %a %a @[" ^^ fmt ^^ "@]@.")
+    Fmt.kpf k Fmt.stderr ("%a %a %a @[" ^^ fmt ^^ "@]@.")
       pp_timestamp (Unix.gettimeofday ())
       Fmt.(styled `Magenta string) (Printf.sprintf "%14s" src)
       Logs_fmt.pp_header (level, header)
