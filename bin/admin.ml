@@ -31,17 +31,35 @@ let show cap_path pool =
     Cluster_api.Pool_admin.show pool >|= fun status ->
     print_endline (String.trim status)
 
-let set_active active cap_path pool worker =
+let set_active active all cap_path pool worker =
   run cap_path @@ fun admin_service ->
   Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
   match worker with
   | Some worker ->
     Cluster_api.Pool_admin.set_active pool worker active
   | None ->
-    Cluster_api.Pool_admin.workers pool >|= function
+    Cluster_api.Pool_admin.workers pool >>= function
     | [] ->
-      Fmt.epr "No workers connected to pool!@.";
-      exit 1
+      Fmt.pr "No workers connected to pool (nothing to do).@.";
+      Lwt.return_unit
+    | workers when all ->
+      let workers =
+        workers |> List.filter_map (fun { Cluster_api.Pool_admin.name; active = prev } ->
+          if prev = active then (Fmt.pr "(worker %S is already done)@." name; None)
+          else Some name
+        )
+      in
+      if workers = [] then (
+        Fmt.pr "Nothing to do.@.";
+        Lwt.return_unit
+      ) else (
+        Fmt.pr "Updating %a...@." Fmt.(list ~sep:comma string) workers;
+        let set worker =
+          Cluster_api.Pool_admin.set_active pool worker active
+        in
+        Lwt.join (List.map set workers) >|= fun () ->
+        Fmt.pr "Success.@."
+      )
     | workers ->
       let pp_active f = function
         | true -> Fmt.string f "active"
@@ -50,7 +68,7 @@ let set_active active cap_path pool worker =
       let pp_worker_info f { Cluster_api.Pool_admin.name; active } =
         Fmt.pf f "%s (%a)" name pp_active active
       in
-      Fmt.epr "@[<v>Specify which worker you want to affect. Candidates are:@,%a@."
+      Fmt.epr "@[<v>Specify which worker you want to affect (or use --all).@,Candidates are:@,%a@."
         Fmt.(list ~sep:cut pp_worker_info) workers;
       exit 1
 
@@ -121,6 +139,13 @@ let worker =
     ~docv:"WORKER"
     []
 
+let all =
+  Arg.value @@
+  Arg.flag @@
+  Arg.info
+    ~doc:"All workers"
+    ["all"]
+
 let show =
   let doc = "Show information about a service, pool or worker" in
   Term.(const show $ connect_addr $ Arg.value pool_pos),
@@ -128,12 +153,12 @@ let show =
 
 let pause =
   let doc = "Set a worker to be unavailable for further jobs" in
-  Term.(const (set_active false) $ connect_addr $ Arg.required pool_pos $ worker),
+  Term.(const (set_active false) $ all $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "pause" ~doc
 
 let unpause =
   let doc = "Resume a paused worker" in
-  Term.(const (set_active true) $ connect_addr $ Arg.required pool_pos $ worker),
+  Term.(const (set_active true) $ all $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "unpause" ~doc
 
 let update =
