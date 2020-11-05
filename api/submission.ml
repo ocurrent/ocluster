@@ -1,8 +1,8 @@
 open Capnp_rpc_lwt
 
-let local ~submit =
+let local ~submit ~sturdy_ref =
   let module X = Raw.Service.Submission in
-  X.local @@ object
+  Persistence.with_sturdy_ref sturdy_ref X.local @@ object
     inherit X.service
 
     method submit_impl params release_param_caps =
@@ -11,11 +11,12 @@ let local ~submit =
       let pool = Params.pool_get params in
       let descr = Params.descr_get params in
       let urgent = Params.urgent_get params in
+      Service.return_lwt @@ fun () ->
       let ticket = submit ~pool ~urgent descr in
       let response, results = Service.Response.create Results.init_pointer in
       Results.ticket_set results (Some ticket);
       Capability.dec_ref ticket;
-      Service.return response
+      Lwt_result.return response
   end
 
 module X = Raw.Client.Submission

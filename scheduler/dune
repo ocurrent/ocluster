@@ -1,3 +1,3 @@
 (library
  (name cluster_scheduler)
- (libraries ocluster-api logs capnp-rpc-lwt lwt-dllist prometheus db lwt.unix))
+ (libraries ocluster-api logs capnp-rpc-lwt capnp-rpc-net lwt-dllist prometheus db lwt.unix))

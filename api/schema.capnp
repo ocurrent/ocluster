@@ -136,6 +136,17 @@ interface PoolAdmin {
 }
 
 interface Admin {
-  pools @0 () -> (names :List(Text));
-  pool  @1 (name :Text) -> (pool :PoolAdmin);
+  pools        @0 () -> (names :List(Text));
+  pool         @1 (name :Text) -> (pool :PoolAdmin);
+
+  addClient    @2 (id :Text) -> (cap :Submission);
+  # Return a new submission endpoint for client "id".
+  # Returns an error if "id" is already registered.
+
+  removeClient @3 (id :Text) -> (cap :Submission);
+  # Remove a client, so that the sturdy-ref can no longer be used to connect.
+  # The client cannot submit any more jobs after this, though existing jobs
+  # are not cancelled.
+
+  listClients  @4 () -> (clients :List(Text));
 }

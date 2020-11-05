@@ -2,16 +2,29 @@ open Capnp_rpc_lwt
 open Lwt.Infix
 open Current.Syntax
 
+module Restorer = Capnp_rpc_net.Restorer
+
+let make_sturdy _ = Uri.of_string "mock:sturdy"
+
 let with_sched fn =
   let db = Sqlite3.db_open ":memory:" in
   Lwt.finalize
     (fun () ->
        let sched = Cluster_scheduler.create ~db ["pool"] in
+       let load ~validate ~sturdy_ref = function
+         | Cluster_scheduler.Client, name -> 
+           Lwt.return @@ Restorer.grant (Cluster_scheduler.submission_service ~validate ~sturdy_ref sched name)
+         | (ty, _) -> Fmt.failwith "Unknown SturdyRef type %a found in database!" Cluster_scheduler.Sqlite_loader.Ty.pp ty
+       in
+       let loader = Cluster_scheduler.Sqlite_loader.create ~make_sturdy ~load db in
+       let services = Restorer.Table.of_loader (module Cluster_scheduler.Sqlite_loader) loader in
+       let restore = Restorer.of_table services in
        let pools = Cluster_scheduler.registration_services sched in
        match pools with
        | ["pool", registration_service] ->
          Capability.with_ref registration_service @@ fun registry ->
-         Capability.with_ref (Cluster_scheduler.submission_service sched) @@ fun submission_service ->
+         Capability.with_ref (Cluster_scheduler.admin_service sched ~loader ~restore) @@ fun admin ->
+         Capability.with_ref (Cluster_api.Admin.add_client admin "client") @@ fun submission_service ->
          fn ~submission_service ~registry
        | _ -> failwith "Missing pool!"
     )
@@ -169,7 +182,12 @@ let cancel_rate_limit () =
   (* Finish connecting to the scheduler. *)
   let sched =
     let submit ~pool:_ ~urgent:_ _job = assert false in
-    Cluster_api.Submission.local ~submit
+    let sturdy_ref = Capnp_rpc_lwt.Cast.sturdy_of_raw @@ object
+        method connect = assert false
+        method to_uri_with_secrets = assert false
+      end
+    in
+    Cluster_api.Submission.local ~submit ~sturdy_ref
   in
   Lwt.wakeup set_sched (Ok (Cast.cap_to_raw sched));
   (* Submit another job. *)

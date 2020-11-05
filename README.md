@@ -48,22 +48,20 @@ given in the `listen` address. e.g. change `127.0.0.1` to a public IP address.
 You should see output something like this:
 
 ```
-2020-07-07 16:24.28      capnp-rpc [INFO] Generating new secret key to store in "./capnp-secrets/key.pem"
-2020-07-07 16:24.28      capnp-rpc [INFO] Generating new private key...
-2020-07-07 16:24.28      capnp-rpc [INFO] Generated key with hash sha-256@gTYMtfvMQJJCRrdqzmBxB-fyJYDmB7oXpMuQd6eGoZw
-2020-07-07 16:24.28      capnp-rpc [INFO] Waiting for (encrypted) connections on tcp:0.0.0.0:9000
-2020-07-07 16:24.28    application  Wrote capability reference to "./capnp-secrets/submission.cap"
-2020-07-07 16:24.28    application  Wrote capability reference to "./capnp-secrets/admin.cap"
-2020-07-07 16:24.28    application  Wrote capability reference to "./capnp-secrets/pool-linux-arm32.cap"
-2020-07-07 16:24.28    application  Wrote capability reference to "./capnp-secrets/pool-linux-x86_64.cap"
+2020-11-05 16:28.30      capnp-rpc [INFO] Generating new secret key to store in "./capnp-secrets/key.pem"
+2020-11-05 16:28.30      capnp-rpc [INFO] Generating new private key...
+2020-11-05 16:28.30      capnp-rpc [INFO] Generated key with hash sha-256@0_tVPHQ3gz5vKNVwc_t0llFS7YkVuKmqfG7fO9S-gEg
+2020-11-05 16:28.30      capnp-rpc [INFO] Waiting for (encrypted) connections on tcp:0.0.0.0:9000
+2020-11-05 16:28.30    application  Wrote capability reference to "./capnp-secrets/admin.cap"
+2020-11-05 16:28.30    application  Wrote capability reference to "./capnp-secrets/pool-linux-arm32.cap"
+2020-11-05 16:28.30    application  Wrote capability reference to "./capnp-secrets/pool-linux-x86_64.cap"
 ```
 
 The service creates `.cap` files in `./capnp-secrets/` that can be used to connect to the service.
-There is one for each named pool (that workers use to register themselves),
-`submission.cap` for the job submission endpoint (for clients), and
+There is one for each named pool (that workers use to register themselves), plus
 `admin.cap` for managing the service.
 
-[Dockerfile](./Dockerfile) can be used to run the scheduler service in a Docker container.
+The provided [Dockerfile](./Dockerfile) can be used to build the scheduler service as a Docker image.
 
 ## Workers
 
@@ -91,16 +89,23 @@ and `Registered new worker "my-host"` in the scheduler log.
 The service builds the jobs using `docker build` and so needs access to the local Docker.
 
 [Dockerfile.worker](./Dockerfile.worker) can be used to run the worker service itself in a Docker container.
+However, if you intend to support OBuilder jobs, you will probably want to run it directly on the host instead.
 
 ## Clients
 
 To submit a job, you need:
 
-- the `submission.cap` from the scheduler (granting you permission to submit jobs),
+- a `submission.cap` file (granting you permission to submit jobs),
 - the name of the pool to use, and
 - a description of the job (depending on the job type; see below).
 
-There is a command-line client (for testing), and a plugin for use in [OCurrent](https://github.com/ocurrent/ocurrent) pipelines.
+The service administrator can generate a `submission.cap` from the `admin.cap` like this:
+
+```
+dune exec -- ocluster-admin add-client ./capnp-secrets/admin.cap test-user > submission.cap
+```
+
+There is a command-line client, and a plugin for use in [OCurrent](https://github.com/ocurrent/ocurrent) pipelines.
 
 ### Docker jobs
 
@@ -111,7 +116,7 @@ You can run a job like this:
 ```
 echo -e "FROM busybox\nRUN date\n" > Dockerfile.test
 dune exec -- ocluster-client \
-  submit-docker ./capnp-secrets/submission.cap \
+  submit-docker submission.cap \
   --cache-hint tutorial \
   --pool=linux-x86_64 \
   --local-dockerfile Dockerfile.test
@@ -129,7 +134,7 @@ and checkout the commit, using that as the Docker build context. e.g.
 
 ```
 dune exec -- ocluster-client \
-  submit-docker ./capnp-secrets/submission.cap \
+  submit-docker submission.cap \
   --cache-hint tutorial \
   --pool=linux-x86_64 \
   --local-dockerfile Dockerfile \
@@ -172,7 +177,7 @@ instead of a Dockerfile, e.g.
 ```
 echo -e '((from busybox) (shell /bin/sh -c) (run (shell date)))' > OBuilder.test
 dune exec -- ocluster-client \
-  submit-obuilder ./capnp-secrets/submission.cap \
+  submit-obuilder submission.cap \
   --cache-hint tutorial \
   --pool=linux-x86_64 \
   --local-file OBuilder.test
@@ -181,6 +186,16 @@ dune exec -- ocluster-client \
 ## Admin
 
 The `ocluster-admin` executable can be used to manage the service using `admin.cap`.
+
+To grant a user access to the cluster (the name can be any unique ID):
+
+```
+dune exec -- ocluster-admin add-client ./capnp-secrets/admin.cap alice > alice.cap
+```
+
+You can also use `remove-client` to deactivate the `.cap` file, and `list-clients` to
+show all registered users.
+
 To get a list of the available pools:
 
 ```

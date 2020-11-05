@@ -76,14 +76,19 @@ let main capnp secrets_dir pools prometheus_config state_dir =
   Sqlite3.busy_timeout db 1000;
   Db.exec_literal db "PRAGMA journal_mode=WAL";
   Db.exec_literal db "PRAGMA synchronous=NORMAL";
+  let sched = Cluster_scheduler.create pools ~db in
   Lwt_main.run begin
     let make_sturdy = Capnp_rpc_unix.Vat_config.sturdy_uri capnp in
-    let services = Restorer.Table.create make_sturdy in
-    let submission_id = Capnp_rpc_unix.Vat_config.derived_id capnp "submission" in
+    let load ~validate ~sturdy_ref = function
+      | Cluster_scheduler.Client, name ->
+        Lwt.return @@ Restorer.grant (Cluster_scheduler.submission_service ~validate ~sturdy_ref sched name)
+      | (ty, _) -> Fmt.failwith "Unknown SturdyRef type %a found in database!" Cluster_scheduler.Sqlite_loader.Ty.pp ty
+    in
+    let loader = Cluster_scheduler.Sqlite_loader.create ~make_sturdy ~load db in
+    let services = Restorer.Table.of_loader (module Cluster_scheduler.Sqlite_loader) loader in
+    let restore = Restorer.of_table services in
     let admin_id = Capnp_rpc_unix.Vat_config.derived_id capnp "admin" in
-    let sched = Cluster_scheduler.create ~db pools in
-    Restorer.Table.add services submission_id (Cluster_scheduler.submission_service sched);
-    Restorer.Table.add services admin_id (Cluster_scheduler.admin_service sched);
+    Restorer.Table.add services admin_id (Cluster_scheduler.admin_service sched ~restore ~loader);
     let exports =
       Cluster_scheduler.registration_services sched |> List.map (fun (id, service) ->
           let name = "pool-" ^ id in
@@ -92,9 +97,7 @@ let main capnp secrets_dir pools prometheus_config state_dir =
           export ~secrets_dir ~name id
         )
     in
-    let restore = Restorer.of_table services in
     Capnp_rpc_unix.serve capnp ~restore >>= fun vat ->
-    export ~secrets_dir ~vat ~name:"submission" submission_id;
     export ~secrets_dir ~vat ~name:"admin" admin_id;
     exports |> List.iter (fun f -> f ~vat);
     lwt_choose_safely (Web.serve ~sched prometheus_config)  (* Wait forever *)

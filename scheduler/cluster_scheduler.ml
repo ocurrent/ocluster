@@ -2,6 +2,9 @@ open Astring
 open Lwt.Infix
 open Capnp_rpc_lwt
 
+type Sqlite_loader.Ty.t += Client
+let () = Sqlite_loader.Ty.register "ocluster-client" Client
+
 let restart_timeout = 600.0   (* Maximum time to wait for a worker to reconnect after it disconnects. *)
 
 module Item = struct
@@ -43,9 +46,9 @@ module Pool_api = struct
     let cond = Lwt_condition.create () in
     { pool; workers; cond }
 
-  let submit t ~urgent (descr : Cluster_api.Queue.job_desc) : Cluster_api.Ticket.t =
+  let submit t ~urgent ~client_id (descr : Cluster_api.Queue.job_desc) : Cluster_api.Ticket.t =
     let job, set_job = Capability.promise () in
-    Log.info (fun f -> f "Received new job request (urgent=%b)" urgent);
+    Log.info (fun f -> f "Received new job request from %S (urgent=%b)" client_id urgent);
     let item = { Item.descr; set_job } in
     let ticket = Pool.submit ~urgent t.pool item in
     let cancel () =
@@ -151,28 +154,54 @@ let registration_services t =
 
 let pp_pool_name f (name, _) = Fmt.string f name
 
-let submission_service t =
+let submission_service ~validate ~sturdy_ref t client_id =
   let submit ~pool ~urgent descr =
-    match String.Map.find_opt pool t.pools with
-    | None ->
-      let msg = Fmt.strf "Pool ID %S not one of @[<h>{%a}@]" pool (String.Map.pp ~sep:Fmt.comma pp_pool_name) t.pools in
-      Capability.broken (Capnp_rpc.Exception.v msg)
-    | Some pool ->
-      Pool_api.submit ~urgent pool descr
+    match validate () with
+    | false -> Capability.broken (Capnp_rpc.Exception.v "Access has been revoked")
+    | true ->
+      match String.Map.find_opt pool t.pools with
+      | None ->
+        let msg = Fmt.strf "Pool ID %S not one of @[<h>{%a}@]" pool (String.Map.pp ~sep:Fmt.comma pp_pool_name) t.pools in
+        Capability.broken (Capnp_rpc.Exception.v msg)
+      | Some pool ->
+        Pool_api.submit ~urgent ~client_id pool descr
   in
-  Cluster_api.Submission.local ~submit
+  Cluster_api.Submission.local ~submit ~sturdy_ref
 
 let pool t name =
   String.Map.find_opt name t.pools
 
-let admin_service t =
+let admin_service ~loader ~restore t =
   let pools () = String.Map.bindings t.pools |> List.map fst in
   let pool name =
     match String.Map.find_opt name t.pools with
     | None -> Capability.broken (Capnp_rpc.Exception.v "No such pool")
     | Some pool_api -> Pool_api.admin_service pool_api
   in
-  Cluster_api.Admin.local ~pools ~pool
+  let add_client name =
+    let descr = (Client, name) in
+    match Sqlite_loader.lookup_by_descr loader descr with
+    | [] ->
+      let secret = Sqlite_loader.add loader descr in
+      Log.info (fun f -> f "Created new submission endpoint for client %S" name);
+      Capnp_rpc_net.Restorer.restore restore secret
+      >|= Result.map_error (fun x -> `Capnp (`Exception x))
+    | _ -> Lwt_result.fail (`Capnp (Capnp_rpc.Error.exn "Client %S already registered!" name))
+  in
+  let remove_client name =
+    let descr = (Client, name) in
+    match Sqlite_loader.lookup_by_descr loader descr with
+    | [digest] ->
+      Sqlite_loader.remove loader digest;
+      Log.info (fun f -> f "Removed endpoint for client %S" name);
+      Lwt_result.return ()
+    | [] -> Lwt_result.fail (`Capnp (Capnp_rpc.Error.exn "Unknown client %S" name))
+    | _ -> failwith "BUG: multiple users found with the same ID!"
+  in
+  let list_clients () =
+    Sqlite_loader.list_by_type loader Client |> List.map (fun (_digest, name) -> name) |> Lwt.return
+  in
+  Cluster_api.Admin.local ~pools ~pool ~add_client ~remove_client ~list_clients
 
 let create ~db pools =
   let db = Pool.Dao.init db in
@@ -185,3 +214,4 @@ let create ~db pools =
 
 module S = S
 module Pool = Pool
+module Sqlite_loader = Sqlite_loader
