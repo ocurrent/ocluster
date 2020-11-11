@@ -90,6 +90,7 @@ module Make (Item : S.ITEM) = struct
   type ticket = {
     item : Item.t;
     urgent : bool;
+    mutable cost : int;                         (* Estimated cost (set when added to worker queue) *)
     mutable cancel : (unit -> unit) option;     (* None if not in a queue *)
   }
 
@@ -175,7 +176,7 @@ module Make (Item : S.ITEM) = struct
   } and worker = {
     parent : t;
     name : string;
-    mutable state : [ `Running of (int * ticket) Lwt_dllist.t * unit Lwt_condition.t
+    mutable state : [ `Running of ticket Lwt_dllist.t * unit Lwt_condition.t
                     | `Inactive of unit Lwt.t * unit Lwt.u  (* ready/set_ready for resume *)
                     | `Finished ];
     mutable workload : int;     (* Total cost of items in worker's queue. *)
@@ -188,7 +189,7 @@ module Make (Item : S.ITEM) = struct
     node
 
   let enqueue_item item queue worker ticket =
-    let cost = fst item in
+    let cost = item.cost in
     let metric = Metrics.assigned_items worker.name in
     let node = enqueue_node item queue metric in
     worker.workload <- worker.workload + cost;
@@ -203,10 +204,10 @@ module Make (Item : S.ITEM) = struct
     let metric = Metrics.assigned_items worker.name in
     match Lwt_dllist.take_opt_r queue with
     | None -> None
-    | Some (cost, ticket) ->
+    | Some ticket ->
       clear_cancel ticket;
       Prometheus.Gauge.dec_one metric;
-      worker.workload <- worker.workload - cost;
+      worker.workload <- worker.workload - ticket.cost;
       Some ticket
 
   (* Return the worker in [workers] with the lowest workload. *)
@@ -244,7 +245,8 @@ module Make (Item : S.ITEM) = struct
       | None -> false   (* No workers will have this cached. *)
       | Some (worker, worker_q, cond) ->
         Log.info (fun f -> f "Assigning %a to %S (preferred)" pp_ticket ticket worker.name);
-        enqueue_item (cost.cached, ticket) worker_q worker ticket;
+        ticket.cost <- cost.cached;
+        enqueue_item ticket worker_q worker ticket;
         Lwt_condition.broadcast cond ();
         true
     )
@@ -303,10 +305,10 @@ module Make (Item : S.ITEM) = struct
      Metrics have already been updated. *)
   let rec push_back worker worker_q q =
     match Lwt_dllist.take_opt_l worker_q with
-    | Some (cost, ticket) ->
+    | Some ticket ->
       Log.info (fun f -> f "Pushing %a back on to the main queue" pp_ticket ticket);
       Prometheus.Gauge.dec_one (Metrics.assigned_items worker.name);
-      worker.workload <- worker.workload - cost;
+      worker.workload <- worker.workload - ticket.cost;
       clear_cancel ticket;
       Backlog.push_back ~pool:worker.parent.pool ticket q;
       push_back worker worker_q q
@@ -351,14 +353,15 @@ module Make (Item : S.ITEM) = struct
              idle and we couldn't find any free preferred worker. *)
           Log.info (fun f -> f "Assigning %a to %S (the next free worker)" pp_ticket ticket worker.name);
           let cost = Item.cost_estimate ticket.item in
-          enqueue_item (cost.non_cached, ticket) worker_q worker ticket;
+          ticket.cost <- cost.non_cached;
+          enqueue_item ticket worker_q worker ticket;
           mark_cached ticket.item worker;
           Lwt_condition.broadcast cond ()
       )
 
   let submit ~urgent t item =
     Prometheus.Counter.inc_one (Metrics.jobs_submitted t.pool);
-    let ticket = { item; urgent; cancel = None } in
+    let ticket = { item; urgent; cancel = None; cost = -1 } in
     add t ticket;
     ticket
 
@@ -455,9 +458,9 @@ module Make (Item : S.ITEM) = struct
   let pp_worker f worker =
     Fmt.string f worker.name
 
-  let pp_cost_item f (cost, ticket) =
+  let pp_cost_item f ticket =
     let urgent = if ticket.urgent then "+urgent" else "" in
-    Fmt.pf f "%a(%d%s)" pp_ticket ticket cost urgent
+    Fmt.pf f "%a(%d%s)" pp_ticket ticket ticket.cost urgent
 
   let pp_state f = function
     | { state = `Finished; _ } -> Fmt.string f "(finished)"
