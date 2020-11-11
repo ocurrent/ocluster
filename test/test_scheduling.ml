@@ -81,8 +81,8 @@ let cached_scheduling () =
   Alcotest.(check string) "Workers ready" "\
     queue: (ready) [worker-2 worker-1]\n\
     registered:\n\
-    \  worker-1 (0): []\n\
-    \  worker-2 (0): []\n\
+    \  worker-1 (0): [] : []\n\
+    \  worker-2 (0): [] : []\n\
     cached: \n" (Fmt.to_to_string Pool.dump pool);
   submit pool ~urgent:false @@ job "job1" ~cache_hint:"a";
   submit pool ~urgent:false @@ job "job2" ~cache_hint:"b";
@@ -92,15 +92,15 @@ let cached_scheduling () =
   Alcotest.(check string) "Jobs queued" "\
     queue: (backlog) [job5 job4 job3] : []\n\
     registered:\n\
-    \  worker-1 (5): [job1(5)]\n\
-    \  worker-2 (5): [job2(5)]\n\
+    \  worker-1 (5): [job1(5)] : []\n\
+    \  worker-2 (5): [job2(5)] : []\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Lwt.pause () >>= fun () ->
   Alcotest.(check string) "Jobs started" "\
     queue: (backlog) [job5 job4 job3] : []\n\
     registered:\n\
-    \  worker-1 (0): []\n\
-    \  worker-2 (0): []\n\
+    \  worker-1 (0): [] : []\n\
+    \  worker-2 (0): [] : []\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Alcotest.(check pop_result) "Worker 1 / job 1" (Ok "job1") (job_state w1a);
   Alcotest.(check pop_result) "Worker 2 / job 1" (Ok "job2") (job_state w2a);
@@ -109,8 +109,8 @@ let cached_scheduling () =
   Alcotest.(check string) "Jobs 3 and 4 assigned to worker-1" "\
     queue: (backlog) [] : []\n\
     registered:\n\
-    \  worker-1 (2): [job4(1) job3(1)]\n\
-    \  worker-2 (0): []\n\
+    \  worker-1 (2): [job4(1) job3(1)] : []\n\
+    \  worker-2 (0): [] : []\n\
     cached: a: [worker-1], b: [worker-2], c: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Alcotest.(check pop_result) "Worker 2 / job 2" (Ok "job5") (job_state w2b);
   (* Worker 1 leaves. Its two queued jobs get reassigned. *)
@@ -122,7 +122,7 @@ let cached_scheduling () =
   Alcotest.(check string) "Worker-1's jobs reassigned" "\
     queue: (backlog) [job4] : []\n\
     registered:\n\
-    \  worker-2 (0): []\n\
+    \  worker-2 (0): [] : []\n\
     cached: a: [worker-1; worker-2], b: [worker-2], c: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Alcotest.(check pop_result) "Worker 2 / job 3" (Ok "job3") (job_state w2c);
   let w2d = Pool.pop w2 in
@@ -156,8 +156,8 @@ let unbalanced () =
   Alcotest.(check string) "Worker-2 got jobs eventually" "\
     queue: (backlog) [] : []\n\
     registered:\n\
-    \  worker-1 (6): [job7(1) job6(1) job5(1) job4(1) job3(1) job2(1)]\n\
-    \  worker-2 (0): []\n\
+    \  worker-1 (6): [job7(1) job6(1) job5(1) job4(1) job3(1) job2(1)] : []\n\
+    \  worker-2 (0): [] : []\n\
     cached: a: [worker-1; worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Alcotest.(check pop_result) "Worker 2 / job 1" (Ok "job8") (job_state w2a);
   Pool.release w1;
@@ -232,11 +232,47 @@ let urgent () =
   Alcotest.(check string) "Worker-1 gone" "\
     queue: (backlog) [job1] : [job3]\n\
     registered:\n\
-    \  worker-2 (0): []\n\
+    \  worker-2 (0): [] : []\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   (* Urgent job 5 goes ahead of non-urgent job 1, but behind the existing urgent job 3. *)
   submit pool ~urgent:true @@ job "job5" ~cache_hint:"b";
   flush_queue w2 ~expect:["job3"; "job5"; "job1"]
+
+(* Urgent jobs go first on worker queues too. *)
+let urgent_worker () =
+  with_test_db @@ fun db ->
+  let pool = Pool.create ~db ~name:"urgent-worker" in
+  submit pool ~urgent:true  @@ job "job1" ~cache_hint:"a";
+  submit pool ~urgent:false @@ job "job2" ~cache_hint:"a";
+  submit pool ~urgent:false @@ job "job3" ~cache_hint:"b";
+  let w1 = Pool.register pool ~name:"worker-1" |> Result.get_ok in
+  Pool.set_active w1 true;
+  let w1a = Pool.pop w1 in
+  Alcotest.(check pop_result) "Worker 1 / job 1" (Ok "job1") (job_state w1a);
+  (* Worker 2 joins and gets job 3, due to the cache hints, putting job2 on
+     worker 1's queue. *)
+  let w2 = Pool.register pool ~name:"worker-2" |> Result.get_ok in
+  Pool.set_active w2 true;
+  let w2a = Pool.pop w2 in
+  Alcotest.(check pop_result) "Worker 2 / job 1" (Ok "job3") (job_state w2a);
+  Alcotest.(check string) "Worker-1 queue has job 2 queued" "\
+    queue: (backlog) [] : []\n\
+    registered:\n\
+    \  worker-1 (1): [job2(1)] : []\n\
+    \  worker-2 (0): [] : []\n\
+    cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
+  submit pool ~urgent:true  @@ job "job4" ~cache_hint:"a";
+  submit pool ~urgent:false @@ job "job5" ~cache_hint:"b";
+  submit pool ~urgent:true  @@ job "job6" ~cache_hint:"a";
+  let w2b = Pool.pop w2 in
+  Alcotest.(check pop_result) "Worker 2 / job 2" (Ok "job5") (job_state w2b);
+  Alcotest.(check string) "Worker-1 gets job4 first" "\
+    queue: (backlog) [] : []\n\
+    registered:\n\
+    \  worker-1 (3): [job2(1)] : [job6(1+urgent) job4(1+urgent)]\n\
+    \  worker-2 (0): [] : []\n\
+    cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
+  flush_queue w1 ~expect:["job4"; "job6"; "job2"]
 
 (* Workers can be paused and resumed. *)
 let inactive () =
@@ -254,8 +290,8 @@ let inactive () =
   Alcotest.(check string) "Both jobs assigned to Worker-1" "\
     queue: (ready) [worker-2]\n\
     registered:\n\
-    \  worker-1 (1): [job2(1)]\n\
-    \  worker-2 (0): []\n\
+    \  worker-1 (1): [job2(1)] : []\n\
+    \  worker-2 (0): [] : []\n\
     cached: a: [worker-1]\n" (Fmt.to_to_string Pool.dump pool);
   (* Deactivate worker-1. Its job is reassigned. *)
   Pool.set_active w1 false;
@@ -263,7 +299,7 @@ let inactive () =
     queue: (ready) []\n\
     registered:\n\
     \  worker-1 (0): (inactive)\n\
-    \  worker-2 (5): [job2(5)]\n\
+    \  worker-2 (5): [job2(5)] : []\n\
     cached: a: [worker-1; worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Lwt.pause () >>= fun () ->
   Alcotest.(check pop_result) "Worker 1 / job 1" (Ok "job1") (job_state w1a);
@@ -300,15 +336,15 @@ let cancel_worker_queue () =
   Alcotest.(check string) "Jobs assigned" "\
     queue: (ready) []\n\
     registered:\n\
-    \  worker-1 (2): [job3(1) job2(1)]\n\
-    \  worker-2 (0): []\n\
+    \  worker-1 (2): [job3(1) job2(1)] : []\n\
+    \  worker-2 (0): [] : []\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Pool.cancel j2 |> Alcotest.(check (result pass reject)) "job2 cancelled" (Ok ());
   Alcotest.(check string) "Job2 cancelled" "\
     queue: (ready) []\n\
     registered:\n\
-    \  worker-1 (1): [job3(1)]\n\
-    \  worker-2 (0): []\n\
+    \  worker-1 (1): [job3(1)] : []\n\
+    \  worker-2 (0): [] : []\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Pool.release w2;
   Pool.set_active w1 false;
@@ -345,8 +381,8 @@ let push_back () =
   Alcotest.(check string) "Jobs assigned" "\
     queue: (ready) [worker-2]\n\
     registered:\n\
-    \  worker-1 (2): [job3(1) job2(1)]\n\
-    \  worker-2 (0): []\n\
+    \  worker-1 (2): [job3(1) job2(1)] : []\n\
+    \  worker-2 (0): [] : []\n\
     cached: a: [worker-1]\n" (Fmt.to_to_string Pool.dump pool);
   Pool.release w2;
   Pool.set_active w1 false;
@@ -384,6 +420,7 @@ let suite = [
   test_case "no_workers" no_workers;
   test_case "persist" persist;
   test_case "urgent" urgent;
+  test_case "urgent_worker" urgent_worker;
   test_case "inactive" inactive;
   test_case "cancel_worker_queue" cancel_worker_queue;
   test_case "push_back" push_back;

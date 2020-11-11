@@ -22,13 +22,11 @@ module Metrics = struct
     let help = "Number of connected workers" in
     Gauge.v_label ~label_name:"pool" ~help ~namespace ~subsystem "workers_connected"
 
-  let incoming_queue_length =
-    let help = "Items in the main queue (i.e. unassigned)" in
-    Gauge.v_labels ~label_names:["pool"; "priority"] ~help ~namespace ~subsystem "incoming_queue_length"
+  let incoming_queue = "incoming"
 
-  let assigned_items =
-    let help = "Number of items assigned to a particular worker" in
-    Gauge.v_label ~label_name:"worker" ~help ~namespace ~subsystem "assigned_items"
+  let queue_length =
+    let help = "Items in the queue" in
+    Gauge.v_labels ~label_names:["queue"; "pool"; "priority"] ~help ~namespace ~subsystem "queue_length"
 
   let workers_ready =
     let help = "Number of workers ready to accept a new job" in
@@ -90,6 +88,7 @@ module Make (Item : S.ITEM) = struct
   type ticket = {
     item : Item.t;
     urgent : bool;
+    mutable cost : int;                         (* Estimated cost (set when added to worker queue) *)
     mutable cancel : (unit -> unit) option;     (* None if not in a queue *)
   }
 
@@ -114,6 +113,7 @@ module Make (Item : S.ITEM) = struct
 
   module Backlog = struct
     type t = {
+      queue : string;           (* For metric reports *)
       high : ticket Lwt_dllist.t;
       low : ticket Lwt_dllist.t;
     }
@@ -124,17 +124,18 @@ module Make (Item : S.ITEM) = struct
         | true -> t.high, "high"
         | false -> t.low, "low"
       in
-      queue, Prometheus.Gauge.labels Metrics.incoming_queue_length [pool; priority]
+      queue, Prometheus.Gauge.labels Metrics.queue_length [t.queue; pool; priority]
 
-    let cancel ~metric ~pool node () =
+    let cancel ?(on_cancel=ignore) ~metric ~pool node () =
       Lwt_dllist.remove node;
       Prometheus.Counter.inc_one (Metrics.jobs_cancelled pool);
-      Prometheus.Gauge.dec_one metric
+      Prometheus.Gauge.dec_one metric;
+      on_cancel ()
 
-    let enqueue ~pool ticket t =
+    let enqueue ?on_cancel ~pool ticket t =
       let queue, metric = choose_queue ~ticket ~pool t in
       let node = Lwt_dllist.add_l ticket queue in
-      set_cancel ticket (cancel ~metric ~pool node);
+      set_cancel ticket (cancel ?on_cancel ~metric ~pool node);
       Prometheus.Gauge.inc_one metric
 
     let push_back ~pool ticket t =
@@ -146,7 +147,7 @@ module Make (Item : S.ITEM) = struct
     let dequeue_opt ~pool t =
       let take ticket =
         let priority = if ticket.urgent then "high" else "low" in
-        Prometheus.Gauge.dec_one (Prometheus.Gauge.labels Metrics.incoming_queue_length [pool; priority]);
+        Prometheus.Gauge.dec_one (Prometheus.Gauge.labels Metrics.queue_length [t.queue; pool; priority]);
         clear_cancel ticket;
         Some ticket
       in
@@ -157,8 +158,15 @@ module Make (Item : S.ITEM) = struct
         | Some ticket -> take ticket
         | None -> None
 
-    let create () =
+    let length t =
+      Lwt_dllist.length t.low + Lwt_dllist.length t.high
+
+    let is_empty t =
+      length t = 0
+
+    let create ~queue () =
       {
+        queue;
         low = Lwt_dllist.create ();
         high = Lwt_dllist.create ();
       }
@@ -175,7 +183,7 @@ module Make (Item : S.ITEM) = struct
   } and worker = {
     parent : t;
     name : string;
-    mutable state : [ `Running of (int * ticket) Lwt_dllist.t * unit Lwt_condition.t
+    mutable state : [ `Running of Backlog.t * unit Lwt_condition.t
                     | `Inactive of unit Lwt.t * unit Lwt.u  (* ready/set_ready for resume *)
                     | `Finished ];
     mutable workload : int;     (* Total cost of items in worker's queue. *)
@@ -187,27 +195,18 @@ module Make (Item : S.ITEM) = struct
     Prometheus.Gauge.inc_one metric;
     node
 
-  let enqueue_item item queue worker ticket =
-    let cost = fst item in
-    let metric = Metrics.assigned_items worker.name in
-    let node = enqueue_node item queue metric in
+  let enqueue_item queue worker ticket =
+    let pool = worker.parent.pool in
+    let cost = ticket.cost in
     worker.workload <- worker.workload + cost;
-    set_cancel ticket (fun () ->
-        Lwt_dllist.remove node;
-        Prometheus.Gauge.dec_one metric;
-        Prometheus.Counter.inc_one (Metrics.jobs_cancelled worker.parent.pool);
-        worker.workload <- worker.workload - cost;
-      )
+    Backlog.enqueue ~pool ticket queue
+        ~on_cancel:(fun () -> worker.workload <- worker.workload - cost)
 
   let dequeue_opt queue worker =
-    let metric = Metrics.assigned_items worker.name in
-    match Lwt_dllist.take_opt_r queue with
-    | None -> None
-    | Some (cost, ticket) ->
-      clear_cancel ticket;
-      Prometheus.Gauge.dec_one metric;
-      worker.workload <- worker.workload - cost;
-      Some ticket
+    let pool = worker.parent.pool in
+    let ticket = Backlog.dequeue_opt ~pool queue in
+    Option.iter (fun ticket -> worker.workload <- worker.workload - ticket.cost) ticket;
+    ticket
 
   (* Return the worker in [workers] with the lowest workload. *)
   let best_worker ~max_workload t workers =
@@ -244,7 +243,8 @@ module Make (Item : S.ITEM) = struct
       | None -> false   (* No workers will have this cached. *)
       | Some (worker, worker_q, cond) ->
         Log.info (fun f -> f "Assigning %a to %S (preferred)" pp_ticket ticket worker.name);
-        enqueue_item (cost.cached, ticket) worker_q worker ticket;
+        ticket.cost <- cost.cached;
+        enqueue_item worker_q worker ticket;
         Lwt_condition.broadcast cond ();
         true
     )
@@ -299,14 +299,19 @@ module Make (Item : S.ITEM) = struct
     in
     aux ()
 
-  (* Worker is leaving and system is backlogged. Move the worker's items to the backlog.
-     Metrics have already been updated. *)
+  (* Worker is leaving and system is backlogged. Move the worker's items to the backlog. *)
   let rec push_back worker worker_q q =
-    match Lwt_dllist.take_opt_l worker_q with
-    | Some (cost, ticket) ->
+    let ticket =
+      match Lwt_dllist.take_opt_l worker_q.Backlog.low with
+      | Some x -> Some x
+      | None -> Lwt_dllist.take_opt_l worker_q.Backlog.high
+    in
+    match ticket with
+    | Some ticket ->
       Log.info (fun f -> f "Pushing %a back on to the main queue" pp_ticket ticket);
-      Prometheus.Gauge.dec_one (Metrics.assigned_items worker.name);
-      worker.workload <- worker.workload - cost;
+      let priority = if ticket.urgent then "high" else "low" in
+      Prometheus.Gauge.dec_one @@ Prometheus.Gauge.labels Metrics.queue_length [worker_q.queue; worker.parent.pool; priority];
+      worker.workload <- worker.workload - ticket.cost;
       clear_cancel ticket;
       Backlog.push_back ~pool:worker.parent.pool ticket q;
       push_back worker worker_q q
@@ -338,7 +343,7 @@ module Make (Item : S.ITEM) = struct
       ()
     | `Ready q when Lwt_dllist.is_empty q ->
       (* Ready workers queue is empty. Flip to backlog case and retry. *)
-      t.main <- `Backlog (Backlog.create ());
+      t.main <- `Backlog (Backlog.create ~queue:Metrics.incoming_queue ());
       add t ticket
     | `Ready q ->
       if not (assign_preferred t ticket) then (
@@ -351,14 +356,15 @@ module Make (Item : S.ITEM) = struct
              idle and we couldn't find any free preferred worker. *)
           Log.info (fun f -> f "Assigning %a to %S (the next free worker)" pp_ticket ticket worker.name);
           let cost = Item.cost_estimate ticket.item in
-          enqueue_item (cost.non_cached, ticket) worker_q worker ticket;
+          ticket.cost <- cost.non_cached;
+          enqueue_item worker_q worker ticket;
           mark_cached ticket.item worker;
           Lwt_condition.broadcast cond ()
       )
 
   let submit ~urgent t item =
     Prometheus.Counter.inc_one (Metrics.jobs_submitted t.pool);
-    let ticket = { item; urgent; cancel = None } in
+    let ticket = { item; urgent; cancel = None; cost = -1 } in
     add t ticket;
     ticket
 
@@ -380,11 +386,11 @@ module Make (Item : S.ITEM) = struct
     | `Running (worker_q, cond) ->
       let ready, set_ready = Lwt.wait () in
       w.state <- `Inactive (ready, set_ready);
-      let len = Lwt_dllist.length worker_q in
+      let len = Backlog.length worker_q in
       Log.info (fun f -> f "%S marked inactive (reassigning %d items)" w.name len);
       Prometheus.Gauge.inc_one (Metrics.workers_paused w.parent.pool);
       begin
-        if Lwt_dllist.is_empty worker_q then ()
+        if Backlog.is_empty worker_q then ()
         else match t.main with
           | `Backlog q ->
             (* Push our items back onto the existing backlog. *)
@@ -406,7 +412,7 @@ module Make (Item : S.ITEM) = struct
       | `Inactive (_, set_ready) ->
         Log.info (fun f -> f "Activate queue for %S" w.name);
         Prometheus.Gauge.dec_one (Metrics.workers_paused w.parent.pool);
-        w.state <- `Running (Lwt_dllist.create (), Lwt_condition.create ());
+        w.state <- `Running (Backlog.create ~queue:w.name (), Lwt_condition.create ());
         Lwt.wakeup set_ready ()
 
   let shutdown w =
@@ -439,7 +445,7 @@ module Make (Item : S.ITEM) = struct
     {
       pool = name;
       db;
-      main = `Backlog (Backlog.create ());
+      main = `Backlog (Backlog.create ~queue:Metrics.incoming_queue ());
       workers = Worker_map.empty;
     }
 
@@ -455,15 +461,18 @@ module Make (Item : S.ITEM) = struct
   let pp_worker f worker =
     Fmt.string f worker.name
 
-  let pp_cost_item f (cost, ticket) =
+  let pp_cost_item f ticket =
     let urgent = if ticket.urgent then "+urgent" else "" in
-    Fmt.pf f "%a(%d%s)" pp_ticket ticket cost urgent
+    Fmt.pf f "%a(%d%s)" pp_ticket ticket ticket.cost urgent
 
   let pp_state f = function
     | { state = `Finished; _ } -> Fmt.string f "(finished)"
     | { shutdown = true; _ } -> Fmt.string f "(shutting down)"
     | { state = `Inactive _; _ } -> Fmt.string f "(inactive)"
-    | { state = `Running (q, _); _} -> dump_queue pp_cost_item f q
+    | { state = `Running (q, _); _} ->
+      Fmt.pf f "%a : %a"
+        (dump_queue pp_cost_item) q.low
+        (dump_queue pp_cost_item) q.high
 
   let dump_workers f x =
     let pp_item f (id, w) =
