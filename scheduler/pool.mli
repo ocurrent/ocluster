@@ -5,7 +5,7 @@ module Dao : sig
   (** Ensure the required tables are created. *)
 end
 
-module Make (Item : S.ITEM) : sig
+module Make (Item : S.ITEM) (Time : S.TIME) : sig
   type t
   (** A pool of workers and queued jobs. *)
 
@@ -15,6 +15,11 @@ module Make (Item : S.ITEM) : sig
   type worker
   (** A connected worker. *)
 
+  module Client : sig
+    type t
+    (** A connected client. *)
+  end
+
   val create : name:string -> db:Dao.t -> t
   (** [create ~name ~db] is a pool that reports metrics tagged with [name] and
       stores cache information in [db]. *)
@@ -23,8 +28,14 @@ module Make (Item : S.ITEM) : sig
   (** [register t ~name ~capacity] returns a queue for worker [name].
       @param capacity Worker's capacity (max number of parallel jobs). *)
 
-  val submit : urgent:bool -> t -> Item.t -> ticket
-  (** [submit ~urgent t item] adds [item] to the incoming queue.
+  val client : t -> client_id:string -> Client.t
+  (** [client t ~client_id] is a client value, which can be used to submit jobs.
+      These jobs will be scheduled alongside the jobs of other clients, so that
+      one client does not starve the others.
+      @param [client_id] Used for logging and reporting. *)
+
+  val submit : urgent:bool -> Client.t -> Item.t -> ticket
+  (** [submit ~urgent client item] adds [item] to the incoming queue.
       [urgent] items will be processed before non-urgent ones. *)
 
   val cancel : ticket -> (unit, [> `Not_queued ]) result

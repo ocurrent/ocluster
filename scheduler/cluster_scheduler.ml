@@ -32,25 +32,38 @@ module Item = struct
 end
 
 module Pool_api = struct
-  module Pool = Pool.Make(Item)
+  module Pool = Pool.Make(Item)(Unix)
+
+  module Client_map = Map.Make(String)
 
   type t = {
     pool : Pool.t;
+    mutable clients : Pool.Client.t Client_map.t;
     workers : (string, Cluster_api.Worker.t) Hashtbl.t;
     cond : unit Lwt_condition.t;    (* Fires when a worker joins *)
   }
 
   let create ~name ~db =
     let pool = Pool.create ~name ~db in
+    let clients = Client_map.empty in
     let workers = Hashtbl.create 10 in
     let cond = Lwt_condition.create () in
-    { pool; workers; cond }
+    { pool; clients; workers; cond }
+
+  let client t ~client_id =
+    match Client_map.find_opt client_id t.clients with
+    | Some c -> c
+    | None ->
+      let client = Pool.client t.pool ~client_id in
+      t.clients <- Client_map.add client_id client t.clients;
+      client
 
   let submit t ~urgent ~client_id (descr : Cluster_api.Queue.job_desc) : Cluster_api.Ticket.t =
+    let client = client t ~client_id in
     let job, set_job = Capability.promise () in
     Log.info (fun f -> f "Received new job request from %S (urgent=%b)" client_id urgent);
     let item = { Item.descr; set_job } in
-    let ticket = Pool.submit ~urgent t.pool item in
+    let ticket = Pool.submit ~urgent client item in
     let cancel () =
       match Pool.cancel ticket with
       | Ok () ->

@@ -86,13 +86,13 @@ let (let<>) x f =
   if x = 0 then f ()
   else x
 
-module Make (Item : S.ITEM) = struct
+module Make (Item : S.ITEM)(Time : S.TIME) = struct
   module Worker_map = Astring.String.Map
 
   type ticket = {
     key : < >;
     item : Item.t;
-    fair_start_time : int;
+    fair_start_time : float;
     urgent : bool;
     mutable cost : int;                         (* Estimated cost (set when added to worker queue) *)
     mutable cancel : (unit -> unit) option;     (* None if not in a queue *)
@@ -212,6 +212,24 @@ module Make (Item : S.ITEM) = struct
     mutable workload : int;     (* Total cost of items in worker's queue. *)
     mutable shutdown : bool;    (* Worker is paused because it is shutting down. *)
   }
+
+  module Client = struct
+    type nonrec t = {
+      parent : t;
+      id : string;
+      mutable next_fair_start_time : float;
+    }
+
+    let v ~parent ~id = { parent; id; next_fair_start_time = Unix.gettimeofday () }
+
+    let schedule t cost =
+      let start = max (Time.gettimeofday ()) t.next_fair_start_time in
+      t.next_fair_start_time <- start +. cost;
+      start
+  end
+
+  let client t ~client_id =
+    Client.v ~parent:t ~id:client_id
 
   let enqueue_node item queue metric =
     let node = Lwt_dllist.add_l item queue in
@@ -380,11 +398,9 @@ module Make (Item : S.ITEM) = struct
           Lwt_condition.broadcast cond ()
       )
 
-  let now = ref 0
-
-  let submit ~urgent t item =
-    let fair_start_time = !now in
-    incr now;
+  let submit ~urgent client item =
+    let fair_start_time = Client.schedule client (float (Item.cost_estimate item).non_cached) in
+    let t = client.parent in
     Prometheus.Counter.inc_one (Metrics.jobs_submitted t.pool);
     let key = object end in
     let ticket = { key; item; fair_start_time; urgent; cancel = None; cost = -1 } in
