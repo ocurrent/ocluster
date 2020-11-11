@@ -37,6 +37,7 @@
   cohttp-lwt-unix
   sqlite3
   obuilder
+  psq
   (mirage-crypto (>= 0.8.5))
   (ocaml (>= 4.10.0))
   (current_ocluster (and (= :version) :with-test))
