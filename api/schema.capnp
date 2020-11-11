@@ -104,7 +104,13 @@ interface Worker {
 }
 
 interface Registration {
-  register @0 (name :Text, worker :Worker) -> (queue :Queue);
+  register @0 (name :Text, worker :Worker, capacity: Int32) -> (queue :Queue);
+  # Workers call this at startup to register themselves with the scheduler.
+  # The scheduler replies with a queue, from which the worker can pull jobs.
+  # The "worker" object is used to collect metrics and perform admin.
+  # The "capacity" gives the number of jobs that the worker will perform in
+  # parallel. At present, this is only used to estimate the cluster's capacity;
+  # workers can pull as many jobs as they like from the queue.
 }
 
 interface Ticket {

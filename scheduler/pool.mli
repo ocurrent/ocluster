@@ -19,8 +19,9 @@ module Make (Item : S.ITEM) : sig
   (** [create ~name ~db] is a pool that reports metrics tagged with [name] and
       stores cache information in [db]. *)
 
-  val register : t -> name:string -> (worker, [> `Name_taken]) result
-  (** [register t ~name] returns a queue for worker [name]. *)
+  val register : t -> name:string -> capacity:int -> (worker, [> `Name_taken]) result
+  (** [register t ~name ~capacity] returns a queue for worker [name].
+      @param capacity Worker's capacity (max number of parallel jobs). *)
 
   val submit : urgent:bool -> t -> Item.t -> ticket
   (** [submit ~urgent t item] adds [item] to the incoming queue.

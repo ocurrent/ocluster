@@ -420,7 +420,7 @@ let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~update ~capa
          Capability.with_ref reg @@ fun reg ->
          let queue =
            let api = Cluster_api.Worker.local ~metrics ~self_update:(fun () -> self_update ~update t) in
-           let queue = Cluster_api.Registration.register reg ~name api in
+           let queue = Cluster_api.Registration.register reg ~name ~capacity api in
            Capability.dec_ref api;
            queue
          in

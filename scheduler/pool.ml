@@ -180,9 +180,11 @@ module Make (Item : S.ITEM) = struct
       | `Ready of worker Lwt_dllist.t       (* No work is available. *)
     ];
     mutable workers : worker Worker_map.t;  (* Connected workers *)
+    mutable cluster_capacity : float;
   } and worker = {
     parent : t;
     name : string;
+    capacity : int;
     mutable state : [ `Running of Backlog.t * unit Lwt_condition.t
                     | `Inactive of unit Lwt.t * unit Lwt.u  (* ready/set_ready for resume *)
                     | `Finished ];
@@ -317,7 +319,7 @@ module Make (Item : S.ITEM) = struct
       push_back worker worker_q q
     | None -> ()
 
-  let register t ~name =
+  let register t ~name ~capacity =
     if Worker_map.mem name t.workers then Error `Name_taken
     else (
       let ready, set_ready = Lwt.wait () in
@@ -326,9 +328,11 @@ module Make (Item : S.ITEM) = struct
         name;
         state = `Inactive (ready, set_ready);
         workload = 0;
+        capacity;
         shutdown = false;
       } in
       t.workers <- Worker_map.add name q t.workers;
+      t.cluster_capacity <- t.cluster_capacity +. float capacity;
       Prometheus.Gauge.inc_one (Metrics.workers_connected t.pool);
       Prometheus.Gauge.inc_one (Metrics.workers_paused t.pool);
       Ok q
@@ -429,6 +433,7 @@ module Make (Item : S.ITEM) = struct
       w.state <- `Finished;
       let t = w.parent in
       t.workers <- Worker_map.remove w.name t.workers;
+      t.cluster_capacity <- t.cluster_capacity -. float w.capacity;
       Prometheus.Gauge.dec_one (Metrics.workers_connected t.pool);
       Prometheus.Gauge.dec_one (Metrics.workers_paused t.pool);
       Lwt.wakeup set_ready ()
@@ -447,6 +452,7 @@ module Make (Item : S.ITEM) = struct
       db;
       main = `Backlog (Backlog.create ~queue:Metrics.incoming_queue ());
       workers = Worker_map.empty;
+      cluster_capacity = 0.0;
     }
 
   let dump_queue ?(sep=Fmt.sp) pp f q =
@@ -488,13 +494,15 @@ module Make (Item : S.ITEM) = struct
     | `Ready q ->
       Fmt.pf f "(ready) %a" (dump_queue pp_worker) q
 
-  let show f {pool = _; db = _; main; workers} =
-    Fmt.pf f "@[<v>queue: @[%a@]@,@[<v2>registered:%a@]@]@."
+  let show f {pool = _; db = _; main; workers; cluster_capacity } =
+    Fmt.pf f "@[<v>capacity: %.0f@,queue: @[%a@]@,@[<v2>registered:%a@]@]@."
+      cluster_capacity
       dump_main main
       dump_workers workers
 
-  let dump f {pool; db; main; workers} =
-    Fmt.pf f "@[<v>queue: @[%a@]@,@[<v2>registered:%a@]@,cached: @[%a@]@]@."
+  let dump f {pool; db; main; workers; cluster_capacity } =
+    Fmt.pf f "@[<v>capacity: %.0f@,queue: @[%a@]@,@[<v2>registered:%a@]@,cached: @[%a@]@]@."
+      cluster_capacity
       dump_main main
       dump_workers workers
       Dao.dump (db, pool)

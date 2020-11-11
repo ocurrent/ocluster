@@ -74,8 +74,8 @@ module Pool_api = struct
       Capability.resolve_ok set_job job;
       Ok descr
 
-  let register t ~name worker =
-    match Pool.register t.pool ~name with
+  let register t ~name ~capacity worker =
+    match Pool.register t.pool ~name ~capacity with
     | Error `Name_taken ->
       Fmt.failwith "Worker already registered!";
     | Ok q ->
