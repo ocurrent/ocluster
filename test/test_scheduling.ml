@@ -10,7 +10,7 @@ module Item = struct
 
   let cache_hint t = t.cache_hint
 
-  let cost_estimate _ = Cluster_scheduler.S.{ cached = 1; non_cached = 5 }
+  let cost_estimate _ = Cluster_scheduler.S.{ cached = 2; non_cached = 10 }
 
   let pp f t = Fmt.string f t.job
 end
@@ -20,9 +20,10 @@ let job ?(cache_hint="") job = { Item.job; cache_hint }
 module Fake_time = struct
   let now = ref 1.0
 
-  let gettimeofday () =
-    now := !now +. 1.0;
-    !now
+  let gettimeofday () = !now
+
+  let advance x =
+    now := !now +. float x
 end
 
 module Pool = Cluster_scheduler.Pool.Make(Item)(Fake_time)
@@ -53,8 +54,8 @@ let with_test_db fn =
     (fun () -> fn (Cluster_scheduler.Pool.Dao.init db))
     (fun () -> if Sqlite3.db_close db then Lwt.return_unit else failwith "close: DB busy!")
 
-let submit ~urgent pool job =
-  let (_ : Pool.ticket) = Pool.submit ~urgent pool job in
+let submit ~urgent client job =
+  let (_ : Pool.ticket) = Pool.Client.submit ~urgent client job in
   ()
 
 (* Assign three jobs to two workers. *)
@@ -93,8 +94,10 @@ let cached_scheduling () =
     registered:\n\
     \  worker-1 (0): []\n\
     \  worker-2 (0): []\n\
+    clients: \n\
     cached: \n" (Fmt.to_to_string Pool.dump pool);
   let user = Pool.client pool ~client_id:"u1" in
+  Pool.Client.set_rate user 2.0;
   submit user ~urgent:false @@ job "job1" ~cache_hint:"a";
   submit user ~urgent:false @@ job "job2" ~cache_hint:"b";
   submit user ~urgent:false @@ job "job3" ~cache_hint:"a";
@@ -102,18 +105,20 @@ let cached_scheduling () =
   submit user ~urgent:false @@ job "job5" ~cache_hint:"c";
   Alcotest.(check string) "Jobs queued" "\
     capacity: 2\n\
-    queue: (backlog) [job5 job4 job3]\n\
+    queue: (backlog) [u1:job5@12s u1:job4@11s u1:job3@10s]\n\
     registered:\n\
-    \  worker-1 (5): [job1(5)]\n\
-    \  worker-2 (5): [job2(5)]\n\
+    \  worker-1 (10): [u1:job1@0s(10)]\n\
+    \  worker-2 (10): [u1:job2@5s(10)]\n\
+    clients: u1(2)+17s\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Lwt.pause () >>= fun () ->
   Alcotest.(check string) "Jobs started" "\
     capacity: 2\n\
-    queue: (backlog) [job5 job4 job3]\n\
+    queue: (backlog) [u1:job5@12s u1:job4@11s u1:job3@10s]\n\
     registered:\n\
     \  worker-1 (0): []\n\
     \  worker-2 (0): []\n\
+    clients: u1(2)+17s\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Alcotest.(check pop_result) "Worker 1 / job 1" (Ok "job1") (job_state w1a);
   Alcotest.(check pop_result) "Worker 2 / job 1" (Ok "job2") (job_state w2a);
@@ -123,8 +128,9 @@ let cached_scheduling () =
     capacity: 2\n\
     queue: (backlog) []\n\
     registered:\n\
-    \  worker-1 (2): [job4(1) job3(1)]\n\
+    \  worker-1 (4): [u1:job4@11s(2) u1:job3@10s(2)]\n\
     \  worker-2 (0): []\n\
+    clients: u1(2)+17s\n\
     cached: a: [worker-1], b: [worker-2], c: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Alcotest.(check pop_result) "Worker 2 / job 2" (Ok "job5") (job_state w2b);
   (* Worker 1 leaves. Its two queued jobs get reassigned. *)
@@ -135,18 +141,21 @@ let cached_scheduling () =
   Lwt.pause () >>= fun () ->
   Alcotest.(check string) "Worker-1's jobs reassigned" "\
     capacity: 1\n\
-    queue: (backlog) [job4]\n\
+    queue: (backlog) [u1:job4@11s]\n\
     registered:\n\
     \  worker-2 (0): []\n\
+    clients: u1(2)+17s\n\
     cached: a: [worker-1; worker-2], b: [worker-2], c: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Alcotest.(check pop_result) "Worker 2 / job 3" (Ok "job3") (job_state w2c);
   let w2d = Pool.pop w2 in
   Alcotest.(check pop_result) "Worker 2 / job 4" (Ok "job4") (job_state w2d);
+  Fake_time.advance 20;
   Pool.release w2;
   Alcotest.(check string) "Idle" "\
     capacity: 0\n\
     queue: (backlog) []\n\
     registered:\n\
+    clients: u1(2)\n\
     cached: a: [worker-1; worker-2], b: [worker-2], c: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Lwt.return_unit
 
@@ -159,6 +168,7 @@ let unbalanced () =
   Pool.set_active w1 true;
   Pool.set_active w2 true;
   let user = Pool.client pool ~client_id:"u1" in
+  Pool.Client.set_rate user 2.0;
   submit user ~urgent:false @@ job "job1" ~cache_hint:"a";
   submit user ~urgent:false @@ job "job2" ~cache_hint:"a";
   submit user ~urgent:false @@ job "job3" ~cache_hint:"a";
@@ -174,8 +184,10 @@ let unbalanced () =
     capacity: 2\n\
     queue: (backlog) []\n\
     registered:\n\
-    \  worker-1 (6): [job7(1) job6(1) job5(1) job4(1) job3(1) job2(1)]\n\
+    \  worker-1 (12): [u1:job7@10s(2) u1:job6@9s(2) u1:job5@8s(2) u1:job4@7s(2)\n\
+    \                  u1:job3@6s(2) u1:job2@5s(2)]\n\
     \  worker-2 (0): []\n\
+    clients: u1(2)+12s\n\
     cached: a: [worker-1; worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Alcotest.(check pop_result) "Worker 2 / job 1" (Ok "job8") (job_state w2a);
   Pool.release w1;
@@ -195,8 +207,9 @@ let no_workers () =
   Lwt.pause () >>= fun () ->
   Alcotest.(check string) "Worker-1 gone" "\
     capacity: 0\n\
-    queue: (backlog) [job2]\n\
+    queue: (backlog) [u1:job2@10s]\n\
     registered:\n\
+    clients: u1(1)+12s\n\
     cached: a: [worker-1]\n" (Fmt.to_to_string Pool.dump pool);
   let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
   Pool.set_active w1 true;
@@ -256,9 +269,10 @@ let urgent () =
   Pool.release w1;
   Alcotest.(check string) "Worker-1 gone" "\
     capacity: 1\n\
-    queue: (backlog) [job1 job3+urgent]\n\
+    queue: (backlog) [u1:job1@0s u1:job3@12s+urgent]\n\
     registered:\n\
     \  worker-2 (0): []\n\
+    clients: u1(1)+24s\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   (* Urgent job 5 goes ahead of non-urgent job 1, but behind the existing urgent job 3. *)
   submit user ~urgent:true @@ job "job5" ~cache_hint:"b";
@@ -286,9 +300,11 @@ let urgent_worker () =
     capacity: 2\n\
     queue: (backlog) []\n\
     registered:\n\
-    \  worker-1 (1): [job2(1)]\n\
+    \  worker-1 (2): [u1:job2@10s(2)]\n\
     \  worker-2 (0): []\n\
+    clients: u1(1)+22s\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
+  Pool.Client.set_rate user 2.0;
   submit user ~urgent:true  @@ job "job4" ~cache_hint:"a";
   submit user ~urgent:false @@ job "job5" ~cache_hint:"b";
   submit user ~urgent:true  @@ job "job6" ~cache_hint:"a";
@@ -298,8 +314,9 @@ let urgent_worker () =
     capacity: 2\n\
     queue: (backlog) []\n\
     registered:\n\
-    \  worker-1 (3): [job2(1) job6(1+urgent) job4(1+urgent)]\n\
+    \  worker-1 (6): [u1:job2@10s(2) u1:job6@24s(2+urgent) u1:job4@22s(2+urgent)]\n\
     \  worker-2 (0): []\n\
+    clients: u1(2)+25s\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   flush_queue w1 ~expect:["job4"; "job6"; "job2"]
 
@@ -321,8 +338,9 @@ let inactive () =
     capacity: 2\n\
     queue: (ready) [worker-2]\n\
     registered:\n\
-    \  worker-1 (1): [job2(1)]\n\
+    \  worker-1 (2): [u1:job2@10s(2)]\n\
     \  worker-2 (0): []\n\
+    clients: u1(1)+12s\n\
     cached: a: [worker-1]\n" (Fmt.to_to_string Pool.dump pool);
   (* Deactivate worker-1. Its job is reassigned. *)
   Pool.set_active w1 false;
@@ -331,20 +349,23 @@ let inactive () =
     queue: (ready) []\n\
     registered:\n\
     \  worker-1 (0): (inactive)\n\
-    \  worker-2 (5): [job2(5)]\n\
+    \  worker-2 (10): [u1:job2@10s(10)]\n\
+    clients: u1(1)+12s\n\
     cached: a: [worker-1; worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Lwt.pause () >>= fun () ->
   Alcotest.(check pop_result) "Worker 1 / job 1" (Ok "job1") (job_state w1a);
   Alcotest.(check pop_result) "Worker 2 / job 2" (Ok "job2") (job_state w2a);
+  Pool.Client.set_rate user 2.0;
   submit user ~urgent:false @@ job "job3" ~cache_hint:"a";
   (* Deactivate worker-2. *)
   Pool.set_active w2 false;
   Alcotest.(check string) "Job unassigned" "\
     capacity: 2\n\
-    queue: (backlog) [job3]\n\
+    queue: (backlog) [u1:job3@12s]\n\
     registered:\n\
     \  worker-1 (0): (inactive)\n\
     \  worker-2 (0): (inactive)\n\
+    clients: u1(2)+13s\n\
     cached: a: [worker-1; worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Pool.set_active w2 true;
   Pool.release w1;
@@ -361,41 +382,46 @@ let cancel_worker_queue () =
   let w1a = Pool.pop w1 in
   let w2a = Pool.pop w2 in
   let user = Pool.client pool ~client_id:"u1" in
+  Pool.Client.set_rate user 2.0;
   submit user ~urgent:false @@ job "job1" ~cache_hint:"a";
   Lwt.pause () >>= fun () ->
-  let j2 = Pool.submit user ~urgent:false @@ job "job2" ~cache_hint:"a" in
-  let j3 = Pool.submit user ~urgent:false @@ job "job3" ~cache_hint:"a" in
-  let j4 = Pool.submit user ~urgent:false @@ job "job4" ~cache_hint:"b" in
-  Pool.cancel j4 |> Alcotest.(check (result pass reject)) "job4 cancelled" (Ok ());
+  let j2 = Pool.Client.submit user ~urgent:false @@ job "job2" ~cache_hint:"a" in
+  let j3 = Pool.Client.submit user ~urgent:false @@ job "job3" ~cache_hint:"a" in
+  let j4 = Pool.Client.submit user ~urgent:false @@ job "job4" ~cache_hint:"b" in
+  Pool.Client.cancel user j4 |> Alcotest.(check (result pass reject)) "job4 cancelled" (Ok ());
   Alcotest.(check string) "Jobs assigned" "\
     capacity: 2\n\
     queue: (ready) []\n\
     registered:\n\
-    \  worker-1 (2): [job3(1) job2(1)]\n\
+    \  worker-1 (4): [u1:job3@6s(2) u1:job2@5s(2)]\n\
     \  worker-2 (0): []\n\
+    clients: u1(2)+12s\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
-  Pool.cancel j2 |> Alcotest.(check (result pass reject)) "job2 cancelled" (Ok ());
+  Pool.Client.cancel user j2 |> Alcotest.(check (result pass reject)) "job2 cancelled" (Ok ());
   Alcotest.(check string) "Job2 cancelled" "\
     capacity: 2\n\
     queue: (ready) []\n\
     registered:\n\
-    \  worker-1 (1): [job3(1)]\n\
+    \  worker-1 (2): [u1:job3@6s(2)]\n\
     \  worker-2 (0): []\n\
+    clients: u1(2)+12s\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Pool.release w2;
   Pool.set_active w1 false;
   Alcotest.(check string) "Job3 pushed back" "\
     capacity: 1\n\
-    queue: (backlog) [job3]\n\
+    queue: (backlog) [u1:job3@6s]\n\
     registered:\n\
     \  worker-1 (0): (inactive)\n\
+    clients: u1(2)+12s\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
-  Pool.cancel j3 |> Alcotest.(check (result pass reject)) "job3 cancelled" (Ok ());
+  Pool.Client.cancel user j3 |> Alcotest.(check (result pass reject)) "job3 cancelled" (Ok ());
   Pool.release w1;
   Alcotest.(check string) "Job3 cancelled" "\
     capacity: 0\n\
     queue: (backlog) []\n\
     registered:\n\
+    clients: u1(2)+12s\n\
     cached: a: [worker-1], b: [worker-2]\n" (Fmt.to_to_string Pool.dump pool);
   Alcotest.(check pop_result) "Finish worker-1" (Ok "job1") (job_state w1a);
   Alcotest.(check pop_result) "Finish worker-2" (Error "pending") (job_state w2a);
@@ -411,6 +437,7 @@ let push_back () =
   let _w1a = Pool.pop w1 in
   let _w2a = Pool.pop w2 in
   let user = Pool.client pool ~client_id:"u1" in
+  Pool.Client.set_rate user 2.0;
   submit user ~urgent:false @@ job "job1" ~cache_hint:"a";
   Lwt.pause () >>= fun () ->
   submit user ~urgent:false @@ job "job2" ~cache_hint:"a";
@@ -421,23 +448,100 @@ let push_back () =
     capacity: 2\n\
     queue: (ready) [worker-2]\n\
     registered:\n\
-    \  worker-1 (2): [job3(1) job2(1)]\n\
+    \  worker-1 (4): [u1:job3@6s(2) u1:job2@5s(2)]\n\
     \  worker-2 (0): []\n\
+    clients: u1(2)+7s\n\
     cached: a: [worker-1]\n" (Fmt.to_to_string Pool.dump pool);
   Pool.release w2;
   Pool.set_active w1 false;
   Alcotest.(check string) "Jobs pushed back" "\
     capacity: 1\n\
-    queue: (backlog) [job3 job2]\n\
+    queue: (backlog) [u1:job3@6s u1:job2@5s]\n\
     registered:\n\
     \  worker-1 (0): (inactive)\n\
+    clients: u1(2)+7s\n\
     cached: a: [worker-1]\n" (Fmt.to_to_string Pool.dump pool);
   Pool.set_active w1 true;
   flush_queue w1 ~expect:["job2"; "job3"]
 
+(* Two clients share the cluster. *)
+let fairness () =
+  with_test_db @@ fun db ->
+  let pool = Pool.create ~db ~name:"fairness" in
+  let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
+  let w2 = Pool.register pool ~name:"worker-2" ~capacity:1 |> Result.get_ok in
+  let alice = Pool.client pool ~client_id:"alice" in
+  let bob = Pool.client pool ~client_id:"bob" in
+  Pool.Client.set_rate alice 2.0;
+  Pool.Client.set_rate bob 2.0;
+  Pool.set_active w1 true;
+  Pool.set_active w2 true;
+  let w1a = Pool.pop w1 in
+  let w2a = Pool.pop w2 in
+  submit alice ~urgent:false @@ job "a1";
+  submit alice ~urgent:false @@ job "a2";
+  submit alice ~urgent:false @@ job "a3";
+  (* Alice's jobs a1 and a2 have already started running on the two machines,
+     and a3 is queued. Bob now submits some jobs. *)
+  submit bob ~urgent:false @@ job "b1";
+  submit bob ~urgent:false @@ job "b2";
+  submit bob ~urgent:false @@ job "b3";
+  Lwt.pause () >>= fun () ->
+  Alcotest.(check pop_result) "Worker 1 / job 1" (Ok "a1") (job_state w1a);
+  Alcotest.(check pop_result) "Worker 2 / job 1" (Ok "a2") (job_state w2a);
+  Alcotest.(check string) "Bob's jobs aren't all last" "\
+    capacity: 2\n\
+    queue: (backlog) [bob:b3@10s alice:a3@10s bob:b2@5s bob:b1@0s]\n\
+    registered:\n\
+    \  worker-1 (0): []\n\
+    \  worker-2 (0): []\n\
+    clients: alice(2)+15s bob(2)+15s\n\
+    cached: : [worker-1; worker-2]\n" (Fmt.to_to_string Pool.dump pool);
+  Pool.release w2;
+  flush_queue w1 ~expect:["b1"; "b2"; "a3"; "b3"]
+
+(* Two clients with different rates share the cluster. *)
+let fairness_rates () =
+  with_test_db @@ fun db ->
+  let pool = Pool.create ~db ~name:"fairness_rates" in
+  let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
+  let w2 = Pool.register pool ~name:"worker-2" ~capacity:1 |> Result.get_ok in
+  let alice = Pool.client pool ~client_id:"alice" in
+  let bob = Pool.client pool ~client_id:"bob" in
+  Pool.Client.set_rate alice 5.0;
+  Pool.Client.set_rate bob 1.0;
+  Pool.set_active w1 true;
+  Pool.set_active w2 true;
+  let w1a = Pool.pop w1 in
+  let w2a = Pool.pop w2 in
+  (* Alice submits 30s worth of work, but using 5 machines expects to take 6s. *)
+  submit alice ~urgent:false @@ job "a1";
+  submit alice ~urgent:false @@ job "a2";
+  submit alice ~urgent:false @@ job "a3";
+  (* Alice's jobs a1 and a2 have already started running on the two machines,
+     and a3 is queued. Bob now submits some jobs. It's the same amount of work,
+     but with the lower rate, Bob expects his jobs to take 30s. *)
+  submit bob ~urgent:false @@ job "b1";
+  submit bob ~urgent:false @@ job "b2";
+  submit bob ~urgent:false @@ job "b3";
+  Lwt.pause () >>= fun () ->
+  Alcotest.(check pop_result) "Worker 1 / job 1" (Ok "a1") (job_state w1a);
+  Alcotest.(check pop_result) "Worker 2 / job 1" (Ok "a2") (job_state w2a);
+  Alcotest.(check string) "Bob's jobs aren't all last" "\
+    capacity: 2\n\
+    queue: (backlog) [bob:b3@20s bob:b2@10s alice:a3@4s bob:b1@0s]\n\
+    registered:\n\
+    \  worker-1 (0): []\n\
+    \  worker-2 (0): []\n\
+    clients: alice(5)+6s bob(1)+30s\n\
+    cached: : [worker-1; worker-2]\n" (Fmt.to_to_string Pool.dump pool);
+  Pool.release w2;
+  flush_queue w1 ~expect:["b1"; "a3"; "b2"; "b3"]
+
 let test_case name fn =
   Alcotest_lwt.test_case name `Quick @@ fun _ () ->
   Lwt_unix.yield () >>= fun () ->       (* Ensure we're inside the Lwt mainloop. Lwt.pause behaves strangely otherwise. *)
+  Fake_time.now := 1.0;
   fn () >>= fun () ->
   Lwt.pause () >|= fun () ->
   Prometheus.CollectorRegistry.(collect default)
@@ -465,4 +569,6 @@ let suite = [
   test_case "inactive" inactive;
   test_case "cancel_worker_queue" cancel_worker_queue;
   test_case "push_back" push_back;
+  test_case "fairness" fairness;
+  test_case "fairness_rates" fairness_rates;
 ]
