@@ -618,6 +618,9 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
         fn ();
         Ok ()
 
+    let client_id t = t.info.id
+    let pool_id t = t.parent.pool
+
     let v parent info = { parent; info }
   end
 

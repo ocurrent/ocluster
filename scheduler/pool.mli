@@ -34,6 +34,9 @@ module Make (Item : S.ITEM) (Time : S.TIME) : sig
 
     val get_rate : t -> float
     (** [get_rate t] is the rate previously set by [set_rate] (or [1.0] if never set). *)
+
+    val client_id : t -> string
+    val pool_id : t -> string
   end
 
   val create : name:string -> db:Dao.t -> t
