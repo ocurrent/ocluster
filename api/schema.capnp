@@ -139,6 +139,9 @@ interface PoolAdmin {
 
   update    @4 (worker :Text) -> ();
   # Drain worker, ask it to restart with the latest version, and return when it comes back.
+
+  setRate   @5 (id :Text, rate :Float64) -> ();
+  # Set the expected share of the pool for this client.
 }
 
 interface Admin {

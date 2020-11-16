@@ -7,6 +7,21 @@ let () = Sqlite_loader.Ty.register "ocluster-client" Client
 
 let restart_timeout = 600.0   (* Maximum time to wait for a worker to reconnect after it disconnects. *)
 
+module Metrics = struct
+  open Prometheus
+
+  let namespace = "ocluster"
+  let subsystem = "scheduler"
+
+  let priority ~urgent =
+    if urgent then "high" else "low"
+
+  let client_queued_jobs =
+    let help = "Items currently queued" in
+    let f = Gauge.v_labels ~label_names:["client"; "pool"; "priority"] ~help ~namespace ~subsystem "client_submitted_jobs" in
+    fun ~client_id ~pool ~urgent -> Gauge.labels f [client_id; pool; priority ~urgent]
+end
+
 module Item = struct
   type t = {
     descr : Cluster_api.Queue.job_desc;
@@ -32,7 +47,7 @@ module Item = struct
 end
 
 module Pool_api = struct
-  module Pool = Pool.Make(Item)
+  module Pool = Pool.Make(Item)(Unix)
 
   type t = {
     pool : Pool.t;
@@ -46,13 +61,19 @@ module Pool_api = struct
     let cond = Lwt_condition.create () in
     { pool; workers; cond }
 
-  let submit t ~urgent ~client_id (descr : Cluster_api.Queue.job_desc) : Cluster_api.Ticket.t =
+  let submit client ~urgent (descr : Cluster_api.Queue.job_desc) : Cluster_api.Ticket.t =
     let job, set_job = Capability.promise () in
-    Log.info (fun f -> f "Received new job request from %S (urgent=%b)" client_id urgent);
+    Log.info (fun f -> f "Received new job request from %S (urgent=%b)" (Pool.Client.client_id client) urgent);
     let item = { Item.descr; set_job } in
-    let ticket = Pool.submit ~urgent t.pool item in
+    let ticket = Pool.Client.submit ~urgent client item in
+    let queued_jobs = Metrics.client_queued_jobs ~client_id:(Pool.Client.client_id client) ~pool:(Pool.Client.pool_id client) ~urgent in
+    Prometheus.Gauge.inc_one queued_jobs;
+    Lwt.async (fun () ->
+        Capability.wait_until_settled job >|= fun () ->
+        Prometheus.Gauge.dec_one queued_jobs
+      );
     let cancel () =
-      match Pool.cancel ticket with
+      match Pool.Client.cancel client ticket with
       | Ok () ->
         Capability.resolve_exn set_job (Capnp_rpc.Exception.v "Ticket cancelled");
         Lwt_result.return ()
@@ -60,7 +81,7 @@ module Pool_api = struct
         Cluster_api.Job.cancel job
     in
     let release () =
-      match Pool.cancel ticket with
+      match Pool.Client.cancel client ticket with
       | Ok () -> Capability.resolve_exn set_job (Capnp_rpc.Exception.v "Ticket released (cancelled)")
       | Error `Not_queued -> ()
     in
@@ -103,7 +124,7 @@ module Pool_api = struct
       Capability.inc_ref w;
       Some w
 
-  let admin_service t =
+  let admin_service ~validate_client t =
     let show () = Fmt.to_to_string Pool.show t.pool in
     let workers () =
       Pool.connected_workers t.pool
@@ -142,7 +163,17 @@ module Pool_api = struct
           in
           Lwt.pick [ aux (); timeout ]
     in
-    Cluster_api.Pool_admin.local ~show ~workers ~worker:(worker t) ~set_active ~update
+    let set_rate ~client_id rate =
+      if validate_client client_id then (
+        let client = Pool.client t.pool ~client_id in
+        Pool.Client.set_rate client rate;
+        Ok ()
+      ) else Error `No_such_user
+    in
+    Cluster_api.Pool_admin.local ~show ~workers ~worker:(worker t) ~set_active ~update ~set_rate
+
+  let remove_client t ~client_id =
+    Pool.remove_client t.pool ~client_id
 end
 
 type t = {
@@ -155,16 +186,27 @@ let registration_services t =
 let pp_pool_name f (name, _) = Fmt.string f name
 
 let submission_service ~validate ~sturdy_ref t client_id =
+  let pools = Hashtbl.create 3 in
+  let get_client pool_id =
+    match Hashtbl.find_opt pools pool_id with
+    | Some c -> Ok c
+    | None ->
+      match String.Map.find_opt pool_id t.pools with
+      | None ->
+        let msg = Fmt.strf "Pool ID %S not one of @[<h>{%a}@]" pool_id (String.Map.pp ~sep:Fmt.comma pp_pool_name) t.pools in
+        Error (Capnp_rpc.Exception.v msg)
+      | Some pool ->
+        let client = Pool_api.Pool.client pool.pool ~client_id in
+        Hashtbl.add pools pool_id client;
+        Ok client
+  in
   let submit ~pool ~urgent descr =
     match validate () with
     | false -> Capability.broken (Capnp_rpc.Exception.v "Access has been revoked")
     | true ->
-      match String.Map.find_opt pool t.pools with
-      | None ->
-        let msg = Fmt.strf "Pool ID %S not one of @[<h>{%a}@]" pool (String.Map.pp ~sep:Fmt.comma pp_pool_name) t.pools in
-        Capability.broken (Capnp_rpc.Exception.v msg)
-      | Some pool ->
-        Pool_api.submit ~urgent ~client_id pool descr
+      match get_client pool with
+      | Ok client -> Pool_api.submit ~urgent client descr
+      | Error ex -> Capability.broken ex
   in
   Cluster_api.Submission.local ~submit ~sturdy_ref
 
@@ -176,7 +218,13 @@ let admin_service ~loader ~restore t =
   let pool name =
     match String.Map.find_opt name t.pools with
     | None -> Capability.broken (Capnp_rpc.Exception.v "No such pool")
-    | Some pool_api -> Pool_api.admin_service pool_api
+    | Some pool_api ->
+      let validate_client id =
+        match Sqlite_loader.lookup_by_descr loader (Client, id) with
+        | [] -> false
+        | _ -> true
+      in
+      Pool_api.admin_service ~validate_client pool_api
   in
   let add_client name =
     let descr = (Client, name) in
@@ -193,6 +241,7 @@ let admin_service ~loader ~restore t =
     match Sqlite_loader.lookup_by_descr loader descr with
     | [digest] ->
       Sqlite_loader.remove loader digest;
+      t.pools |> String.Map.iter (fun _ -> Pool_api.remove_client ~client_id:name);
       Log.info (fun f -> f "Removed endpoint for client %S" name);
       Lwt_result.return ()
     | [] -> Lwt_result.fail (`Capnp (Capnp_rpc.Error.exn "Unknown client %S" name))

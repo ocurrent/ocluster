@@ -20,6 +20,7 @@ The scheduler tries to schedule similar builds on the same machine, to benefit f
 	* [Docker jobs](#docker-jobs)
 	* [OBuilder jobs](#obuilder-jobs)
 * [Admin](#admin)
+	* [Fair queuing](#fair-queuing)
 * [API](#api)
 * [Security model](#security-model)
 * [Prometheus metrics](#prometheus-metrics)
@@ -235,6 +236,44 @@ parallel. Note that restarting a worker involves letting it finish any jobs curr
 may take a while. The `restart` command waits until the worker has reconnected before reporting success.
 
 You can also give the name of a worker as an extra argument to update just that worker.
+
+### Fair queuing
+
+Some clients may submit many jobs in batches.
+In this case, we probably want other client's jobs to enter the queue ahead of them, even if they are submitted afterwards.
+
+To handle this, each client (separately for each pool) can be configured with a "rate",
+which is the rate at which they can expect to use the cluster (the number of jobs they will have running at once).
+If the cluster has free capacity then this has no effect; all jobs will be run.
+However, when queuing the scheduler will use this information to try to schedule jobs so that they run when they
+would have run if the client was using the cluster at the expected rate.
+
+For example:
+
+1. The admin sets Alice's rate to 2 and Bob's rate the 1 (the default), using `ocluster-admin set-rate`.
+2. Bob submits 10 jobs, each estimated to run for 1 minute.
+3. Because Bob's rate is one, the cluster assigns these jobs "fair start times" of now, +1m, +2m, +3m, etc.
+4. The cluster will start as many of these jobs as it has capacity for. If its capacity is 3, Bob's first three jobs will start.
+5. Alice submits two jobs, also taking one minute each.
+   The cluster assigns these jobs fair start times of now and now+30s.
+   These will be the next two jobs to run, because their start times are before all of Bob's jobs.
+
+In the `ocluster-admin show` output, you will see these values.
+For example:
+
+```
+...
+queue: (backlog) [bob:job8@10m alice:job1@27s]
+clients: alice(5)+2m bob(3)
+```
+
+This means that:
+
+- There are two jobs on the backlog: Alice's `job1` (fair-start time 27s from now), and Bob's `job8`
+  (fair start time 10m from now). Alice's job will go first, because it has the lower start time.
+- Alice has a rate of 5 jobs (5 job-seconds per second) and her next job will have a fair start time
+  of 2 minutes from now (because she has already submitted more jobs than her rate).
+- Bob has a rate of 3 and no penalty. His next job will get a fair start time of now.
 
 
 ## API

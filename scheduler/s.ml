@@ -16,3 +16,7 @@ module type ITEM = sig
   val pp : t Fmt.t
   (** For debugging. *)
 end
+
+module type TIME = sig
+  val gettimeofday : unit -> float
+end

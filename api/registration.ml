@@ -8,11 +8,7 @@ let local ~register =
     method register_impl params release_param_caps =
       let open X.Register in
       let name = Params.name_get params in
-      let capacity =
-        let x = Params.capacity_get_int_exn params in
-        if x > 0 then x
-        else 32   (* Old workers don't report their capacity. *)
-      in
+      let capacity = Params.capacity_get_int_exn params in
       let worker = Params.worker_get params in
       release_param_caps ();
       match worker with

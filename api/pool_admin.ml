@@ -6,7 +6,7 @@ type worker_info = {
   active : bool;
 }
 
-let local ~show ~workers ~worker ~set_active ~update =
+let local ~show ~workers ~worker ~set_active ~update ~set_rate =
   let module X = Raw.Service.PoolAdmin in
   X.local @@ object
     inherit X.service
@@ -58,6 +58,15 @@ let local ~show ~workers ~worker ~set_active ~update =
       let name = Params.worker_get params in
       release_param_caps ();
       update name
+
+    method set_rate_impl params release_param_caps =
+      let open X.SetRate in
+      let client_id = Params.id_get params in
+      let rate = Params.rate_get params in
+      release_param_caps ();
+      match set_rate ~client_id rate with
+      | Ok () -> Service.return_empty ()
+      | Error `No_such_user -> Service.fail "No such user"
   end
 
 module X = Raw.Client.PoolAdmin
@@ -97,3 +106,10 @@ let update t worker =
   let request, params = Capability.Request.create Params.init_pointer in
   Params.worker_set params worker;
   Capability.call_for_unit t method_id request
+
+let set_rate t ~client_id rate =
+  let open X.SetRate in
+  let request, params = Capability.Request.create Params.init_pointer in
+  Params.id_set params client_id;
+  Params.rate_set params rate;
+  Capability.call_for_unit_exn t method_id request

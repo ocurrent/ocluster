@@ -5,7 +5,7 @@ module Dao : sig
   (** Ensure the required tables are created. *)
 end
 
-module Make (Item : S.ITEM) : sig
+module Make (Item : S.ITEM) (Time : S.TIME) : sig
   type t
   (** A pool of workers and queued jobs. *)
 
@@ -15,6 +15,30 @@ module Make (Item : S.ITEM) : sig
   type worker
   (** A connected worker. *)
 
+  module Client : sig
+    type t
+    (** A connected client. *)
+
+    val submit : urgent:bool -> t -> Item.t -> ticket
+    (** [submit ~urgent t item] adds [item] to the incoming queue.
+        [urgent] items will be processed before non-urgent ones. *)
+
+    val cancel : t -> ticket -> (unit, [> `Not_queued ]) result
+    (** [cancel t ticket] discards the item from the queue. *)
+
+    val set_rate : t -> float -> unit
+    (** [set_rate t rate] sets the maximum number of jobs that the client can expect
+        to run at once. Clients can submit more jobs than this, and make use of any
+        spare capacity. However, this will determine what happens when multiple clients
+        want to use the extra capacity. *)
+
+    val get_rate : t -> float
+    (** [get_rate t] is the rate previously set by [set_rate] (or [1.0] if never set). *)
+
+    val client_id : t -> string
+    val pool_id : t -> string
+  end
+
   val create : name:string -> db:Dao.t -> t
   (** [create ~name ~db] is a pool that reports metrics tagged with [name] and
       stores cache information in [db]. *)
@@ -23,12 +47,15 @@ module Make (Item : S.ITEM) : sig
   (** [register t ~name ~capacity] returns a queue for worker [name].
       @param capacity Worker's capacity (max number of parallel jobs). *)
 
-  val submit : urgent:bool -> t -> Item.t -> ticket
-  (** [submit ~urgent t item] adds [item] to the incoming queue.
-      [urgent] items will be processed before non-urgent ones. *)
+  val client : t -> client_id:string -> Client.t
+  (** [client t ~client_id] is a client value, which can be used to submit jobs.
+      These jobs will be scheduled alongside the jobs of other clients, so that
+      one client does not starve the others.
+      @param [client_id] Used for logging and reporting. *)
 
-  val cancel : ticket -> (unit, [> `Not_queued ]) result
-  (** [cancel ticket] discards the item from the queue. *)
+  val remove_client : t -> client_id:string -> unit
+  (** [remove_client t ~client_id] deletes all information about [client_id], if any.
+      Call this on all pools when deleting a user. *)
 
   val pop : worker -> (Item.t, [> `Finished]) Lwt_result.t
   (** [pop worker] gets the next item for [worker]. *)

@@ -35,13 +35,21 @@ module Metrics = struct
   let workers_paused =
     let help = "Number of workers set to inactive" in
     Gauge.v_label ~label_name:"pool" ~help ~namespace ~subsystem "workers_paused"
+
+  let priority ~urgent =
+    if urgent then "high" else "low"
 end
+
+module Client_map = Map.Make(String)
 
 module Dao = struct
   type t = {
     query_cache : Sqlite3.stmt;
     mark_cached : Sqlite3.stmt;
     dump_cache : Sqlite3.stmt;
+    get_rate : Sqlite3.stmt;
+    set_rate : Sqlite3.stmt;
+    remove_user : Sqlite3.stmt;
   }
 
   let dump f (db, pool) =
@@ -69,6 +77,14 @@ module Dao = struct
   let mark_cached t ~pool ~hint ~worker =
     Db.exec t.mark_cached Sqlite3.Data.[ TEXT pool; TEXT hint; TEXT worker ]
 
+  let get_rate t ~pool ~client_id =
+    Db.query_some t.get_rate Sqlite3.Data.[ TEXT pool; TEXT client_id ]
+    |> Option.map (function
+        | Sqlite3.Data.[ FLOAT rate ] -> rate
+        | row -> Fmt.failwith "Bad row from DB: %a" Db.dump_row row
+      )
+    |> Option.value ~default:1.0
+
   let init db =
     Sqlite3.exec db "CREATE TABLE IF NOT EXISTS cached ( \
                      pool       TEXT NOT NULL, \
@@ -76,18 +92,39 @@ module Dao = struct
                      worker     TEXT NOT NULL, \
                      created    DATETIME NOT NULL, \
                      PRIMARY KEY (pool, cache_hint, worker))" |> Db.or_fail ~cmd:"create table";
+    Sqlite3.exec db "CREATE TABLE IF NOT EXISTS pool_user_rate ( \
+                     pool       TEXT NOT NULL, \
+                     user       TEXT NOT NULL, \
+                     rate       REAL NOT NULL, \
+                     PRIMARY KEY (pool, user))" |> Db.or_fail ~cmd:"create pool_user_rate table";
     let query_cache = Sqlite3.prepare db "SELECT worker FROM cached WHERE pool = ? AND cache_hint = ? ORDER BY worker" in
     let mark_cached = Sqlite3.prepare db "INSERT OR REPLACE INTO cached (pool, cache_hint, worker, created) VALUES (?, ?, ?, date('now'))" in
     let dump_cache = Sqlite3.prepare db "SELECT DISTINCT cache_hint FROM cached WHERE pool = ? ORDER BY cache_hint" in
-    { query_cache; mark_cached; dump_cache }
+    let set_rate = Sqlite3.prepare db "INSERT OR REPLACE INTO pool_user_rate (pool, user, rate) VALUES (?, ?, ?)" in
+    let get_rate = Sqlite3.prepare db "SELECT rate FROM pool_user_rate WHERE pool = ? AND user = ?" in
+    let remove_user = Sqlite3.prepare db "DELETE FROM pool_user_rate WHERE pool = ? AND user = ?" in
+    { query_cache; mark_cached; dump_cache; set_rate; get_rate; remove_user }
 end
 
-module Make (Item : S.ITEM) = struct
+let (let<>) x f =
+  if x = 0 then f ()
+  else x
+
+let pp_rough_duration f x =
+  if x < 120.0 then
+    Fmt.pf f "%.0fs" x
+  else
+    Fmt.pf f "%.0fm" (x /. 60.)
+
+module Make (Item : S.ITEM)(Time : S.TIME) = struct
   module Worker_map = Astring.String.Map
 
   type ticket = {
+    key : < >;
     item : Item.t;
+    fair_start_time : float;
     urgent : bool;
+    client_id : string;
     mutable cost : int;                         (* Estimated cost (set when added to worker queue) *)
     mutable cancel : (unit -> unit) option;     (* None if not in a queue *)
   }
@@ -102,73 +139,78 @@ module Make (Item : S.ITEM) = struct
     assert (ticket.cancel <> None);
     ticket.cancel <- None
 
-  let cancel ticket =
-    match ticket.cancel with
-    | None -> Error `Not_queued
-    | Some fn ->
-      Log.info (fun f -> f "Cancel %a" pp_ticket ticket);
-      ticket.cancel <- None;
-      fn ();
-      Ok ()
-
   module Backlog = struct
+    module Key = struct
+      type t = < >
+
+      let compare = compare
+    end
+
+    module Ticket = struct
+      type t = ticket
+
+      let compare a b =
+        let<> () = compare b.urgent a.urgent in
+        compare a.fair_start_time b.fair_start_time
+
+      let pp_ticket ~now f ticket =
+        Fmt.pf f "%s:%a@@%a"
+          ticket.client_id
+          Item.pp ticket.item
+          pp_rough_duration (ticket.fair_start_time -. now)
+
+      let pp ~now f ticket =
+        let urgent = if ticket.urgent then "+urgent" else "" in
+        if ticket.cost >= 0 then
+          Fmt.pf f "%a(%d%s)" (pp_ticket ~now) ticket ticket.cost urgent
+        else
+          Fmt.pf f "%a%s" (pp_ticket ~now) ticket urgent
+    end
+
+    module Q = Psq.Make(Key)(Ticket)
+
     type t = {
       queue : string;           (* For metric reports *)
-      high : ticket Lwt_dllist.t;
-      low : ticket Lwt_dllist.t;
+      mutable psq : Q.t;
     }
 
-    let choose_queue ~ticket ~pool t =
-      let queue, priority =
-        match ticket.urgent with
-        | true -> t.high, "high"
-        | false -> t.low, "low"
-      in
-      queue, Prometheus.Gauge.labels Metrics.queue_length [t.queue; pool; priority]
-
-    let cancel ?(on_cancel=ignore) ~metric ~pool node () =
-      Lwt_dllist.remove node;
+    let cancel t ?(on_cancel=ignore) ~metric ~pool key () =
+      t.psq <- Q.remove key t.psq;
       Prometheus.Counter.inc_one (Metrics.jobs_cancelled pool);
       Prometheus.Gauge.dec_one metric;
       on_cancel ()
 
     let enqueue ?on_cancel ~pool ticket t =
-      let queue, metric = choose_queue ~ticket ~pool t in
-      let node = Lwt_dllist.add_l ticket queue in
-      set_cancel ticket (cancel ?on_cancel ~metric ~pool node);
-      Prometheus.Gauge.inc_one metric
-
-    let push_back ~pool ticket t =
-      let queue, metric = choose_queue ~ticket ~pool t in
-      let node = Lwt_dllist.add_r ticket queue in
-      set_cancel ticket (cancel ~metric ~pool node);
+      let metric = Prometheus.Gauge.labels Metrics.queue_length [t.queue; pool; Metrics.priority ~urgent:ticket.urgent] in
+      t.psq <- Q.add ticket.key ticket t.psq;
+      set_cancel ticket (cancel t ?on_cancel ~metric ~pool ticket.key);
       Prometheus.Gauge.inc_one metric
 
     let dequeue_opt ~pool t =
-      let take ticket =
+      match Q.pop t.psq with
+      | None -> None
+      | Some ((_key, ticket), q) ->
+        t.psq <- q;
         let priority = if ticket.urgent then "high" else "low" in
         Prometheus.Gauge.dec_one (Prometheus.Gauge.labels Metrics.queue_length [t.queue; pool; priority]);
         clear_cancel ticket;
         Some ticket
-      in
-      match Lwt_dllist.take_opt_r t.high with
-      | Some ticket -> take ticket
-      | None ->
-        match Lwt_dllist.take_opt_r t.low with
-        | Some ticket -> take ticket
-        | None -> None
 
-    let length t =
-      Lwt_dllist.length t.low + Lwt_dllist.length t.high
+    let length t = Q.size t.psq
 
     let is_empty t =
       length t = 0
 
+    let dump f t =
+      let items = Q.to_priority_list t.psq |> List.rev in
+      let now = Time.gettimeofday () in
+      Fmt.pf f "[@[<hov>%a@]]"
+        (Fmt.(list ~sep:sp) (Fmt.using snd (Ticket.pp ~now))) items
+
     let create ~queue () =
       {
         queue;
-        low = Lwt_dllist.create ();
-        high = Lwt_dllist.create ();
+        psq = Q.empty;
       }
   end
 
@@ -180,7 +222,9 @@ module Make (Item : S.ITEM) = struct
       | `Ready of worker Lwt_dllist.t       (* No work is available. *)
     ];
     mutable workers : worker Worker_map.t;  (* Connected workers *)
+    mutable clients : client_info Client_map.t;
     mutable cluster_capacity : float;
+    mutable pending_cached : (Item.cache_hint, int) Hashtbl.t;
   } and worker = {
     parent : t;
     name : string;
@@ -190,6 +234,10 @@ module Make (Item : S.ITEM) = struct
                     | `Finished ];
     mutable workload : int;     (* Total cost of items in worker's queue. *)
     mutable shutdown : bool;    (* Worker is paused because it is shutting down. *)
+  } and client_info = {
+    id : string;
+    mutable next_fair_start_time : float;
+    mutable finished : bool;
   }
 
   let enqueue_node item queue metric =
@@ -209,6 +257,16 @@ module Make (Item : S.ITEM) = struct
     let ticket = Backlog.dequeue_opt ~pool queue in
     Option.iter (fun ticket -> worker.workload <- worker.workload - ticket.cost) ticket;
     ticket
+
+  let dec_pending_count t ticket =
+    let hint = Item.cache_hint ticket.item in
+    if (hint :> string) <> "" then (
+      let pending_count = Hashtbl.find t.pending_cached hint in
+      if pending_count > 1 then
+        Hashtbl.replace t.pending_cached hint (pending_count - 1)
+      else
+        Hashtbl.remove t.pending_cached hint
+    )
 
   (* Return the worker in [workers] with the lowest workload. *)
   let best_worker ~max_workload t workers =
@@ -270,6 +328,7 @@ module Make (Item : S.ITEM) = struct
           Log.info (fun f -> f "%S takes %a from its local queue" worker.name Item.pp item);
           mark_cached ticket.item worker;
           Prometheus.Counter.inc_one (Metrics.jobs_accepted t.pool);
+          dec_pending_count t ticket;
           Lwt_result.return ticket.item
         | None ->
           (* Try the global queue instead. *)
@@ -296,6 +355,7 @@ module Make (Item : S.ITEM) = struct
                 Log.info (fun f -> f "%S takes %a from the main queue" worker.name Item.pp item);
                 mark_cached item worker;
                 Prometheus.Counter.inc_one (Metrics.jobs_accepted t.pool);
+                dec_pending_count t ticket;
                 Lwt_result.return item
               )
     in
@@ -303,21 +363,14 @@ module Make (Item : S.ITEM) = struct
 
   (* Worker is leaving and system is backlogged. Move the worker's items to the backlog. *)
   let rec push_back worker worker_q q =
-    let ticket =
-      match Lwt_dllist.take_opt_l worker_q.Backlog.low with
-      | Some x -> Some x
-      | None -> Lwt_dllist.take_opt_l worker_q.Backlog.high
-    in
-    match ticket with
+    match Backlog.dequeue_opt ~pool:worker.parent.pool worker_q with
+    | None -> ()
     | Some ticket ->
       Log.info (fun f -> f "Pushing %a back on to the main queue" pp_ticket ticket);
-      let priority = if ticket.urgent then "high" else "low" in
-      Prometheus.Gauge.dec_one @@ Prometheus.Gauge.labels Metrics.queue_length [worker_q.queue; worker.parent.pool; priority];
       worker.workload <- worker.workload - ticket.cost;
-      clear_cancel ticket;
-      Backlog.push_back ~pool:worker.parent.pool ticket q;
+      ticket.cost <- -1;
+      Backlog.enqueue ~pool:worker.parent.pool ticket q;
       push_back worker worker_q q
-    | None -> ()
 
   let register t ~name ~capacity =
     if Worker_map.mem name t.workers then Error `Name_taken
@@ -366,17 +419,12 @@ module Make (Item : S.ITEM) = struct
           Lwt_condition.broadcast cond ()
       )
 
-  let submit ~urgent t item =
-    Prometheus.Counter.inc_one (Metrics.jobs_submitted t.pool);
-    let ticket = { item; urgent; cancel = None; cost = -1 } in
-    add t ticket;
-    ticket
-
   let add_items t worker_q worker =
     let rec aux () =
       match dequeue_opt worker_q worker with
       | None -> ()
       | Some ticket ->
+        ticket.cost <- -1;
         add t ticket;
         aux ()
     in
@@ -451,8 +499,10 @@ module Make (Item : S.ITEM) = struct
       pool = name;
       db;
       main = `Backlog (Backlog.create ~queue:Metrics.incoming_queue ());
+      clients = Client_map.empty;
       workers = Worker_map.empty;
       cluster_capacity = 0.0;
+      pending_cached = Hashtbl.create 1024;
     }
 
   let dump_queue ?(sep=Fmt.sp) pp f q =
@@ -467,18 +517,11 @@ module Make (Item : S.ITEM) = struct
   let pp_worker f worker =
     Fmt.string f worker.name
 
-  let pp_cost_item f ticket =
-    let urgent = if ticket.urgent then "+urgent" else "" in
-    Fmt.pf f "%a(%d%s)" pp_ticket ticket ticket.cost urgent
-
   let pp_state f = function
     | { state = `Finished; _ } -> Fmt.string f "(finished)"
     | { shutdown = true; _ } -> Fmt.string f "(shutting down)"
     | { state = `Inactive _; _ } -> Fmt.string f "(inactive)"
-    | { state = `Running (q, _); _} ->
-      Fmt.pf f "%a : %a"
-        (dump_queue pp_cost_item) q.low
-        (dump_queue pp_cost_item) q.high
+    | { state = `Running (q, _); _} -> Backlog.dump f q
 
   let dump_workers f x =
     let pp_item f (id, w) =
@@ -488,22 +531,118 @@ module Make (Item : S.ITEM) = struct
 
   let dump_main f = function
     | `Backlog (q : Backlog.t) ->
-      Fmt.pf f "(backlog) %a : %a"
-        (dump_queue pp_ticket) q.low
-        (dump_queue pp_ticket) q.high
+      Fmt.pf f "(backlog) %a" Backlog.dump q
     | `Ready q ->
       Fmt.pf f "(ready) %a" (dump_queue pp_worker) q
 
-  let show f {pool = _; db = _; main; workers; cluster_capacity } =
-    Fmt.pf f "@[<v>capacity: %.0f@,queue: @[%a@]@,@[<v2>registered:%a@]@]@."
-      cluster_capacity
-      dump_main main
-      dump_workers workers
+  let dump_client t ~now f (_, { id; next_fair_start_time; finished }) =
+    let delay = next_fair_start_time -. now in
+    if finished then Fmt.pf f "%s:FINISHED" id
+    else (
+      let rate = Dao.get_rate ~pool:t.pool ~client_id:id t.db in
+      let pp_delay f x =
+        if delay > 0.0 then Fmt.pf f "+%a" pp_rough_duration x
+      in
+      Fmt.pf f "%s(%.0f)%a" id rate pp_delay delay
+    )
 
-  let dump f {pool; db; main; workers; cluster_capacity } =
-    Fmt.pf f "@[<v>capacity: %.0f@,queue: @[%a@]@,@[<v2>registered:%a@]@,cached: @[%a@]@]@."
+  let dump_clients t f clients =
+    let now = Time.gettimeofday () in
+    Fmt.(seq ~sep:sp (dump_client t ~now)) f (Client_map.to_seq clients)
+
+  let pp_common f ({pool = _; db = _; main; clients; workers; cluster_capacity; pending_cached = _} as t) =
+    Fmt.pf f "capacity: %.0f@,queue: @[%a@]@,@[<v2>registered:%a@]@,clients: @[<hov>%a@]"
       cluster_capacity
       dump_main main
       dump_workers workers
-      Dao.dump (db, pool)
+      (dump_clients t) clients
+
+  let show f t =
+    Fmt.pf f "@[<v>%a@]@." pp_common t
+
+  let dump f t =
+    Fmt.pf f "@[<v>%a@,cached: @[%a@]@]@."
+      pp_common t
+      Dao.dump (t.db, t.pool)
+
+  module Client = struct
+    type nonrec t = {
+      parent : t;
+      info : client_info;
+    }
+
+    let set_rate (t:t) rate =
+      let pool = t.parent in
+      assert (rate > 0.0);
+      Db.exec pool.db.set_rate Sqlite3.Data.[ TEXT pool.pool; TEXT t.info.id; FLOAT rate ]
+
+    let get_rate (t:t) =
+      let pool = t.parent in
+      Dao.get_rate ~pool:pool.pool ~client_id:t.info.id pool.db
+
+    let schedule t cost =
+      let rate = get_rate t in
+      let start = max (Time.gettimeofday ()) t.info.next_fair_start_time in
+      t.info.next_fair_start_time <- start +. (cost /. rate);
+      start
+
+    let submit ~urgent (t:t) item =
+      assert (not t.info.finished);
+      let pool = t.parent in
+      let cost =
+        let costs = Item.cost_estimate item in
+        let hint = Item.cache_hint item in
+        if (hint :> string) = "" then costs.non_cached
+        else (
+          let pending_count = Hashtbl.find_opt pool.pending_cached hint |> Option.value ~default:0 in
+          Hashtbl.replace pool.pending_cached hint (pending_count + 1);
+          if pending_count > 0 || Dao.query_cache pool.db ~pool:pool.pool ~hint:(hint :> string) <> [] then costs.cached
+          else costs.non_cached
+        )
+      in
+      let fair_start_time = schedule t (float cost) in
+      Prometheus.Counter.inc_one (Metrics.jobs_submitted pool.pool);
+      let key = object end in
+      let ticket = { key; item; client_id = t.info.id; fair_start_time; urgent; cancel = None; cost = -1 } in
+      add pool ticket;
+      ticket
+
+    let cancel (t:t) ticket =
+      assert (not t.info.finished);
+      match ticket.cancel with
+      | None -> Error `Not_queued
+      | Some fn ->
+        Log.info (fun f -> f "Cancel %a" pp_ticket ticket);
+        dec_pending_count t.parent ticket;
+        ticket.cancel <- None;
+        fn ();
+        Ok ()
+
+    let client_id t = t.info.id
+    let pool_id t = t.parent.pool
+
+    let v parent info = { parent; info }
+  end
+
+  let client t ~client_id =
+    let info =
+      match Client_map.find_opt client_id t.clients with
+      | Some c -> c
+      | None ->
+        let info = {
+          id = client_id;
+          next_fair_start_time = Time.gettimeofday ();
+          finished = false;
+        } in
+        t.clients <- Client_map.add client_id info t.clients;
+        info
+    in
+    Client.v t info
+
+  let remove_client t ~client_id =
+    Db.exec t.db.remove_user Sqlite3.Data.[ TEXT t.pool; TEXT client_id ];
+    Client_map.find_opt client_id t.clients
+    |> Option.iter @@ fun client ->
+    client.finished <- true;
+    t.clients <- Client_map.remove client_id t.clients
 end

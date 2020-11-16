@@ -36,6 +36,11 @@ let list_clients cap_path =
   | [] -> Fmt.epr "No clients.@."
   | clients -> List.iter print_endline clients
 
+let set_rate cap_path pool_id client_id rate =
+  run cap_path @@ fun admin_service ->
+  let pool = Cluster_api.Admin.pool admin_service pool_id in
+  Cluster_api.Pool_admin.set_rate pool ~client_id rate
+
 let show cap_path pool =
   run cap_path @@ fun admin_service ->
   match pool with
@@ -140,8 +145,8 @@ let connect_addr =
     ~docv:"ADDR"
     []
 
-let client_id =
-  Arg.pos 1 Arg.(some string) None @@
+let client_id ~pos =
+  Arg.pos pos Arg.(some string) None @@
   Arg.info
     ~doc:"Unique name or ID for the client"
     ~docv:"ID"
@@ -152,6 +157,13 @@ let pool_pos =
   Arg.info
     ~doc:"Pool to use"
     ~docv:"POOL"
+    []
+
+let rate ~pos =
+  Arg.pos pos Arg.(some float) None @@
+  Arg.info
+    ~doc:"Number of parallel jobs"
+    ~docv:"RATE"
     []
 
 let worker =
@@ -171,18 +183,23 @@ let all =
 
 let add_client =
   let doc = "Create a new client endpoint for submitting jobs" in
-  Term.(const add_client $ connect_addr $ Arg.required client_id),
+  Term.(const add_client $ connect_addr $ Arg.required (client_id ~pos:1)),
   Term.info "add-client" ~doc
 
 let remove_client =
   let doc = "Unregister a client." in
-  Term.(const remove_client $ connect_addr $ Arg.required client_id),
+  Term.(const remove_client $ connect_addr $ Arg.required (client_id ~pos:1)),
   Term.info "remove-client" ~doc
 
 let list_clients =
   let doc = "List registered clients" in
   Term.(const list_clients $ connect_addr),
   Term.info "list-clients" ~doc
+
+let set_rate =
+  let doc = "Set expected number of parallel jobs for a pool/client combination" in
+  Term.(const set_rate $ connect_addr $ Arg.required pool_pos $ Arg.required (client_id ~pos:2) $ Arg.required (rate ~pos:3)),
+  Term.info "set-rate" ~doc
 
 let show =
   let doc = "Show information about a service, pool or worker" in
@@ -204,7 +221,7 @@ let update =
   Term.(const update $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "update" ~doc
 
-let cmds = [add_client; remove_client; list_clients; show; pause; unpause; update]
+let cmds = [add_client; remove_client; list_clients; set_rate; show; pause; unpause; update]
 
 let default_cmd =
   let doc = "a command-line admin client for the build-scheduler" in
