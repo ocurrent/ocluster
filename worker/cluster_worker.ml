@@ -447,3 +447,5 @@ let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~update ~capa
   reconnect () >>= function
   | `Cancelled -> Lwt.return_unit
   | `Crash ex -> Lwt.fail ex
+
+module Obuilder_config = Obuilder_build.Config

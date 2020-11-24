@@ -3,6 +3,12 @@ type job_spec = [
   | `Obuilder of [ `Contents of string ]
 ]
 
+module Obuilder_config : sig
+  type t
+
+  val v : fast_sync:bool -> [ `Zfs of string | `Btrfs of string ] -> t
+end
+
 val run :
   ?switch:Lwt_switch.t ->
   ?build:(switch:Lwt_switch.t ->
@@ -12,7 +18,7 @@ val run :
           (string, [`Cancelled | `Msg of string]) Lwt_result.t) ->
   ?allow_push:string list ->
   ?prune_threshold:float ->
-  ?obuilder:[ `Zfs of string | `Btrfs of string ] ->
+  ?obuilder:Obuilder_config.t ->
   update:(unit -> (unit -> unit Lwt.t) Lwt.t) ->
   capacity:int ->
   name:string ->

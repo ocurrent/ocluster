@@ -4,9 +4,18 @@ let prune_margin = 600.0        (* Don't prune anything used less than 10 minute
 
 type builder = Builder : (module Obuilder.BUILDER with type t = 'a) * 'a -> builder
 
+module Config = struct
+  type t = {
+    store_spec : [ `Zfs of string | `Btrfs of string ];
+    fast_sync : bool;
+  }
+
+  let v ~fast_sync store_spec = { store_spec; fast_sync }
+end
+
 type t = {
   builder : builder;
-  spec : Obuilder.Store_spec.t;
+  config : Config.t;
   mutable pruning : bool;
   cond : unit Lwt_condition.t;          (* Fires when we finish pruning *)
   prune_threshold : float option;
@@ -22,12 +31,13 @@ let log_to log_data tag msg =
   | `Note -> Log_data.info log_data "\027[01;2m\027[01;35m%s\027[0m" msg
   | `Output -> Log_data.write log_data msg
 
-let create ?prune_threshold spec =
-  Obuilder.Store_spec.to_store spec >|= fun (Store ((module Store), store)) ->
-  let sandbox = Sandbox.create ~runc_state_dir:(Store.state_dir store / "runc") in
+let create ?prune_threshold config =
+  let { Config.store_spec; fast_sync } = config in
+  Obuilder.Store_spec.to_store store_spec >|= fun (Store ((module Store), store)) ->
+  let sandbox = Sandbox.create ~fast_sync ~runc_state_dir:(Store.state_dir store / "runc") () in
   let module Builder = Obuilder.Builder(Store)(Sandbox) in
   let builder = Builder ((module Builder), Builder.v ~store ~sandbox) in
-  { builder; pruning = false; prune_threshold; spec; cond = Lwt_condition.create () }
+  { builder; pruning = false; prune_threshold; config; cond = Lwt_condition.create () }
 
 (* Prune [t] until [path]'s free space rises above [prune_threshold]. *)
 let do_prune ~path ~prune_threshold t =
@@ -50,7 +60,7 @@ let do_prune ~path ~prune_threshold t =
   aux ()
 
 let store_path t =
-  match t.spec with
+  match t.config.store_spec with
   | `Btrfs path -> path
   | `Zfs pool -> "/" ^ pool
 
