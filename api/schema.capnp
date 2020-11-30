@@ -12,7 +12,7 @@ struct DockerBuild {
   pushTarget   @1 :Text;
   # If set, the builder will "docker push" to this target on success.
   # The format is "repo:tag". The tag is not optional.
-  # You'll need to provide pushUser and pushPassword too when using this.
+  # You'll probably want to provide pushUser and pushPassword too when using this.
   # To avoid sharing important credentials, you can create a new Docker Hub
   # user for this and push to a staging repository. Then use the returned
   # RepoId hash to tag it in the final repository yourself.
