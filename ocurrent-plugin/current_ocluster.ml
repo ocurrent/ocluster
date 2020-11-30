@@ -4,8 +4,6 @@ open Capnp_rpc_lwt
 module Git = Current_git
 module Connection = Connection
 
-let ( >>!= ) = Lwt_result.bind
-
 type urgency = [ `Auto | `Always | `Never ]
 
 (* This may be copied and modified per job. *)
@@ -62,12 +60,10 @@ module Op = struct
 
   let build t job { Key.dockerfile; src; options; pool; push_target } =
     let push_to =
-      match push_target, t.push_auth with
-      | Some target, auth ->
-        Current.Job.log job "Will push staging image to %a" Cluster_api.Docker.Image_id.pp target;
-        Some { Cluster_api.Docker.Spec.target; auth }
-      | _ ->
-        None
+      push_target |> Option.map (fun target ->
+          Current.Job.log job "Will push staging image to %a" Cluster_api.Docker.Image_id.pp target;
+          { Cluster_api.Docker.Spec.target; auth = t.push_auth }
+        )
     in
     begin match dockerfile with
       | `Contents content -> Current.Job.write job (Fmt.strf "@.Dockerfile:@.@.\o033[34m%s\o033[0m@.@." content)
@@ -101,14 +97,7 @@ module Op = struct
     let level = if push_target = None then Current.Level.Average else Current.Level.Above_average in
     Current.Job.start_with ~pool:build_pool job ?timeout:t.timeout ~level >>= fun build_job ->
     Capability.with_ref build_job @@ fun build_job ->
-    Connection.run_job ~job build_job >>!= fun repo_id ->
-    begin match push_target with
-      | Some target when t.push_auth = None ->
-        Current.Job.log job "Not pushing to %a as staging password not configured"
-          Cluster_api.Docker.Image_id.pp target
-      | _ -> ()
-    end;
-    Lwt_result.return repo_id
+    Connection.run_job ~job build_job
 
   let pp f {Key.dockerfile; src; options = _; pool; push_target = _} =
     match dockerfile with
