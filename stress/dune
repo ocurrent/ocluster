@@ -1,0 +1,14 @@
+(executable
+  (name stress)
+  (libraries
+    cmdliner
+    capnp-rpc-net
+    capnp-rpc-unix
+    cluster_scheduler
+    db
+    fmt.tty
+    logs.fmt
+    lwt.unix
+    prometheus-app.unix))
+
+(dirs)

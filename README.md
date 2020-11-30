@@ -24,6 +24,7 @@ The scheduler tries to schedule similar builds on the same machine, to benefit f
 * [API](#api)
 * [Security model](#security-model)
 * [Prometheus metrics](#prometheus-metrics)
+* [Testing](#testing)
 
 <!-- vim-markdown-toc -->
 
@@ -320,5 +321,37 @@ The endpoints available are:
 
 The worker agent and worker host metrics are fetched over the worker's Cap'n Proto connection, so there is no need
 to allow incoming network connections to the workers for this.
+
+## Testing
+
+The `stress` directory contains some code for running the scheduler with some simulated workloads and monitoring it.
+To save building things again, `stress/docker-compose.yml` runs the previously-built scheduler binary directly from `_build`,
+which therefore needs to be compatible with the `stress/Dockerfile` environment (so edit that if it doesn't match your
+main dev platform).
+
+To run the testbed:
+
+```
+dune build
+cd stress
+docker-compose up
+```
+
+This runs three services:
+- `scheduler` is a scheduler instance with some dummy workers that handle jobs by just sleeping for a bit,
+  and some dummy clients that submit jobs to the cluster.
+- `prometheus` collects metrics from the scheduler.
+- `grafana` displays the metrics.
+
+Open <http://localhost:3000> in a web-browser to view the grafana dashboard for the tests.
+
+The `scheduler` service also writes out `./capnp-secrets/stress-admin.cap`, which you can use from the host to manage the test cluster.
+For example:
+
+```
+dune exec -- ocluster-admin show ./capnp-secrets/stress-admin.cap linux-x86_64
+```
+
+You can also create your own client endpoints and submit your own jobs, in addition to those submitted by the testbed itself.
 
 [OBuilder]: https://github.com/ocurrent/obuilder
