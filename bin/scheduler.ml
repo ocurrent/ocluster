@@ -1,4 +1,5 @@
 open Lwt.Infix
+open Capnp_rpc_lwt
 module Restorer = Capnp_rpc_net.Restorer
 
 let ( / ) = Filename.concat
@@ -39,7 +40,7 @@ module Web = struct
       match Cluster_scheduler.Pool_api.worker pool_api worker with
       | None -> Server.respond_error ~status:`Bad_request ~body:"Worker not connected" ()
       | Some worker_api ->
-        Capnp_rpc_lwt.Capability.with_ref worker_api @@ fun worker_api ->
+        Capability.with_ref worker_api @@ fun worker_api ->
         Cluster_api.Worker.metrics worker_api ~source >>= function
         | Error (`Capnp e) ->
           Logs.warn (fun f -> f "Error getting metrics for %S/%S: %a" pool worker Capnp_rpc.Error.pp e);
@@ -70,7 +71,20 @@ module Web = struct
       [thread]
 end
 
-let main capnp secrets_dir pools prometheus_config state_dir =
+let provision_client ~admin ~secrets_dir id =
+  let path = secrets_dir / (Printf.sprintf "submit-%s.cap" id) in
+  if Sys.file_exists path then Lwt.return_unit
+  else (
+    Capability.with_ref (Cluster_api.Admin.add_client admin id) @@ fun client ->
+    Persistence.save_exn client >|= fun uri ->
+    let data = Uri.to_string uri ^ "\n" in
+    let oc = open_out_gen [Open_wronly; Open_creat; Open_trunc; Open_binary] 0o600 path in
+    output_string oc data;
+    close_out oc;
+    Logs.app (fun f -> f "Wrote capability reference to %S" path)
+  )
+
+let main capnp secrets_dir pools prometheus_config state_dir default_clients =
   if not (dir_exists state_dir) then Unix.mkdir state_dir 0o755;
   let db = Sqlite3.db_open (state_dir / "scheduler.db") in
   Sqlite3.busy_timeout db 1000;
@@ -88,7 +102,8 @@ let main capnp secrets_dir pools prometheus_config state_dir =
     let services = Restorer.Table.of_loader (module Cluster_scheduler.Sqlite_loader) loader in
     let restore = Restorer.of_table services in
     let admin_id = Capnp_rpc_unix.Vat_config.derived_id capnp "admin" in
-    Restorer.Table.add services admin_id (Cluster_scheduler.admin_service sched ~restore ~loader);
+    let admin = Cluster_scheduler.admin_service sched ~restore ~loader in
+    Restorer.Table.add services admin_id admin;
     let exports =
       Cluster_scheduler.registration_services sched |> List.map (fun (id, service) ->
           let name = "pool-" ^ id in
@@ -97,6 +112,7 @@ let main capnp secrets_dir pools prometheus_config state_dir =
           export ~secrets_dir ~name id
         )
     in
+    default_clients |> Lwt_list.iter_s (provision_client ~admin ~secrets_dir) >>= fun () ->
     Capnp_rpc_unix.serve capnp ~restore >>= fun vat ->
     export ~secrets_dir ~vat ~name:"admin" admin_id;
     exports |> List.iter (fun f -> f ~vat);
@@ -140,7 +156,6 @@ let state_dir =
     ["state-dir"]
 
 let listen_prometheus =
-  let open! Cmdliner in
   let doc =
     Arg.info ~docs:"MONITORING OPTIONS" ~docv:"PORT" ~doc:
       "Port on which to provide Prometheus metrics over HTTP."
@@ -148,9 +163,17 @@ let listen_prometheus =
   in
   Arg.(value @@ opt (some int) None doc)
 
+let default_clients =
+  Arg.value @@
+  Arg.(opt (list string)) [] @@
+  Arg.info
+    ~doc:"Clients to provision automatically"
+    ~docv:"NAME"
+    ["default-clients"]
+
 let cmd =
   let doc = "Manage build workers" in
-  Term.(const main $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir $ pools $ listen_prometheus $ state_dir),
+  Term.(const main $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir $ pools $ listen_prometheus $ state_dir $ default_clients),
   Term.info "ocluster-scheduler" ~doc ~version:Version.t
 
 let () = Term.(exit @@ eval cmd)

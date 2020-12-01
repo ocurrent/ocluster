@@ -198,6 +198,10 @@ dune exec -- ocluster-admin add-client ./capnp-secrets/admin.cap alice > alice.c
 You can also use `remove-client` to deactivate the `.cap` file, and `list-clients` to
 show all registered users.
 
+For automated deployment scripts, you can also start the scheduler with e.g.
+`--default-clients=alice,bob` to create `alice.cap` and `bob.cap` automatically
+if they don't already exist.
+
 To get a list of the available pools:
 
 ```
