@@ -1,0 +1,11 @@
+(executable
+  (name obuilder_pipeline)
+  (libraries
+    obuilder-spec
+    current
+    current_github
+    current_ocluster
+    current_web
+    capnp-rpc-unix
+    logs.fmt
+    fmt.tty))

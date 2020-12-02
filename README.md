@@ -108,6 +108,7 @@ dune exec -- ocluster-admin add-client ./capnp-secrets/admin.cap test-user > sub
 ```
 
 There is a command-line client, and a plugin for use in [OCurrent](https://github.com/ocurrent/ocurrent) pipelines.
+See [obuilder_pipeline.ml](./examples/obuilder_pipeline.ml) for an example pipeline using the plugin.
 
 ### Docker jobs
 
