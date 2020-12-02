@@ -1,7 +1,7 @@
 module Spec = struct
   type t = {
     spec : [`Contents of string]
-  }
+  } [@@deriving yojson]
 
   let init b { spec } =
     let module B = Raw.Builder.OBuilder in
