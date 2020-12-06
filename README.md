@@ -239,7 +239,7 @@ dune exec -- ocluster-admin \
 
 This will test the update by restarting one worker first. If that succeeds, it will restart the others in
 parallel. Note that restarting a worker involves letting it finish any jobs currently in progress, so this
-may take a while. The `restart` command waits until the worker has reconnected before reporting success.
+may take a while. The `update` command waits until the worker has reconnected before reporting success.
 
 You can also give the name of a worker as an extra argument to update just that worker.
 
