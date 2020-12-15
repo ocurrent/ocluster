@@ -324,7 +324,7 @@ let default_build ?obuilder ~switch ~log ~src = function
          else Lwt.return_unit
       )
   | `Obuilder (`Contents spec) ->
-    let spec = Obuilder.Spec.stage_of_sexp (Sexplib.Sexp.of_string spec) in
+    let spec = Obuilder.Spec.t_of_sexp (Sexplib.Sexp.of_string spec) in
     match obuilder with
     | None -> Fmt.failwith "This worker is not configured for use with OBuilder!"
     | Some builder -> Obuilder_build.build builder ~switch ~log ~spec ~src_dir:src

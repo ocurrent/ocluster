@@ -16,7 +16,7 @@ let example_spec =
     shell ["sh"; "-c"];
     run "ls -l /src"
   ]
-  |> Fmt.to_to_string Obuilder_spec.pp_stage
+  |> Fmt.to_to_string Obuilder_spec.pp
 
 let pipeline ~cluster () =
   let src =
