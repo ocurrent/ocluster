@@ -7,6 +7,7 @@ homepage: "https://github.com/ocurrent/ocluster"
 bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [
   "dune" {>= "2.5"}
+  "ppx_deriving"
   "lwt"
   "capnp-rpc-lwt" {>= "0.8.0"}
   "fmt"
