@@ -35,7 +35,7 @@ let main config mode submission_uri =
   let cluster = Current_ocluster.v connection in
   let engine = Current.Engine.create ~config (pipeline ~cluster) in
   let site = Current_web.Site.(v ~has_role:allow_all) ~name:program_name (Current_web.routes engine) in
-  Logging.run begin
+  Lwt_main.run begin
     Lwt.choose [
       Current.Engine.thread engine;
       Current_web.run ~mode site;
@@ -56,7 +56,7 @@ let submission_service =
 
 let cmd =
   let doc = "Run an OBuilder build on a cluster." in
-  Term.(const main $ Current.Config.cmdliner $ Current_web.cmdliner $ submission_service),
+  Term.(term_result (const main $ Current.Config.cmdliner $ Current_web.cmdliner $ submission_service)),
   Term.info program_name ~doc
 
 let () = Term.(exit @@ eval cmd)
