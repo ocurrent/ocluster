@@ -139,11 +139,11 @@ open Cmdliner
 
 let connect_addr =
   Arg.required @@
-  Arg.pos 0 Arg.(some file) None @@
+  Arg.opt Arg.(some file) None @@
   Arg.info
     ~doc:"Path of admin.cap file from build-scheduler"
     ~docv:"ADDR"
-    []
+    ["c"; "connect"]
 
 let client_id ~pos =
   Arg.pos pos Arg.(some string) None @@
@@ -153,7 +153,7 @@ let client_id ~pos =
     []
 
 let pool_pos =
-  Arg.pos 1 Arg.(some string) None @@
+  Arg.pos 0 Arg.(some string) None @@
   Arg.info
     ~doc:"Pool to use"
     ~docv:"POOL"
@@ -168,7 +168,7 @@ let rate ~pos =
 
 let worker =
   Arg.value @@
-  Arg.pos 2 Arg.(some string) None @@
+  Arg.pos 1 Arg.(some string) None @@
   Arg.info
     ~doc:"Worker id"
     ~docv:"WORKER"
@@ -183,12 +183,12 @@ let all =
 
 let add_client =
   let doc = "Create a new client endpoint for submitting jobs" in
-  Term.(const add_client $ connect_addr $ Arg.required (client_id ~pos:1)),
+  Term.(const add_client $ connect_addr $ Arg.required (client_id ~pos:0)),
   Term.info "add-client" ~doc
 
 let remove_client =
   let doc = "Unregister a client." in
-  Term.(const remove_client $ connect_addr $ Arg.required (client_id ~pos:1)),
+  Term.(const remove_client $ connect_addr $ Arg.required (client_id ~pos:0)),
   Term.info "remove-client" ~doc
 
 let list_clients =
@@ -198,7 +198,7 @@ let list_clients =
 
 let set_rate =
   let doc = "Set expected number of parallel jobs for a pool/client combination" in
-  Term.(const set_rate $ connect_addr $ Arg.required pool_pos $ Arg.required (client_id ~pos:2) $ Arg.required (rate ~pos:3)),
+  Term.(const set_rate $ connect_addr $ Arg.required pool_pos $ Arg.required (client_id ~pos:1) $ Arg.required (rate ~pos:2)),
   Term.info "set-rate" ~doc
 
 let show =
@@ -229,4 +229,4 @@ let default_cmd =
   Term.(ret (const (`Help (`Pager, None)))),
   Term.info "ocluster-admin" ~doc ~sdocs ~version:Version.t
 
-let () = Term.(exit @@ eval_choice default_cmd cmds)
+let () = Term.(exit @@ eval_choice ~argv:Options.argv default_cmd cmds)
