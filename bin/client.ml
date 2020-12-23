@@ -84,11 +84,11 @@ open Cmdliner
 
 let connect_addr =
   Arg.required @@
-  Arg.pos 0 Arg.(some file) None @@
+  Arg.opt Arg.(some file) None @@
   Arg.info
     ~doc:"Path of submission.cap file from build-scheduler"
     ~docv:"ADDR"
-    []
+    ["c"; "connect"]
 
 let local_obuilder =
   Arg.required @@
@@ -126,7 +126,7 @@ let dockerfile =
 
 let repo =
   Arg.value @@
-  Arg.pos 1 Arg.(some string) None @@
+  Arg.pos 0 Arg.(some string) None @@
   Arg.info
     ~doc:"URL of the source Git repository"
     ~docv:"URL"
@@ -134,7 +134,7 @@ let repo =
 
 let commits =
   Arg.value @@
-  Arg.(pos_right 1 string) [] @@
+  Arg.(pos_right 0 string) [] @@
   Arg.info
     ~doc:"Git commit to use as context (full commit hash)"
     ~docv:"HASH"
@@ -275,4 +275,4 @@ let default_cmd =
   Term.(ret (const (`Help (`Pager, None)))),
   Term.info "ocluster-client" ~doc ~sdocs ~version:Version.t
 
-let () = Term.(exit @@ eval_choice default_cmd cmds)
+let () = Term.(exit @@ eval_choice ~argv:Options.argv default_cmd cmds)

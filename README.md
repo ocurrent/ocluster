@@ -14,6 +14,7 @@ The scheduler tries to schedule similar builds on the same machine, to benefit f
 
 <!-- vim-markdown-toc GFM -->
 
+* [Installation](#installation)
 * [The scheduler service](#the-scheduler-service)
 * [Workers](#workers)
 * [Clients](#clients)
@@ -28,13 +29,25 @@ The scheduler tries to schedule similar builds on the same machine, to benefit f
 
 <!-- vim-markdown-toc -->
 
+## Installation
+
+To install the Git version:
+
+```bash
+git clone --recursive https://github.com/ocurrent/ocluster.git
+cd ocluster
+opam pin add -yn ./obuilder
+opam pin add -yn .
+opam depext -i ocluster
+```
+
 ## The scheduler service
 
 To run the scheduler:
 
 ```
 mkdir capnp-secrets
-dune exec -- ocluster-scheduler \
+ocluster-scheduler \
   --capnp-secret-key-file=./capnp-secrets/key.pem \
   --capnp-listen-address=tcp:0.0.0.0:9000 \
   --capnp-public-address=tcp:127.0.0.1:9000 \
@@ -46,6 +59,10 @@ Replace the last line with whatever build pools you want. The names can be anyth
 
 Change `capnp-public-address` to an address at which remote machines can reach the port
 given in the `listen` address. e.g. change `127.0.0.1` to a public IP address.
+
+`--state-dir` can be anywhere you like.
+The scheduler keeps a database here remembering which workers have cached which builds,
+as well as the list of clients permitted to use the service.
 
 You should see output something like this:
 
@@ -73,7 +90,7 @@ contains a secret token granting it access.
 To run the build service locally:
 
 ```
-dune exec -- ocluster-worker ./capnp-secrets/pool-linux-x86_64.cap \
+ocluster-worker ./capnp-secrets/pool-linux-x86_64.cap \
   --state-dir=/var/lib/ocluster-worker \
   --name=my-host --capacity=1 --prune-threshold=20
 ```
@@ -81,17 +98,20 @@ dune exec -- ocluster-worker ./capnp-secrets/pool-linux-x86_64.cap \
 Each builder must be given a unique name.
 `capacity` controls how many jobs this worker will build at once.
 `prune-threshold` says how much free space must be available in the
-`/var/lib/docker` partition before the worker will run `docker system prune -af`.
+cache partition (e.g. `/var/lib/docker` for Docker builds) before the worker
+will prune things (e.g. with `docker system prune -af`).
 If not given, then the worker will not monitor free space.
 
 The builder connects to the scheduler and waits for jobs.
 You should see `worker [INFO] Requesting a new job...` in the worker log,
 and `Registered new worker "my-host"` in the scheduler log.
 
-The service builds the jobs using `docker build` and so needs access to the local Docker.
+The service builds Docker jobs using `docker build` and so needs access to the local Docker.
+[Dockerfile.worker](./Dockerfile.worker) can be used to run the worker service itself in a Docker container,
+provided that you share this socket with the container.
 
-[Dockerfile.worker](./Dockerfile.worker) can be used to run the worker service itself in a Docker container.
-However, if you intend to support OBuilder jobs, you will probably want to run it directly on the host instead.
+However, if you intend to support OBuilder jobs, you will probably want to run it directly on the host instead,
+as root.
 
 ## Clients
 
@@ -103,12 +123,19 @@ To submit a job, you need:
 
 The service administrator can generate a `submission.cap` from the `admin.cap` like this:
 
-```
-dune exec -- ocluster-admin add-client ./capnp-secrets/admin.cap test-user > submission.cap
+```bash
+ocluster-admin --connect ./capnp-secrets/admin.cap add-client test-user > submission.cap
 ```
 
 There is a command-line client, and a plugin for use in [OCurrent](https://github.com/ocurrent/ocurrent) pipelines.
 See [obuilder_pipeline.ml](./examples/obuilder_pipeline.ml) for an example pipeline using the plugin.
+
+You might want to create an alias for the admin and submission clients, e.g.
+
+```bash
+alias mycluster-admin='ocluster-admin --connect /path/to/admin.cap'
+alias mycluster-client='ocluster-client --connect /path/to/submission.cap'
+```
 
 ### Docker jobs
 
@@ -118,11 +145,11 @@ You can run a job like this:
 
 ```
 echo -e "FROM busybox\nRUN date\n" > Dockerfile.test
-dune exec -- ocluster-client \
-  submit-docker submission.cap \
-  --cache-hint tutorial \
+ocluster-client -c submission.cap \
+  submit-docker \
+  --local-dockerfile Dockerfile.test \
   --pool=linux-x86_64 \
-  --local-dockerfile Dockerfile.test
+  --cache-hint tutorial
 ```
 
 The client will display the log output from the job as it arrives.
@@ -136,11 +163,11 @@ Instead, you can give a Git repository and a commit. The worker will clone the r
 and checkout the commit, using that as the Docker build context. e.g.
 
 ```
-dune exec -- ocluster-client \
-  submit-docker submission.cap \
-  --cache-hint tutorial \
+ocluster-client -c submission.cap \
+  submit-docker \
+  --local-dockerfile Dockerfile.test \
   --pool=linux-x86_64 \
-  --local-dockerfile Dockerfile \
+  --cache-hint tutorial \
   https://github.com/ocurrent/ocluster.git ac619d2083bb15e0c408e4cd0e3ef7135670cfd5
 ```
 
@@ -179,11 +206,11 @@ instead of a Dockerfile, e.g.
 
 ```
 echo -e '((from busybox) (shell /bin/sh -c) (run (shell date)))' > OBuilder.test
-dune exec -- ocluster-client \
-  submit-obuilder submission.cap \
-  --cache-hint tutorial \
+ocluster-client -c submission.cap \
+  submit-obuilder \
+  --local-file OBuilder.test \
   --pool=linux-x86_64 \
-  --local-file OBuilder.test
+  --cache-hint tutorial
 ```
 
 ## Admin
@@ -193,7 +220,7 @@ The `ocluster-admin` executable can be used to manage the service using `admin.c
 To grant a user access to the cluster (the name can be any unique ID):
 
 ```
-dune exec -- ocluster-admin add-client ./capnp-secrets/admin.cap alice > alice.cap
+ocluster-admin -c ./capnp-secrets/admin.cap add-client alice > alice.cap
 ```
 
 You can also use `remove-client` to deactivate the `.cap` file, and `list-clients` to
@@ -206,22 +233,19 @@ if they don't already exist.
 To get a list of the available pools:
 
 ```
-dune exec -- ocluster-admin \
-  show ./capnp-secrets/admin.cap
+ocluster-admin -c ./capnp-secrets/admin.cap show
 ```
 
 To show the state of one pool:
 
 ```
-dune exec -- ocluster-admin \
-  show ./capnp-secrets/admin.cap linux-x86_64
+ocluster-admin -c ./capnp-secrets/admin.cap show linux-x86_64
 ```
 
 To pause a worker, give the pool and the worker's name, e.g.:
 
 ```
-dune exec -- ocluster-admin \
-  pause ./capnp-secrets/admin.cap linux-x86_64 my-host
+ocluster-admin -c ./capnp-secrets/admin.cap pause linux-x86_64 my-host
 ```
 
 A paused worker will not be assigned any more items until it is unpaused, but
@@ -233,13 +257,14 @@ Instead of specifying a worker, you can also use `--all` to pause or unpause all
 To update all workers in a pool:
 
 ```
-dune exec -- ocluster-admin \
-  update ./capnp-secrets/admin.cap linux-x86_64
+ocluster-admin -c ./capnp-secrets/admin.cap update linux-x86_64
 ```
 
 This will test the update by restarting one worker first. If that succeeds, it will restart the others in
 parallel. Note that restarting a worker involves letting it finish any jobs currently in progress, so this
 may take a while. The `update` command waits until the worker has reconnected before reporting success.
+Note that the worker just exits, assuming a service manager will restart it. If you're testing it manually,
+you'll need to restart the worker yourself at this point.
 
 You can also give the name of a worker as an extra argument to update just that worker.
 
