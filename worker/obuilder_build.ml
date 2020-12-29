@@ -33,11 +33,22 @@ let log_to log_data tag msg =
 
 let create ?prune_threshold config =
   let { Config.store_spec; fast_sync } = config in
-  Obuilder.Store_spec.to_store store_spec >|= fun (Store ((module Store), store)) ->
-  let sandbox = Sandbox.create ~fast_sync ~runc_state_dir:(Store.state_dir store / "runc") () in
+  Obuilder.Store_spec.to_store store_spec >>= fun (Store ((module Store), store)) ->
+  Sandbox.create ~fast_sync ~runc_state_dir:(Store.state_dir store / "runc") () >>= fun sandbox ->
   let module Builder = Obuilder.Builder(Store)(Sandbox) in
-  let builder = Builder ((module Builder), Builder.v ~store ~sandbox) in
-  { builder; pruning = false; prune_threshold; config; cond = Lwt_condition.create () }
+  let builder = Builder.v ~store ~sandbox in
+  Log.info (fun f -> f "Performing OBuilder self-test...");
+  Builder.healthcheck builder >|= function
+  | Error (`Msg m) -> Fmt.failwith "Initial OBuilder healthcheck failed: %s" m
+  | Ok () ->
+    Log.info (fun f -> f "OBuilder self-test passed");
+    {
+      builder = Builder ((module Builder), builder);
+      pruning = false;
+      prune_threshold;
+      config;
+      cond = Lwt_condition.create ();
+    }
 
 (* Prune [t] until [path]'s free space rises above [prune_threshold]. *)
 let do_prune ~path ~prune_threshold t =
@@ -105,3 +116,7 @@ let build t ~switch ~log ~spec ~src_dir =
   let context = Obuilder.Context.v ~switch ~log ~src_dir () in
   let Builder ((module Builder), builder) = t.builder in
   Builder.build builder context spec
+
+let healthcheck t =
+  let Builder ((module Builder), builder) = t.builder in
+  Builder.healthcheck builder

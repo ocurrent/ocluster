@@ -29,7 +29,13 @@ module Metrics = struct
   let running_jobs =
     let help = "Number of jobs currently running" in
     Gauge.v ~help ~namespace ~subsystem "running_jobs"
+
+  let unhealthy =
+    let help = "Number of unhealthy workers" in
+    Gauge.v ~help ~namespace ~subsystem "unhealthy"
 end
+
+let healthcheck_period = 600.0  (* Check health every 10 minutes *)
 
 let buildkit_env =
   let orig = Unix.environment () |> Array.to_list in
@@ -200,7 +206,35 @@ let rec maybe_prune t queue =
       Unix.sleep (60 * 60);
       maybe_prune t queue
 
-let loop ~switch t queue =
+let check_health ~last_healthcheck ~queue = function
+  | None -> Lwt.return_unit     (* Not using OBuilder *)
+  | Some obuilder ->
+    if !last_healthcheck +. healthcheck_period > Unix.gettimeofday () then Lwt.return_unit
+    else (
+      (* A healthcheck is now due *)
+      let rec aux ~active =
+        Obuilder_build.healthcheck obuilder >>= fun r ->
+        last_healthcheck := Unix.gettimeofday ();
+        Prometheus.Gauge.set Metrics.unhealthy (if Result.is_ok r then 0.0 else 1.0);
+        match r with
+        | Ok () when active -> Lwt.return_unit
+        | Ok () ->
+          Log.info (fun f -> f "System is healthy again; unpausing");
+          Cluster_api.Queue.set_active queue true
+        | Error (`Msg m) ->
+          Log.warn (fun f -> f "Health check failed: %s" m);
+          begin
+            if active then Cluster_api.Queue.set_active queue false
+            else Lwt.return_unit
+          end >>= fun () ->
+          Lwt_unix.sleep healthcheck_period >>= fun () ->
+          aux ~active:false
+      in
+      aux ~active:true
+    )
+
+let loop ~switch ?obuilder t queue =
+  let last_healthcheck = ref (Unix.gettimeofday ()) in
   let rec loop () =
     match switch with
     | Some switch when not (Lwt_switch.is_on switch) ->
@@ -212,6 +246,7 @@ let loop ~switch t queue =
         Lwt_condition.wait t.cond >>= loop
       ) else (
         maybe_prune t queue >>= fun () ->
+        check_health ~last_healthcheck ~queue obuilder >>= fun () ->
         let outcome, set_outcome = Lwt.wait () in
         let log = Log_data.create () in
         Log.info (fun f -> f "Requesting a new job...");
@@ -426,7 +461,7 @@ let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~update ~capa
          in
          Capability.with_ref queue @@ fun queue ->
          Lwt.catch
-           (fun () -> loop ~switch t queue)
+           (fun () -> loop ~switch ?obuilder t queue)
            (fun ex ->
               Lwt.pause () >>= fun () ->
               match Capability.problem queue, switch with
