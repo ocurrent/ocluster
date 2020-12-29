@@ -13,3 +13,5 @@ val build : t ->
   log:Log_data.t ->
   spec:Obuilder.Spec.t ->
   src_dir:string -> (string, [ `Cancelled | `Msg of string ]) Lwt_result.t
+
+val healthcheck : t -> (unit, [> `Msg of string]) Lwt_result.t
