@@ -1,6 +1,6 @@
 FROM ocurrent/opam:debian-10-ocaml-4.10@sha256:12fac4e3520657aa72074d2a3b2658776d4b3ce486c930099c996d478c3a2501 AS build
 RUN sudo apt-get update && sudo apt-get install libev-dev capnproto m4 pkg-config libsqlite3-dev libgmp-dev -y --no-install-recommends
-RUN cd ~/opam-repository && git pull origin -q master && git reset --hard 87778c51a04d7bcf5043a27d858c9fc733c172e3 && opam update
+RUN cd ~/opam-repository && git pull origin -q master && git reset --hard e132600d1ea27a5be1edfb0079a205ba05830b8e && opam update
 COPY --chown=opam ocluster-api.opam ocluster.opam /src/
 COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/
