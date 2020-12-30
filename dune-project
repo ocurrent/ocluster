@@ -33,7 +33,7 @@
   digestif
   fpath
   lwt-dllist
-  prometheus-app
+  (prometheus-app (>= 1.0))
   cohttp-lwt-unix
   sqlite3
   obuilder
