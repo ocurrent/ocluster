@@ -30,6 +30,10 @@ module Metrics = struct
     let help = "Number of jobs currently running" in
     Gauge.v ~help ~namespace ~subsystem "running_jobs"
 
+  let healthcheck_time =
+    let help = "Time to perform last healthcheck" in
+    Gauge.v ~help ~namespace ~subsystem "healthcheck_time_seconds"
+
   let unhealthy =
     let help = "Number of unhealthy workers" in
     Gauge.v ~help ~namespace ~subsystem "unhealthy"
@@ -206,6 +210,14 @@ let rec maybe_prune t queue =
       Unix.sleep (60 * 60);
       maybe_prune t queue
 
+let healthcheck obuilder =
+  let t0 = Unix.gettimeofday () in
+  Obuilder_build.healthcheck obuilder >|= fun r ->
+  let t1 = Unix.gettimeofday () in
+  Prometheus.Gauge.set Metrics.healthcheck_time (t1 -. t0);
+  Prometheus.Gauge.set Metrics.unhealthy (if Result.is_ok r then 0.0 else 1.0);
+  r
+
 let check_health ~last_healthcheck ~queue = function
   | None -> Lwt.return_unit     (* Not using OBuilder *)
   | Some obuilder ->
@@ -213,9 +225,8 @@ let check_health ~last_healthcheck ~queue = function
     else (
       (* A healthcheck is now due *)
       let rec aux ~active =
-        Obuilder_build.healthcheck obuilder >>= fun r ->
+        healthcheck obuilder >>= fun r ->
         last_healthcheck := Unix.gettimeofday ();
-        Prometheus.Gauge.set Metrics.unhealthy (if Result.is_ok r then 0.0 else 1.0);
         match r with
         | Ok () when active -> Lwt.return_unit
         | Ok () ->
@@ -227,7 +238,7 @@ let check_health ~last_healthcheck ~queue = function
             if active then Cluster_api.Queue.set_active queue false
             else Lwt.return_unit
           end >>= fun () ->
-          Lwt_unix.sleep healthcheck_period >>= fun () ->
+          Lwt_unix.sleep 60.0 >>= fun () ->
           aux ~active:false
       in
       aux ~active:true
