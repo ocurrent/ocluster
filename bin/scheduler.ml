@@ -5,7 +5,7 @@ module Restorer = Capnp_rpc_net.Restorer
 let ( / ) = Filename.concat
 
 let () =
-  Logging.init ()
+  Prometheus_unix.Logging.init ()
 
 let or_die = function
   | Ok x -> x

@@ -1,7 +1,7 @@
 open Lwt.Infix
 
 let () =
-  Logging.init ()
+  Prometheus_unix.Logging.init ()
 
 let or_die = function
   | Ok x -> x
