@@ -47,3 +47,6 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/ocurrent/ocluster.git"
+pin-depends: [
+  ["mirage-crypto-rng.0.8.7" "git+https://github.com/hannesm/mirage-crypto.git#22dd7dd538ed2e5f1c1fc6a00e038b6ff3de7630"]
+]
