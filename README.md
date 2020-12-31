@@ -34,9 +34,8 @@ The scheduler tries to schedule similar builds on the same machine, to benefit f
 To install the Git version:
 
 ```bash
-git clone --recursive https://github.com/ocurrent/ocluster.git
+git clone https://github.com/ocurrent/ocluster.git
 cd ocluster
-opam pin add -yn ./obuilder
 opam pin add -yn .
 opam depext -i ocluster
 ```
@@ -213,6 +212,8 @@ ocluster-client -c submission.cap \
   --cache-hint tutorial
 ```
 
+You will need to start the worker with `--obuilder-store=...` to enable this.
+
 ## Admin
 
 The `ocluster-admin` executable can be used to manage the service using `admin.cap`.
@@ -289,22 +290,24 @@ For example:
    The cluster assigns these jobs fair start times of now and now+30s.
    These will be the next two jobs to run, because their start times are before all of Bob's jobs.
 
-In the `ocluster-admin show` output, you will see these values.
-For example:
+You can see these values in the `ocluster-admin show` output. For example:
 
 ```
 ...
-queue: (backlog) [bob:job8@10m alice:job1@27s]
-clients: alice(5)+2m bob(3)
+queue: (backlog) [bob:job9@9m bob:job8@8m bob:job7@7m bob:job6@6m bob:job5@5m
+                  bob:job4@4m bob:job3@3m alice:job1@30s alice:job0@0s]
+clients: alice(2)+1m bob(1)+10m
 ```
 
 This means that:
 
-- There are two jobs on the backlog: Alice's `job1` (fair-start time 27s from now), and Bob's `job8`
-  (fair start time 10m from now). Alice's job will go first, because it has the lower start time.
-- Alice has a rate of 5 jobs (5 job-seconds per second) and her next job will have a fair start time
-  of 2 minutes from now (because she has already submitted more jobs than her rate).
-- Bob has a rate of 3 and no penalty. His next job will get a fair start time of now.
+- The backlog contains Bob's remaining 7 jobs, queued up behind Alice's 2 jobs.
+  `bob:job9@9m` means that Bob's "job9" has a fair start time 9 minutes from now.
+  Alice's jobs will go next, because they have earlier start times.
+- Alice has a rate of 2 jobs (2 job-seconds per second) and her next job will have a fair start time
+  of 1 minute from now (because she has already submitted 2 minutes of jobs and is expected to
+  run 2 jobs at once).
+- Bob has a rate of 1 and a 10 minute penalty.
 
 
 ## API

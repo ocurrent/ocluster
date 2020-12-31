@@ -8,6 +8,8 @@
 (package
  (name ocluster-api)
  (synopsis "Cap'n Proto API for OCluster")
+ (description
+  "OCaml bindings for the OCluster Cap'n Proto API.")
  (depends
   ppx_deriving
   lwt
@@ -18,6 +20,16 @@
 (package
  (name ocluster)
  (synopsis "Distribute build jobs to workers")
+ (description
+"OCluster manages a pool of build workers.
+A build scheduler service accepts build jobs from clients and distributes them to worker machines using Cap'n Proto.
+Workers register themselves by connecting to the scheduler (and workers do not need to be able to accept incoming network connections).
+
+The scheduler can manage multiple pools (e.g. `linux-x86_64` and `linux-arm32`).
+Clients say which pool should handle their requests.
+At the moment, two build types are provided: building a Dockerfile, or building an OBuilder spec.
+In either case, the build may done in the context of some Git commit.
+The scheduler tries to schedule similar builds on the same machine, to benefit from caching.")
  (depends
   prometheus
   ppx_sexp_conv
@@ -46,6 +58,7 @@
 (package
  (name current_ocluster)
  (synopsis "OCurrent plugin for OCluster builds")
+ (description "Creates a stage in an OCurrent pipeline for submitting jobs to OCluster.")
  (depends
   ppx_deriving
   (ocluster-api (= :version))
