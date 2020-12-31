@@ -27,8 +27,7 @@ let run cap_path fn =
     Lwt_main.run begin
       let vat = Capnp_rpc_unix.client_only_vat () in
       let sr = Capnp_rpc_unix.Cap_file.load vat cap_path |> or_die in
-      Sturdy_ref.connect_exn sr >>= fun service ->
-      Capability.with_ref service fn
+      Capnp_rpc_unix.with_cap_exn sr fn
     end
   with Failure msg ->
     Printf.eprintf "%s\n%!" msg;
