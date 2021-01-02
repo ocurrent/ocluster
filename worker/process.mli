@@ -30,6 +30,5 @@ val check_output :
   switch:Lwt_switch.t ->
   ?env:string array ->
   ?stdin:string ->
-  ?stderr:Lwt_process.redirection ->
   string list ->
   (string, [> `Cancelled | `Msg of string]) Lwt_result.t

@@ -13,7 +13,6 @@ let build ~switch ~log spec =
 
   Lwt_io.with_temp_dir ~prefix:"build-worker-" ~suffix:"-nix" @@ fun tmpdir ->
   let open Spec in
-  (* TODO need ProcessProcess.check_output *)
   match (spec.filename, spec.drv) with
   | (`Filename filename, `Contents contents) -> (
     (* assert String.ends_with ".drv" drv.filename; *)
@@ -22,6 +21,6 @@ let build ~switch ~log spec =
       Lwt_io.write drv_file contents
     ) >>= fun () ->
     Process.check_output ~label:"nix-store --add" ~switch ~log ["nix-store"; "--add"; drv_src_path] >>!= fun drv_store_path ->
-    Process.check_output ~label:"nix-store" ~switch ~log ["nix-store"; "--realise"; drv_store_path]
+    Process.check_output ~label:"nix-store" ~switch ~log ["nix-store"; "--no-out-link"; "--realise"; drv_store_path]
     |> Lwt_result.map (fun built_path -> String.trim built_path)
   )
