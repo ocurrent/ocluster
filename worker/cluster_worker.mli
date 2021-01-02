@@ -1,6 +1,7 @@
 type job_spec = [ 
   | `Docker of [ `Contents of string | `Path of string ] * Cluster_api.Docker.Spec.options
   | `Obuilder of [ `Contents of string ]
+  | `Nix of Nix_build.Spec.t
 ]
 
 module Obuilder_config : sig

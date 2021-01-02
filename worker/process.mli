@@ -23,3 +23,13 @@ val check_call :
   ?stderr:Lwt_process.redirection ->
   string list ->
   (unit, [> `Cancelled | `Msg of string]) Lwt_result.t
+
+val check_output :
+  label:string ->
+  log:Log_data.t ->
+  switch:Lwt_switch.t ->
+  ?env:string array ->
+  ?stdin:string ->
+  ?stderr:Lwt_process.redirection ->
+  string list ->
+  (string, [> `Cancelled | `Msg of string]) Lwt_result.t

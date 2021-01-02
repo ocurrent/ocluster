@@ -2,4 +2,4 @@
  (public_names ocluster-scheduler ocluster-client ocluster-worker ocluster-admin)
  (package ocluster)
  (names scheduler client worker admin)
- (libraries dune-build-info ocluster-api logs.fmt fmt.tty capnp-rpc-unix cluster_scheduler cluster_worker prometheus-app.unix db))
+ (libraries dune-build-info ocluster-api logs.fmt fmt.tty capnp-rpc-unix cluster_scheduler cluster_worker prometheus-app.unix db str))

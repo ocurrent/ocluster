@@ -63,6 +63,7 @@ let min_reconnect_time = 10.0   (* Don't try to connect more than once per 10 se
 type job_spec = [ 
   | `Docker of [ `Contents of string | `Path of string ] * Cluster_api.Docker.Spec.options
   | `Obuilder of [ `Contents of string ]
+  | `Nix of Nix_build.Spec.t
 ]
 
 type t = {
@@ -150,6 +151,12 @@ let build ~switch ~log t descr =
         );
       Context.with_build_context t.context ~log descr @@ fun src ->
       t.build ~switch ~log ~src (`Obuilder (`Contents spec))
+    | Nix_build spec ->
+      Log.info (fun f ->
+          f "Got request to build (%s):\n%a" cache_hint Nix_build.Spec.pp spec
+        );
+      Context.with_build_context t.context ~log descr @@ fun src ->
+      t.build ~switch ~log ~src (`Nix spec)
   end
   >|= function
   | Error `Cancelled ->
@@ -371,9 +378,12 @@ let default_build ?obuilder ~switch ~log ~src = function
       )
   | `Obuilder (`Contents spec) ->
     let spec = Obuilder.Spec.t_of_sexp (Sexplib.Sexp.of_string spec) in
-    match obuilder with
+    (match obuilder with
     | None -> Fmt.failwith "This worker is not configured for use with OBuilder!"
     | Some builder -> Obuilder_build.build builder ~switch ~log ~spec ~src_dir:src
+    )
+  | `Nix spec -> Nix_build.build ~log ~switch spec
+
 
 let metrics = function
   | `Agent ->

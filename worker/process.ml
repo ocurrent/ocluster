@@ -53,3 +53,7 @@ let check_call ~label ~log ~switch ?env ?stdin ?stderr cmd =
   | Error `Cancelled -> Error `Cancelled
   | Error (`Exit_code n) -> Error (`Msg (Fmt.strf "%s failed with exit-code %d" label n))
   | Error (`Msg _) as e -> e
+
+
+let check_output ~label ~log ~switch ?env ?stdin ?stderr cmd =
+  check_call ~label ~log ~switch ?env ?stdin ?stderr cmd |> Lwt_result.map (fun () -> "TODO")

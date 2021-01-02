@@ -41,10 +41,19 @@ struct OBuilder {
   # The contents of the OBuilder spec to build.
 }
 
+struct NixBuild {
+  filename @0 :Text;
+  # The filename of the .drv to build
+
+  drv @1 :Text;
+  # The contents of the .drv to build
+}
+
 struct JobDescr {
   action :union {
     dockerBuild @0 :DockerBuild;
     obuilder    @4 :OBuilder;
+    nixBuild    @5 :NixBuild;
   }
 
   cacheHint @1 :Text;
