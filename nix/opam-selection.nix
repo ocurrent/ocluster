@@ -282,6 +282,34 @@ in
       };
       version = "1.2.1";
     };
+    bos = 
+    {
+      opamInputs = 
+      {
+        astring = selection.astring;
+        base-unix = selection.base-unix;
+        fmt = selection.fmt;
+        fpath = selection.fpath;
+        logs = selection.logs;
+        ocaml = selection.ocaml;
+        ocamlbuild = selection.ocamlbuild;
+        ocamlfind = selection.ocamlfind;
+        rresult = selection.rresult;
+        topkg = selection.topkg;
+      };
+      opamSrc = repoPath (repos.opam-repository.src) 
+      {
+        hash = "sha256:076a3ppiizh20fj0mg0xsprshzpdv3j1avfpsxpzaxzh72fchpch";
+        package = "packages/bos/bos.0.2.0";
+      };
+      pname = "bos";
+      src = pkgs.fetchurl 
+      {
+        sha256 = "1s10iqx8rgnxr5n93lf4blwirjf8nlm272yg5sipr7lsr35v49wc";
+        url = "http://erratique.ch/software/bos/releases/bos-0.2.0.tbz";
+      };
+      version = "0.2.0";
+    };
     camlp4 = 
     {
       opamInputs = 
@@ -863,6 +891,116 @@ in
       };
       version = "6.0.0";
     };
+    current = 
+    {
+      opamInputs = 
+      {
+        astring = selection.astring;
+        bos = selection.bos;
+        cmdliner = selection.cmdliner;
+        current_incr = selection.current_incr;
+        dune = selection.dune;
+        duration = selection.duration;
+        fmt = selection.fmt;
+        fpath = selection.fpath;
+        logs = selection.logs;
+        lwt = selection.lwt;
+        lwt-dllist = selection.lwt-dllist;
+        ocaml = selection.ocaml;
+        ppx_deriving = selection.ppx_deriving;
+        prometheus = selection.prometheus;
+        re = selection.re;
+        result = selection.result;
+        sqlite3 = selection.sqlite3;
+      };
+      opamSrc = repoPath (repos.opam-repository.src) 
+      {
+        hash = "sha256:076yyk2gs2g7i189dfz0dz988c9hsjcz4jx1xzkbahihfm3zn6yg";
+        package = "packages/current/current.0.4";
+      };
+      pname = "current";
+      src = pkgs.fetchurl 
+      {
+        sha256 = "05sad18gidlw0lkl3mwz5nad6ba9sb35zdikvg7nrnh4n5wmgml5";
+        url = "https://github.com/ocurrent/ocurrent/releases/download/v0.4/current-v0.4.tbz";
+      };
+      version = "0.4";
+    };
+    current_git = 
+    {
+      opamInputs = 
+      {
+        astring = selection.astring;
+        bos = selection.bos;
+        current = selection.current;
+        dune = selection.dune;
+        fmt = selection.fmt;
+        fpath = selection.fpath;
+        irmin-watcher = selection.irmin-watcher;
+        logs = selection.logs;
+        lwt = selection.lwt;
+        ocaml = selection.ocaml;
+        ppx_deriving = selection.ppx_deriving;
+        ppx_deriving_yojson = selection.ppx_deriving_yojson;
+        result = selection.result;
+        yojson = selection.yojson;
+      };
+      opamSrc = repoPath (repos.opam-repository.src) 
+      {
+        hash = "sha256:042qh2wzzk0az7rijqcrdqfvw1b5q9dmx3cs6rjnk8bvzd1wbb02";
+        package = "packages/current_git/current_git.0.4";
+      };
+      pname = "current_git";
+      src = pkgs.fetchurl 
+      {
+        sha256 = "05sad18gidlw0lkl3mwz5nad6ba9sb35zdikvg7nrnh4n5wmgml5";
+        url = "https://github.com/ocurrent/ocurrent/releases/download/v0.4/current-v0.4.tbz";
+      };
+      version = "0.4";
+    };
+    current_incr = 
+    {
+      opamInputs = 
+      {
+        dune = selection.dune;
+        ocaml = selection.ocaml;
+      };
+      opamSrc = repoPath (repos.opam-repository.src) 
+      {
+        hash = "sha256:1q368rslj22ydyi9ki1l9zdzh67karbxawvflfm89f9f5c2pqwak";
+        package = "packages/current_incr/current_incr.0.4";
+      };
+      pname = "current_incr";
+      src = pkgs.fetchurl 
+      {
+        sha256 = "05sad18gidlw0lkl3mwz5nad6ba9sb35zdikvg7nrnh4n5wmgml5";
+        url = "https://github.com/ocurrent/ocurrent/releases/download/v0.4/current-v0.4.tbz";
+      };
+      version = "0.4";
+    };
+    current_ocluster = 
+    {
+      opamInputs = 
+      {
+        capnp-rpc-unix = selection.capnp-rpc-unix;
+        current = selection.current;
+        current_git = selection.current_git;
+        dune = selection.dune;
+        duration = selection.duration;
+        fmt = selection.fmt;
+        logs = selection.logs;
+        lwt = selection.lwt;
+        ocaml = selection.ocaml;
+        ocluster-api = selection.ocluster-api;
+        ppx_deriving = selection.ppx_deriving;
+        ppx_deriving_yojson = selection.ppx_deriving_yojson;
+        prometheus = selection.prometheus;
+      };
+      opamSrc = "current_ocluster.opam";
+      pname = "current_ocluster";
+      src = self.directSrc "current_ocluster";
+      version = "development";
+    };
     digestif = 
     {
       opamInputs = 
@@ -1288,6 +1426,50 @@ in
         url = "https://github.com/mirage/ocaml-ipaddr/releases/download/v5.0.1/ipaddr-v5.0.1.tbz";
       };
       version = "5.0.1";
+    };
+    irmin-watcher = 
+    {
+      opamInputs = 
+      {
+        astring = selection.astring;
+        fmt = selection.fmt;
+        inotify = selection.inotify or null;
+        jbuilder = selection.jbuilder;
+        logs = selection.logs;
+        lwt = selection.lwt;
+        ocaml = selection.ocaml;
+        osx-fsevents = selection.osx-fsevents or null;
+      };
+      opamSrc = repoPath (repos.opam-repository.src) 
+      {
+        hash = "sha256:16kch0q07zggvd7gk5d9s8vlybdssg2rpdl5m6hpmadjwqvw8rbq";
+        package = "packages/irmin-watcher/irmin-watcher.0.3.0";
+      };
+      pname = "irmin-watcher";
+      src = pkgs.fetchurl 
+      {
+        sha256 = "1731nqmnwgh27mis55l441yawcqyyvq0lqnf3pjcjvghbyq5rmm8";
+        url = "https://github.com/mirage/irmin-watcher/releases/download/0.3.0/irmin-watcher-0.3.0.tbz";
+      };
+      version = "0.3.0";
+    };
+    jbuilder = 
+    {
+      opamInputs = {
+                     ocaml = selection.ocaml;
+      };
+      opamSrc = repoPath (repos.opam-repository.src) 
+      {
+        hash = "sha256:1phf81qmqcc88nxnl3i92jnv4j07vw5a71lmag9vpky3n1h4qkjv";
+        package = "packages/jbuilder/jbuilder.1.0+beta20.2";
+      };
+      pname = "jbuilder";
+      src = pkgs.fetchurl 
+      {
+        sha256 = "1516rq0x0481bfg9436k1c74346y8nw45shizsnkwylfdj9p8p65";
+        url = "https://github.com/ocaml/dune/releases/download/1.0%2Bbeta20.2/jbuilder-1.0+beta20.2.tbz";
+      };
+      version = "1.0-beta20.2";
     };
     jsonm = 
     {

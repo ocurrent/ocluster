@@ -66,6 +66,7 @@ module Op = struct
     match action with
     | Obuilder_build { spec = `Contents spec } ->
       Astring.String.take ~sat:((<>) '\n') spec (* Use the first line *)
+    | Nix_build _ -> ""
     | Docker_build { dockerfile; _ } ->
       match dockerfile with
       | `Path path -> path          (* Group by Dockerfile path *)
