@@ -2,7 +2,7 @@ module Spec = struct
   type t = {
     filename : [`Filename of string];
     drv : [`Contents of string]
-  }
+  } [@@deriving to_yojson]
 
   let init b { filename; drv } =
     let module B = Raw.Builder.NixBuild in

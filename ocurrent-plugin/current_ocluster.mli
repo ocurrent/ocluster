@@ -68,6 +68,16 @@ val build_obuilder :
 (** [build_obuilder t ~pool ~src spec] builds [spec] in context [src] using pool [pool] within build cluster [t].
     Note: all commits in [src] must be in the same repository. *)
 
+val build_nix :
+  ?cache_hint:string ->
+  t ->
+  pool:string ->
+  Cluster_api.Nix_build.Spec.t Current.t ->
+  string Current.t
+(** [build_nix t ~pool spec] builds [spec] using pool [pool] within build cluster [t].
+    Note: all dependencies of [spec] must be available in a binary cache,
+    since only the leaf derivation is provided *)
+
 module Raw : sig
   val build : 
     ?cache_hint:string ->
@@ -95,4 +105,11 @@ module Raw : sig
     src:Current_git.Commit_id.t list ->
     Cluster_api.Obuilder_job.Spec.t ->
     unit Current.Primitive.t
+
+  val build_nix :
+    ?cache_hint:string ->
+    t ->
+    pool:string ->
+    Cluster_api.Nix_build.Spec.t ->
+    string Current.Primitive.t
 end

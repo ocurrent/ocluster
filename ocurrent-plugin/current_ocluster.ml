@@ -38,7 +38,10 @@ module Op = struct
     let commit_id_to_yojson x = `String (Git.Commit_id.hash x)
 
     type t = {
-      action : [`Docker of docker_build | `Obuilder of Cluster_api.Obuilder_job.Spec.t];
+      action :
+        [ `Docker of docker_build
+        | `Obuilder of Cluster_api.Obuilder_job.Spec.t
+        | `Nix of Cluster_api.Nix_build.Spec.t ];
       src : commit_id list;
       pool : string;
     } [@@deriving to_yojson]
@@ -95,6 +98,11 @@ module Op = struct
       | `Obuilder { spec = `Contents spec } ->
         Current.Job.write job (Fmt.strf "@.OBuilder spec:@.@.\o033[34m%s\o033[0m@.@." spec);
         Cluster_api.Submission.obuilder_build spec
+      | `Nix spec ->
+        Current.Job.write job (
+          Fmt.strf "@.Nix spec:@.@.\o033[34m%a\o033[0m@.@."
+          Cluster_api.Nix_build.Spec.pp spec);
+        Cluster_api.Submission.nix_build spec
     in
     let src = single_repo src in
     let cache_hint =
@@ -133,6 +141,9 @@ module Op = struct
       Fmt.pf f "@[<v2>Build using %s in@,%a@]"
         pool
         (Fmt.Dump.list Git.Commit_id.pp) src
+    | `Nix spec ->
+      Fmt.pf f "<v2>Build %a using %s"
+        Cluster_api.Nix_build.Spec.pp spec pool
 
   let auto_cancel = true
 end
@@ -175,6 +186,10 @@ module Raw = struct
     let t = with_hint ~cache_hint t in
     Build.get t { Op.Key.action = `Obuilder spec; src; pool }
     |> Current.Primitive.map_result (Result.map (fun (_ : string) -> ()))
+
+  let build_nix ?cache_hint t ~pool spec =
+    let t = with_hint ~cache_hint t in
+    Build.get t { Op.Key.action = `Nix spec; src = []; pool }
 end
 
 let unwrap = function
@@ -198,3 +213,8 @@ let build_obuilder ?cache_hint t ~pool ~src spec =
   let> spec = spec
   and> src = src in
   Raw.build_obuilder ?cache_hint t ~pool ~src spec
+
+let build_nix ?cache_hint t ~pool spec =
+  Current.component "nix@,%s" pool |>
+  let> spec = spec in
+  Raw.build_nix ?cache_hint t ~pool spec
