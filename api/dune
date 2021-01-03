@@ -2,7 +2,7 @@
   (name cluster_api)
   (public_name ocluster-api)
   (flags (:standard -w -53-55))
-  (libraries capnp-rpc-lwt ppx_deriving_yojson.runtime)
+  (libraries str lwt.unix capnp-rpc-lwt ppx_deriving_yojson.runtime)
   (preprocess (pps ppx_deriving.std ppx_deriving_yojson)))
 
 (rule

@@ -1,3 +1,5 @@
+open Lwt.Infix
+
 module Spec = struct
   type t = {
     filename : [`Filename of string];
@@ -21,5 +23,13 @@ module Spec = struct
     { filename; drv }
 
   let pp f { filename = `Filename filename; _ } = Fmt.string f filename
+  
+  let from_file path =
+    let filename = Filename.basename path |> Str.replace_first (Str.regexp "[^-]+-") "" in
+    Lwt_io.(with_file ~mode:input) path (Lwt_io.read ?count:None) >|= fun contents ->
+    {
+      filename = `Filename filename;
+      drv = `Contents contents;
+    }
 end
 

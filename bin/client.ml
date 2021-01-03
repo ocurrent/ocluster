@@ -56,12 +56,7 @@ let get_action = function
     Lwt_io.(with_file ~mode:input) path (Lwt_io.read ?count:None) >|= fun spec ->
     Cluster_api.Submission.obuilder_build spec
   | `Nix path ->
-    Lwt_io.(with_file ~mode:input) path (Lwt_io.read ?count:None) >|= fun drv ->
-    let filename_without_hash = Filename.basename path |> Str.replace_first (Str.regexp "[^-]+-") "" in
-    Cluster_api.Submission.nix_build {
-      filename = `Filename filename_without_hash;
-      drv = `Contents drv;
-    }
+    Nix_build.Spec.from_file path >>= Cluster_api.Submission.nix_build
 
 let submit { submission_path; pool; repository; commits; cache_hint; urgent } spec =
   let src =

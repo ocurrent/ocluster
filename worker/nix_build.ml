@@ -14,8 +14,9 @@ let build ~switch ~log spec =
   match (spec.filename, spec.drv) with
   | (`Filename filename, `Contents contents) -> (
     Lwt.return (
-      if Astring.String.is_suffix ~affix:".drv" filename then Ok ()
-      else Error (`Msg ("Not a .drv file: "^filename))
+      (* Restrictive regex, we can loosen as cases arise *)
+      if Str.string_match (Str.regexp "^[-_.0-9a-zA-Z]+\.drv$") filename 0 then Ok ()
+      else Error (`Msg ("Invalid characters in .drv filename: "^filename))
     ) >>!= fun () ->
     let drv_src_path = Filename.concat tmpdir filename in
     Lwt_io.with_file ~mode:Lwt_io.output drv_src_path (fun drv_file ->
