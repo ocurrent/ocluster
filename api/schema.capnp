@@ -52,6 +52,8 @@ struct NixCommand {
 }
 
 struct NixBuild {
+  # All actions upload their results (.drv files or built derivations)
+  # as a side effect of a successful execution.
   action :union {
     eval @0 :Text;
     build @1 :Text;
