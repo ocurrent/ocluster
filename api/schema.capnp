@@ -41,12 +41,22 @@ struct OBuilder {
   # The contents of the OBuilder spec to build.
 }
 
-struct NixBuild {
-  filename @0 :Text;
-  # The filename of the .drv to build
+struct NixCommand {
+  drv @0 :Text;
+  
+  exe @1 :Text;
+  # The executable path within the derivation to execute
+  
+  cmd @2 :List(Text);
+  # Commandline arguments
+}
 
-  drv @1 :Text;
-  # The contents of the .drv to build
+struct NixBuild {
+  action :union {
+    eval @0 :Text;
+    build @1 :Text;
+    run @2 :NixCommand;
+  }
 }
 
 struct JobDescr {
@@ -77,6 +87,7 @@ interface Job {
   # it waits until something changes before returning.
   # If "start" is negative then it is relative to the end of the log.
 
+  # TODO make this List(Text), or even a tuple of (result: Text, dependencies: List(Text))?
   result @1 () -> (output :Text);
   # Waits for the job to finish. Resolves to an error if the job fails.
   # The output depends on the job type. For a "docker push", it is the RepoId of
