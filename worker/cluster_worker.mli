@@ -10,6 +10,12 @@ module Obuilder_config : sig
   val v : fast_sync:bool -> [ `Zfs of string | `Btrfs of string ] -> t
 end
 
+module Nix_config : sig
+  type t
+
+  val v : cache:(string option) -> t
+end
+
 val run :
   ?switch:Lwt_switch.t ->
   ?build:(switch:Lwt_switch.t ->
@@ -20,6 +26,7 @@ val run :
   ?allow_push:string list ->
   ?prune_threshold:float ->
   ?obuilder:Obuilder_config.t ->
+  nix:Nix_config.t ->
   update:(unit -> (unit -> unit Lwt.t) Lwt.t) ->
   capacity:int ->
   name:string ->

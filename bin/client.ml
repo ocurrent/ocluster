@@ -55,8 +55,10 @@ let get_action = function
   | `Obuilder path ->
     Lwt_io.(with_file ~mode:input) path (Lwt_io.read ?count:None) >|= fun spec ->
     Cluster_api.Submission.obuilder_build spec
-  | `Nix path ->
-    Nix_build.Spec.from_file path >>= Cluster_api.Submission.nix_build
+  | `Nix drv ->
+    (* TODO support more build types? *)
+    let spec = Cluster_api.Nix_build.Spec.(Build (`Drv drv)) in
+    Lwt.return @@ Cluster_api.Submission.nix_build spec
 
 let submit { submission_path; pool; repository; commits; cache_hint; urgent } spec =
   let src =

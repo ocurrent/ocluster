@@ -48,10 +48,12 @@ module Spec = struct
 
   let pp f = function
     | Build drv -> pp_drv f drv
-    | Run { drv; exe; _; } ->
+    | Run { drv; exe; args; } ->
       pp_drv f drv;
       Fmt.char f '/';
-      Fmt.string f exe
+      Fmt.string f exe;
+      Fmt.sp f ();
+      Fmt.list ~sep:Fmt.sp Fmt.string f args
     | Eval (`Expr expr) -> Fmt.string f expr
 end
 
