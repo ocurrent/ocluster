@@ -385,7 +385,7 @@ let default_build ?obuilder ?nix ~switch ~log ~src = function
   | `Nix spec ->
     (match nix with
     | None -> Fmt.failwith "This worker is not configured for use with Nix!"
-    | Some config -> Nix_build.build ~config ~log ~switch spec
+    | Some nix -> Nix_build.build nix ~log ~switch spec
     )
 
 
@@ -448,6 +448,10 @@ let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ?nix ~update 
     | None -> Lwt.return_none
     | Some config -> Obuilder_build.create ?prune_threshold config >|= Option.some
   end >>= fun obuilder ->
+  begin match nix with
+    | None -> Lwt.return_none
+    | Some config -> Nix_build.create config >|= Option.some
+  end >>= fun nix ->
   let build =
     match build with
     | Some x -> x

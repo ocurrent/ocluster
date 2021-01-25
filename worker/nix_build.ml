@@ -33,7 +33,10 @@ module Sandbox = struct
   (* persistent /root (only ~/.cache is actually mounted) *)
   let home_dir config = base config / "home"
 
-  let setup ~log ~switch config =
+  let create config = Runc.create ~runc_state_dir:(runc_state config) () >|= fun runc ->
+    { runc; config }
+
+  let init_dirs ~log ~switch config =
     (* make all the dirs *)
     [
       base config;
@@ -42,8 +45,6 @@ module Sandbox = struct
       home_dir config / ".cache";
     ] |> List.iter Obuilder.Os.ensure_dir;
 
-    (* TODO pull this put to once at a process level *)
-    Runc.create ~runc_state_dir:(runc_state config) () >>= fun runc ->
       
     let nix_dir = nix_mount config in
     let nix_version = "2.3.10" in
@@ -94,11 +95,11 @@ module Sandbox = struct
             [ "mv"; tmp / "nix"; nix_dir];
         )
       )
-    ) >>!= fun () -> Lwt_result.return runc
+    )
     
-  let run ~config ~switch ~log argv =
+  let run { runc; config } ~switch ~log argv =
     (* Unlike obuilder, we lazily initialize the rootfs. TODO don't try to setup multiple times concurrently *)
-    setup ~log ~switch config >>!= fun runc ->
+    init_dirs ~log ~switch config >>!= fun () ->
     let cancelled, cancel_handle = Lwt.wait () in
     let cancel () =
       Lwt.wakeup_later cancel_handle ();
@@ -180,7 +181,7 @@ end
 
 open Spec
 
-(* TODO: enable restrict-eval and other hardening settings -- https://nixos.org/manual/nix/stable/#name-11 *)
+let create = Sandbox.create
 
 let upload ~config ~switch ~log path =
   (* this is safe to run on the host, since it's just uploading built derivations *)
@@ -190,16 +191,19 @@ let upload ~config ~switch ~log path =
       Process.check_call ~label:"nix-copy" ~switch ~log ["nix"; "copy"; "--to"; cache; path]
       |> Lwt_result.map (fun () -> path)
 
-let rec build ~config ~switch ~log =
-  let upload = upload ~config ~switch ~log in
+
+(* TODO: enable restrict-eval and other hardening settings -- https://nixos.org/manual/nix/stable/#name-11 *)
+
+let rec build t ~switch ~log =
+  let upload = upload ~config:(Sandbox.config t) ~switch ~log in
   function
   | Build (`Drv drv) ->
     (* TODO remove --check, it's just there to skip short-circuiting builds *)
-    Sandbox.run ~config ~switch ~log ["nix-store"; "--realise"; "--check"; drv] >>!= upload
+    Sandbox.run t ~switch ~log ["nix-store"; "--realise"; "--check"; drv] >>!= upload
   | Eval (`Expr expr) ->
-    Sandbox.run ~config ~switch ~log ["nix-instantiate"; "--expr"; expr] >>!= upload
+    Sandbox.run t ~switch ~log ["nix-instantiate"; "--expr"; expr] >>!= upload
   | Run { drv; exe; args } -> (
-    build ~config ~switch ~log (Build drv) >>!= fun impl ->
+    build t ~switch ~log (Build drv) >>!= fun impl ->
     let cmd = [Filename.concat impl exe] @ args in
-    Sandbox.run ~config ~switch ~log cmd
+    Sandbox.run t ~switch ~log cmd
   )
