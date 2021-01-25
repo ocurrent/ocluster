@@ -13,7 +13,7 @@ end
 module Nix_config : sig
   type t
 
-  val v : cache:(string option) -> t
+  val v : state_dir:string -> cache:(string option) -> t
 end
 
 val run :
@@ -26,7 +26,7 @@ val run :
   ?allow_push:string list ->
   ?prune_threshold:float ->
   ?obuilder:Obuilder_config.t ->
-  nix:Nix_config.t ->
+  ?nix:Nix_config.t ->
   update:(unit -> (unit -> unit Lwt.t) Lwt.t) ->
   capacity:int ->
   name:string ->

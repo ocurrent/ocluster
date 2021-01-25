@@ -344,7 +344,7 @@ let write_to_file ~path data =
   Lwt_io.(with_file ~mode:output) ~flags:Unix.[O_TRUNC; O_CREAT; O_RDWR] path @@ fun ch ->
   Lwt_io.write_from_string_exactly ch data 0 (String.length data)
 
-let default_build ?obuilder ~nix ~switch ~log ~src = function
+let default_build ?obuilder ?nix ~switch ~log ~src = function
   | `Docker (dockerfile, options) ->
     let iid_file = Filename.temp_file "build-worker-" ".iid" in
     Lwt.finalize
@@ -382,7 +382,11 @@ let default_build ?obuilder ~nix ~switch ~log ~src = function
     | None -> Fmt.failwith "This worker is not configured for use with OBuilder!"
     | Some builder -> Obuilder_build.build builder ~switch ~log ~spec ~src_dir:src
     )
-  | `Nix spec -> Nix_build.build ~config:nix ~log ~switch spec
+  | `Nix spec ->
+    (match nix with
+    | None -> Fmt.failwith "This worker is not configured for use with Nix!"
+    | Some config -> Nix_build.build ~config ~log ~switch spec
+    )
 
 
 let metrics = function
@@ -434,7 +438,7 @@ let self_update ~update t =
        Lwt_result.fail (`Msg (Printexc.to_string ex))
     )
 
-let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~nix ~update ~capacity ~name ~state_dir registration_service =
+let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ?nix ~update ~capacity ~name ~state_dir registration_service =
   begin match prune_threshold with
     | None -> Log.info (fun f -> f "Prune threshold not set. Will not check for low disk-space!")
     | Some frac when frac < 0.0 || frac > 100.0 -> Fmt.invalid_arg "prune_threshold must be in the range 0 to 100"
@@ -447,7 +451,7 @@ let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~nix ~update 
   let build =
     match build with
     | Some x -> x
-    | None -> default_build ?obuilder ~nix
+    | None -> default_build ?obuilder ?nix
   in
   let t = {
     name;

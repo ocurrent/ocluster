@@ -40,11 +40,12 @@ let update_docker () =
 let update_normal () =
   Lwt.return (fun () -> Lwt.return ())
 
-let main registration_path capacity name allow_push prune_threshold state_dir obuilder nix =
+let main registration_path capacity name allow_push prune_threshold state_dir obuilder nix_cache =
   let update =
     if Sys.file_exists "/.dockerenv" then update_docker
     else update_normal
   in
+  let nix = Cluster_worker.Nix_config.v ~cache:nix_cache ~state_dir in
   Lwt_main.run begin
     let vat = Capnp_rpc_unix.client_only_vat () in
     let sr = Capnp_rpc_unix.Cap_file.load vat registration_path |> or_die in
@@ -130,24 +131,17 @@ module Obuilder_config = struct
     Term.pure make $ fast_sync $ store
 end
 
-module Nix_config = struct
-  let nix_cache =
-    Arg.value @@
-    Arg.opt Arg.(some string) None @@
-    Arg.info
-      ~doc:"cache URI to upload built nix results (passed to `nix copy`)"
-      ~docv:"CACHE"
-      ["nix-cache"]
-
-  let v =
-    let make cache = Cluster_worker.Nix_config.v ~cache in
-    let open Cmdliner.Term in
-    Term.pure make $ nix_cache
-end
+let nix_cache =
+  Arg.value @@
+  Arg.opt Arg.(some string) None @@
+  Arg.info
+    ~doc:"cache URI to upload built nix results (passed to `nix copy`)"
+    ~docv:"CACHE"
+    ["nix-cache"]
 
 let cmd =
   let doc = "Run a build worker" in
-  Term.(const main $ connect_addr $ capacity $ worker_name $ allow_push $ prune_threshold $ state_dir $ Obuilder_config.v $ Nix_config.v),
+  Term.(const main $ connect_addr $ capacity $ worker_name $ allow_push $ prune_threshold $ state_dir $ Obuilder_config.v $ nix_cache),
   Term.info "ocluster-worker" ~doc ~version:Version.t
 
 let () = Term.(exit @@ eval cmd)
