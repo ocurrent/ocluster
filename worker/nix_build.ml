@@ -15,6 +15,32 @@ end
 
 module Runc = Obuilder.Runc_sandbox
 
+module LogBuffer = struct
+  type t = {
+    buffer_rev: string list ref;
+    handler: Runc.log_handler;
+  }
+
+  (* we log both stdout/stderr, but only accumulate stdout *)
+  let make ~log =
+    let buffer_rev = ref [] in
+    let handler = `Tagged (fun src contents ->
+      try
+        let () = match src with
+          | `Stdout -> buffer_rev := contents :: !buffer_rev
+          | `Stderr -> ()
+        in
+        (* TODO only emit complete lines at a time, to prevent interleaving *)
+        (* Or even better: maintain the tagging in log_data so they can be rendered differently *)
+        Log_data.write log contents;
+        Lwt.return_unit
+      with e -> Lwt.fail e
+    ) in
+    { buffer_rev; handler }
+    
+  let stdout t = !(t.buffer_rev) |> List.rev |> String.concat "" |> String.trim
+end
+
 module Sandbox = struct
   let ( / ) = Filename.concat
   open Lwt.Infix
@@ -44,16 +70,6 @@ module Sandbox = struct
 
     (* persistent /root (only ~/.cache is actually mounted) *)
     let home config = data config / "home"
-  end
-  
-  module Finalize = struct
-    type 'a handler = log:string -> ('a, err) Lwt_result.t
-
-    let unit: unit handler = fun ~log:_ -> Lwt_result.return ()
-
-    (* TODO this is actually stdout+stderr *)
-    let read_stdout: string handler = fun ~log ->
-      Lwt_result.ok (Lwt_io.(with_file ~mode:input) log Lwt_io.read)
   end
   
   let rec mkdir_p path =
@@ -204,7 +220,7 @@ module Sandbox = struct
     )
     
 
-  let runc_raw { runc; config } ~switch ~cancelled ~log ~finalize argv =
+  let runc_raw { runc; config } ~switch ~cancelled ~log argv =
     (* like `run` but without any initialization, because we use runc for some init steps *)
 
     (* TODO hardcode this to.... something? *)
@@ -231,28 +247,20 @@ module Sandbox = struct
     in
 
     Lwt_io.with_temp_dir ~parent:(D.data config) (fun tmp ->
-      let log_file = tmp / "log" in
-
-      (* Runc wants an obuilder_log type, but we have a Log_data type. TODO This seems awkward :/ *)
-      let log_to_client msg = Log_data.write log msg in
-      let () = if Sys.file_exists log_file then Unix.unlink log_file in
-      Build_log.create log_file >>= fun obuilder_log ->
-      let log_consumed = Build_log.tail ~switch obuilder_log (log_to_client) in
-
       let rootfs = tmp / "rootfs" in
       mkdir_p (rootfs / "tmp");
       mkdir_p (rootfs / "usr" / "bin");
       Process.check_call ~switch ~label:"link env" ~log
         ["ln"; "-sfn"; "/nix/init/coreutils/env"; rootfs / "usr/bin/env"] >>!= fun () ->
 
-      Runc.run ~cancelled ~log:obuilder_log runc runc_config tmp >>= fun runc_result ->
-      Build_log.finish obuilder_log >>= fun () ->
+      let log_buffer = LogBuffer.make ~log in
+      Runc.run ~cancelled ~log:log_buffer.handler runc runc_config tmp >>= fun runc_result ->
+      (* Build_log.finish obuilder_log >>= fun () -> *)
       Lwt.return runc_result >>!= fun () ->
-      log_consumed >>= fun _ ->
-      finalize ~log:log_file
+      Lwt_result.return @@ LogBuffer.stdout log_buffer
     )
 
-  let run t ~switch ~log ~(finalize: 'a Finalize.handler) argv =
+  let run t ~switch ~log argv =
     let init_step = init_step ~switch ~log ~config:t.config in
     
     (* init dirs does all the static initialization *)
@@ -270,9 +278,9 @@ module Sandbox = struct
        container, because they rely on e.g. /nix actually being present at that path *)
 
     init_step ~id:"nix-db" ~stamp:nix_version (fun () ->
-      runc_raw t ~switch ~log ~cancelled ~finalize:Finalize.unit [
+      runc_raw t ~switch ~log ~cancelled [
         "bash"; "-euxc"; "nix-store --load-db < /nix/init/.reginfo";
-      ]
+      ] |> Lwt_result.map ignore
     ) >>!= fun () ->
     (* For stuff like builtins.fetchGit to work, we need `git` already on the path.
        We don't need a terribly fresh nixpkgs for this, the commit below is the HEAD
@@ -289,32 +297,16 @@ module Sandbox = struct
     ] |> String.concat "\n" in
 
     init_step ~id:"util-bin" ~stamp:utils_expr ~path:(D.nix t.config / "init" / "util") (fun () ->
-      runc_raw t ~switch ~log ~cancelled ~finalize:Finalize.unit [
+      runc_raw t ~switch ~log ~cancelled [
         "nix-build"; "--out-link"; "/nix/init/util"; "--expr"; utils_expr
-      ]
+      ] |> Lwt_result.map ignore
     ) >>!= fun () ->
-    runc_raw t ~switch ~log ~cancelled ~finalize argv
+    runc_raw t ~switch ~log ~cancelled argv
 end
 
 open Spec
 
 let create = Sandbox.create
-
-let last_line_as_store_path ~log =
-  let last_line = Lwt_io.(with_file ~mode:input) log (fun f ->
-    let lines = Lwt_io.read_lines f
-      |> Lwt_stream.map String.trim
-      |> Lwt_stream.filter (fun s -> String.length s > 0)
-    in
-    Lwt_stream.fold (fun line _acc -> Some line) lines None
-  ) in
-  last_line |> Lwt.map (function
-  | None -> Error (`Msg "command produced no output")
-  | Some line -> (
-    if Astring.String.is_prefix ~affix:"/nix/store" line
-      then Ok line
-      else Error (`Msg (Fmt.str "Expected last line of output to be a nix store path, got %s" line))
-  ))
 
 let upload t ~switch ~log path =
   (* TODO need to supply additional config so the container has access to credentials
@@ -323,9 +315,9 @@ let upload t ~switch ~log path =
   let result = Lwt_result.return path in
   match (Sandbox.config t).Config.cache with
   | None -> result
-  | Some cache -> Sandbox.run t ~switch ~log ~finalize:Sandbox.Finalize.unit
-    ["nix"; "copy"; "--to"; cache; path]
-    >>!= fun () -> result
+  | Some cache ->
+    Sandbox.run t ~switch ~log ["nix"; "copy"; "--to"; cache; path] >>!= fun (_output:string) ->
+    result
 
 (* TODO: enable restrict-eval and other hardening settings -- https://nixos.org/manual/nix/stable/#name-11 *)
 
@@ -334,15 +326,15 @@ let rec build t ~switch ~log =
   function
   | Build (`Drv drv) ->
     (* TODO remove --check, it's just there to skip short-circuiting builds *)
-    Sandbox.run t ~switch ~log ~finalize:last_line_as_store_path
+    Sandbox.run t ~switch ~log
       ["nix-store"; "--realise"; "--check"; drv] >>!= upload
 
   | Eval (`Expr expr) ->
-    Sandbox.run t ~switch ~log ~finalize:last_line_as_store_path
+    Sandbox.run t ~switch ~log
       ["nix-instantiate"; "--expr"; expr] >>!= upload
 
   | Run { drv; exe; args } -> (
     build t ~switch ~log (Build drv) >>!= fun impl ->
     let cmd = [Filename.concat impl exe] @ args in
-    Sandbox.run t ~switch ~log ~finalize:Sandbox.Finalize.read_stdout cmd
+    Sandbox.run t ~switch ~log cmd
   )
