@@ -143,10 +143,11 @@ open Current.Syntax
 let v ?timeout ?push_auth ?(urgent=`Auto) connection =
   { connection; timeout; push_auth; cache_hint = None; urgent }
 
-let label dockerfile pool =
+let component_label label dockerfile pool =
+  let pp_label = Fmt.(option (cut ++ string)) in
   match dockerfile with
-  | `Path path -> Current.component "build %s@,%s" path pool
-  | `Contents _ -> Current.component "build@,%s" pool
+  | `Path path -> Current.component "build %s@,%s%a" path pool pp_label label
+  | `Contents _ -> Current.component "build@,%s%a" pool pp_label label
 
 module Raw = struct
   let with_hint ~cache_hint t =
@@ -180,20 +181,20 @@ let unwrap = function
   | `Path _ as x -> Current.return x
   | `Contents x -> Current.map (fun x -> `Contents x) x
 
-let build_and_push ?cache_hint t ~push_target ~pool ~src ~options dockerfile =
-  label dockerfile pool |>
+let build_and_push ?label ?cache_hint t ~push_target ~pool ~src ~options dockerfile =
+  component_label label dockerfile pool |>
   let> dockerfile = unwrap dockerfile
   and> src = src in
   Raw.build_and_push ?cache_hint t ~push_target ~pool ~src ~options dockerfile
 
-let build ?cache_hint t ~pool ~src ~options dockerfile =
-  label dockerfile pool |>
+let build ?label ?cache_hint t ~pool ~src ~options dockerfile =
+  component_label label dockerfile pool |>
   let> dockerfile = unwrap dockerfile
   and> src = src in
   Raw.build ?cache_hint t ~pool ~src ~options dockerfile
 
-let build_obuilder ?cache_hint t ~pool ~src spec =
-  Current.component "obuild@,%s" pool |>
+let build_obuilder ?label ?cache_hint t ~pool ~src spec =
+  Current.component "obuild@,%s%a" pool Fmt.(option (cut ++ string)) label |>
   let> spec = spec
   and> src = src in
   Raw.build_obuilder ?cache_hint t ~pool ~src spec

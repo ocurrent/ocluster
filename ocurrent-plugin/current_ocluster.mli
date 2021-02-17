@@ -34,7 +34,8 @@ val with_push_auth : (string * string) option -> t -> t
 val with_urgent : urgency -> t -> t
 (** [with_urgent x t] is a copy of [t] with urgency policy [x]. *)
 
-val build : 
+val build :
+  ?label:string ->
   ?cache_hint:string ->
   t ->
   pool:string ->
@@ -46,6 +47,7 @@ val build :
     Note: all commits in [src] must be in the same repository. *)
 
 val build_and_push :
+  ?label:string ->
   ?cache_hint:string ->
   t ->
   push_target:Cluster_api.Docker.Image_id.t ->
@@ -59,6 +61,7 @@ val build_and_push :
     If [t] doesn't have [push_auth] configured, this still tests the build, but returns an error at the end. *)
 
 val build_obuilder :
+  ?label:string ->
   ?cache_hint:string ->
   t ->
   pool:string ->
