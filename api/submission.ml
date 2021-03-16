@@ -40,7 +40,7 @@ let get_action descr =
   | Obuilder action -> Obuilder_build (Obuilder_job.Spec.read action)
   | Undefined x -> Fmt.failwith "Unknown action type %d" x
 
-let submit ?src ?(urgent=false) t ~pool ~action ~cache_hint =
+let submit ?src ?(urgent=false) ?(secrets=[]) t ~pool ~action ~cache_hint =
   let open X.Submit in
   let module JD = Raw.Builder.JobDescr in
   let request, params = Capability.Request.create Params.init_pointer in
@@ -61,4 +61,10 @@ let submit ?src ?(urgent=false) t ~pool ~action ~cache_hint =
       let _ : _ Capnp.Array.t = JD.commits_set_list b commits in
       JD.repository_set b repo;
     );
+  let secrets_array = JD.secrets_init b (List.length secrets) in
+  List.iteri (fun i (id, value) ->
+    let secret = Capnp.Array.get secrets_array i in
+    Raw.Builder.Secret.id_set secret id;
+    Raw.Builder.Secret.value_set secret value
+  ) secrets;
   Capability.call_for_caps t method_id request Results.ticket_get_pipelined
