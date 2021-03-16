@@ -12,6 +12,7 @@ val build : t ->
   switch:Lwt_switch.t ->
   log:Log_data.t ->
   spec:Obuilder.Spec.t ->
-  src_dir:string -> (string, [ `Cancelled | `Msg of string ]) Lwt_result.t
+  src_dir:string ->
+  secrets:(string * string) list -> (string, [ `Cancelled | `Msg of string ]) Lwt_result.t
 
 val healthcheck : t -> (unit, [> `Msg of string]) Lwt_result.t

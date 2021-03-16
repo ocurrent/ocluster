@@ -34,7 +34,7 @@ let rec await t id =
     Lwt_condition.wait t.cond >>= fun () ->
     await t id
 
-let docker_build t ~switch ~log ~src:_ = function
+let docker_build t ~switch ~log ~src:_ ~secrets:_ = function
   | `Obuilder _ -> assert false
   | `Docker (dockerfile, _options) ->
     match dockerfile with

@@ -110,10 +110,10 @@ let check_free_space t =
     in
     aux ()
 
-let build t ~switch ~log ~spec ~src_dir =
+let build t ~switch ~log ~spec ~src_dir ~secrets =
   check_free_space t >>= fun () ->
   let log = log_to log in
-  let context = Obuilder.Context.v ~switch ~log ~src_dir () in
+  let context = Obuilder.Context.v ~switch ~log ~src_dir ~secrets () in
   let Builder ((module Builder), builder) = t.builder in
   Builder.build builder context spec
 
