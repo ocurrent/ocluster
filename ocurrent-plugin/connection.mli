@@ -21,6 +21,7 @@ val pool :
   action:Cluster_api.Submission.action ->
   cache_hint:string ->
   ?src:string * string list ->
+  ?secrets:(string * string) list ->
   ?urgent:([`High | `Low] -> bool) ->
   t ->
   Cluster_api.Raw.Client.Job.t Capnp_rpc_lwt.Capability.t Current.Pool.t

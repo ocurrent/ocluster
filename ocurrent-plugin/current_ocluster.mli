@@ -15,11 +15,13 @@ type urgency = [
 val v :
   ?timeout:Duration.t ->
   ?push_auth:(string * string) ->
+  ?secrets:(string * string) list ->
   ?urgent:urgency ->
   Connection.t ->
   t
 (** [v conn] is a builder that submits jobs using [conn].
     @param push_auth : the username and password to use when pushing to the Docker Hub staging area.
+    @param secrets : secrets to pass to the job as (id, value) pairs.
     @param timeout : default timeout
     @param urgent : when to mark builds as urgent (default [`Auto]). *)
 
@@ -30,6 +32,10 @@ val with_timeout : Duration.t option -> t -> t
 val with_push_auth : (string * string) option -> t -> t
 (** [with_push_auth x t] is a copy of [t] with the specified push settings, but still
     sharing the same connection. *)
+
+val with_secrets : (string * string) list -> t -> t
+(** [with_secrets x t] is a copy of [t] with the specified secrets, but still sharing
+    the same connection. *)
 
 val with_urgent : urgency -> t -> t
 (** [with_urgent x t] is a copy of [t] with urgency policy [x]. *)

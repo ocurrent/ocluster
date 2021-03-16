@@ -70,7 +70,7 @@ let urgent_if_high = function
   | `Low -> false
 
 (* This is called by [Current.Job] once the confirmation threshold allows the job to be submitted. *)
-let submit ~job ~pool ~action ~cache_hint ?src ~urgent t ~priority ~switch:_ =
+let submit ~job ~pool ~action ~cache_hint ?src ?secrets ~urgent t ~priority ~switch:_ =
   let urgent = urgent priority in
   let limiter_thread = ref None in
   let stage = ref `Init in
@@ -103,7 +103,7 @@ let submit ~job ~pool ~action ~cache_hint ?src ~urgent t ~priority ~switch:_ =
              Lwt_pool.use (rate_limit t pool urgent)
                (fun () ->
                   Prometheus.Gauge.dec_one Metrics.queue_rate_limit;
-                  let ticket = Cluster_api.Submission.submit ~urgent ?src sched ~pool ~action ~cache_hint in
+                  let ticket = Cluster_api.Submission.submit ~urgent ?src ?secrets sched ~pool ~action ~cache_hint in
                   let build_job = Cluster_api.Ticket.job ticket in
                   stage := `Get_ticket ticket;       (* Allow the user to cancel it now. *)
                   Prometheus.Gauge.inc_one Metrics.queue_get_ticket;
@@ -171,5 +171,5 @@ let create ?(max_pipeline=200) sr =
   let rate_limits = Hashtbl.create 10 in
   { sr; sched = Lwt.fail_with "init"; rate_limits; max_pipeline }
 
-let pool ~job ~pool ~action ~cache_hint ?src ?(urgent=urgent_if_high) t =
-  Current.Pool.of_fn ~label:"OCluster" @@ submit ~job ~pool ~action ~cache_hint ~urgent ?src t
+let pool ~job ~pool ~action ~cache_hint ?src ?secrets ?(urgent=urgent_if_high) t =
+  Current.Pool.of_fn ~label:"OCluster" @@ submit ~job ~pool ~action ~cache_hint ~urgent ?src ?secrets t

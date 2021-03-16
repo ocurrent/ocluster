@@ -11,6 +11,7 @@ type t = {
   connection : Connection.t;
   timeout : Duration.t option;
   push_auth : (string * string) option; (* Username/password for pushes *)
+  secrets : (string * string) list;
   cache_hint : string option;
   urgent : urgency;
 }
@@ -25,6 +26,7 @@ type docker_build = {
 } [@@deriving to_yojson]
 
 let with_push_auth push_auth t = { t with push_auth }
+let with_secrets secrets t = { t with secrets }
 let with_timeout timeout t = { t with timeout }
 let with_urgent urgent t = { t with urgent }
 
@@ -112,7 +114,7 @@ module Op = struct
       | `Never -> false
       | `Auto -> priority = `High
     in
-    let build_pool = Connection.pool ~job ~pool ~action ~cache_hint ~urgent ?src t.connection in
+    let build_pool = Connection.pool ~job ~pool ~action ~cache_hint ~urgent ?src ~secrets:t.secrets t.connection in
     let level =
       match action with
       | Docker_build { push_to = Some _; _ } -> Current.Level.Above_average
@@ -140,8 +142,8 @@ module Build = Current_cache.Make(Op)
 
 open Current.Syntax
 
-let v ?timeout ?push_auth ?(urgent=`Auto) connection =
-  { connection; timeout; push_auth; cache_hint = None; urgent }
+let v ?timeout ?push_auth ?(secrets=[]) ?(urgent=`Auto) connection =
+  { connection; timeout; push_auth; secrets; cache_hint = None; urgent }
 
 let component_label label dockerfile pool =
   let pp_label = Fmt.(option (cut ++ string)) in
