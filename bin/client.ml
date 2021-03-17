@@ -40,6 +40,7 @@ type submit_options_common = {
   commits : string list;
   cache_hint : string;
   urgent : bool;
+  secrets : (string * string) list;
 }
 
 let get_action = function
@@ -55,7 +56,13 @@ let get_action = function
     Lwt_io.(with_file ~mode:input) path (Lwt_io.read ?count:None) >|= fun spec ->
     Cluster_api.Submission.obuilder_build spec
 
-let submit { submission_path; pool; repository; commits; cache_hint; urgent } spec =
+let read_whole_file path =
+  let ic = open_in_bin path in
+  Fun.protect ~finally:(fun () -> close_in ic) @@ fun () ->
+  let len = in_channel_length ic in
+  really_input_string ic len
+
+let submit { submission_path; pool; repository; commits; cache_hint; urgent; secrets } spec =
   let src =
     match repository, commits with
     | None, [] -> None
@@ -65,7 +72,8 @@ let submit { submission_path; pool; repository; commits; cache_hint; urgent } sp
   in
   run submission_path @@ fun submission_service ->
   get_action spec >>= fun action ->
-  Capability.with_ref (Cluster_api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ?src) @@ fun ticket ->
+  let secrets = List.map (fun (id, path) -> id, read_whole_file path) secrets in
+  Capability.with_ref (Cluster_api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ~secrets ?src) @@ fun ticket ->
   Capability.with_ref (Cluster_api.Ticket.job ticket) @@ fun job ->
   let result = Cluster_api.Job.result job in
   Fmt.pr "Tailing log:@.";
@@ -195,6 +203,14 @@ let build_args =
     ~docv:"ARG"
     ["build-arg"]
 
+let secrets =
+  (Arg.value @@
+   Arg.(opt_all (pair ~sep:':' string file)) [] @@
+   Arg.info
+     ~doc:"Provide a secret under the form id:file"
+     ~docv:"SECRET"
+     ["secret"])
+
 let squash =
   Arg.value @@
   Arg.flag @@
@@ -239,10 +255,10 @@ let build_options =
   Term.(pure make $ build_args $ squash $ buildkit $ include_git)
 
 let submit_options_common =
-  let make submission_path pool repository commits cache_hint urgent =
-    { submission_path; pool; repository; commits; cache_hint; urgent }
+  let make submission_path pool repository commits cache_hint urgent secrets =
+    { submission_path; pool; repository; commits; cache_hint; urgent; secrets }
   in
-  Term.(pure make $ connect_addr $ pool $ repo $ commits $ cache_hint $ urgent)
+  Term.(pure make $ connect_addr $ pool $ repo $ commits $ cache_hint $ urgent $ secrets)
 
 let submit_docker_options =
   let make dockerfile push_to build_options =

@@ -41,6 +41,14 @@ struct OBuilder {
   # The contents of the OBuilder spec to build.
 }
 
+struct Secret {
+  id @0 :Text;
+  # The secret id.
+
+  value @1 :Text;
+  # The secret value.
+}
+
 struct JobDescr {
   action :union {
     dockerBuild @0 :DockerBuild;
@@ -57,6 +65,9 @@ struct JobDescr {
   commits @3 :List(Text);
   # The commit(s) to use as the context. If the list is empty, there will be no context.
   # If there are multiple items, they will be merged.
+
+  secrets @5 :List(Secret);
+  # Secret id-value pairs provided to the job. 
 }
 
 interface Job {

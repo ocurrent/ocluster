@@ -72,6 +72,7 @@ type t = {
     switch:Lwt_switch.t ->
     log:Log_data.t ->
     src:string ->
+    secrets:(string * string) list ->
     job_spec ->
     (string, [`Cancelled | `Msg of string]) Lwt_result.t;
   prune_threshold : float option;      (* docker-prune when free space is lower than this (percentage) *)
@@ -128,6 +129,7 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; auth } =
 let build ~switch ~log t descr =
   let module R = Cluster_api.Raw.Reader.JobDescr in
   let cache_hint = R.cache_hint_get descr in
+  let secrets = R.secrets_get_list descr |> List.map (fun t -> Cluster_api.Raw.Reader.Secret.(id_get t, value_get t)) in
   begin match Cluster_api.Submission.get_action descr with
     | Docker_build { dockerfile; options; push_to } ->
       Log.info (fun f ->
@@ -137,7 +139,7 @@ let build ~switch ~log t descr =
         );
       begin
         Context.with_build_context t.context ~log descr @@ fun src ->
-        t.build ~switch ~log ~src (`Docker (dockerfile, options)) >>!= fun hash ->
+        t.build ~switch ~log ~src ~secrets (`Docker (dockerfile, options)) >>!= fun hash ->
         match push_to with
         | None -> Lwt_result.return ""
         | Some target ->
@@ -149,7 +151,7 @@ let build ~switch ~log t descr =
           f "Got request to build (%s):\n%s" cache_hint (String.trim spec)
         );
       Context.with_build_context t.context ~log descr @@ fun src ->
-      t.build ~switch ~log ~src (`Obuilder (`Contents spec))
+      t.build ~switch ~log ~src ~secrets (`Obuilder (`Contents spec))
   end
   >|= function
   | Error `Cancelled ->
@@ -337,9 +339,18 @@ let write_to_file ~path data =
   Lwt_io.(with_file ~mode:output) ~flags:Unix.[O_TRUNC; O_CREAT; O_RDWR] path @@ fun ch ->
   Lwt_io.write_from_string_exactly ch data 0 (String.length data)
 
-let default_build ?obuilder ~switch ~log ~src = function
+let create_secret_file value =
+  let file = Filename.temp_file "build-worker-" ".secret" in
+  write_to_file ~path:file value >|= fun () -> file
+
+let try_unlink file =
+  if Sys.file_exists file then Lwt_unix.unlink file
+  else Lwt.return_unit
+
+let default_build ?obuilder ~switch ~log ~src ~secrets = function
   | `Docker (dockerfile, options) ->
     let iid_file = Filename.temp_file "build-worker-" ".iid" in
+    Lwt_list.map_p (fun (id, value) -> create_secret_file value >|= fun fname -> id, fname) secrets >>= fun secret_files ->
     Lwt.finalize
       (fun () ->
          begin
@@ -358,6 +369,7 @@ let default_build ?obuilder ~switch ~log ~src = function
          let args =
            List.concat_map (fun x -> ["--build-arg"; x]) build_args
            @ (if squash then ["--squash"] else [])
+           @ (List.map (fun (id, fname) -> ["--secret"; Fmt.str "id=%s,src=%s" id fname]) secret_files |> List.flatten)
            @ ["--pull"; "--iidfile"; iid_file; "-f"; dockerpath; src]
          in
          Log.info (fun f -> f "docker build @[%a@]" Fmt.(list ~sep:sp (quote string)) args);
@@ -365,15 +377,14 @@ let default_build ?obuilder ~switch ~log ~src = function
          Process.check_call ~label:"docker-build" ?env ~switch ~log ("docker" :: "build" :: args) >>!= fun () ->
          Lwt_result.return (String.trim (read_file iid_file))
       )
-      (fun () ->
-         if Sys.file_exists iid_file then Lwt_unix.unlink iid_file
-         else Lwt.return_unit
+      (fun () -> try_unlink iid_file >>= fun () ->
+        secret_files |> List.map snd |> Lwt_list.iter_p try_unlink
       )
   | `Obuilder (`Contents spec) ->
     let spec = Obuilder.Spec.t_of_sexp (Sexplib.Sexp.of_string spec) in
     match obuilder with
     | None -> Fmt.failwith "This worker is not configured for use with OBuilder!"
-    | Some builder -> Obuilder_build.build builder ~switch ~log ~spec ~src_dir:src
+    | Some builder -> Obuilder_build.build builder ~switch ~log ~spec ~src_dir:src ~secrets
 
 let metrics = function
   | `Agent ->
