@@ -56,6 +56,12 @@ let get_action = function
     Lwt_io.(with_file ~mode:input) path (Lwt_io.read ?count:None) >|= fun spec ->
     Cluster_api.Submission.obuilder_build spec
 
+let read_whole_file path =
+  let ic = open_in_bin path in
+  Fun.protect ~finally:(fun () -> close_in ic) @@ fun () ->
+  let len = in_channel_length ic in
+  really_input_string ic len
+
 let submit { submission_path; pool; repository; commits; cache_hint; urgent; secrets } spec =
   let src =
     match repository, commits with
@@ -66,6 +72,7 @@ let submit { submission_path; pool; repository; commits; cache_hint; urgent; sec
   in
   run submission_path @@ fun submission_service ->
   get_action spec >>= fun action ->
+  let secrets = List.map (fun (id, path) -> id, read_whole_file path) secrets in
   Capability.with_ref (Cluster_api.Submission.submit submission_service ~urgent ~pool ~action ~cache_hint ~secrets ?src) @@ fun ticket ->
   Capability.with_ref (Cluster_api.Ticket.job ticket) @@ fun job ->
   let result = Cluster_api.Job.result job in
@@ -198,12 +205,11 @@ let build_args =
 
 let secrets =
   (Arg.value @@
-  Arg.(opt_all string) [] @@
-  Arg.info
-    ~doc:"Provide secret under the form key=value"
-    ~docv:"SECRET"
-    ["secret"])
-  |> Term.(app (const (List.filter_map (Astring.String.cut ~sep:"="))))
+   Arg.(opt_all (pair ~sep:':' string file)) [] @@
+   Arg.info
+     ~doc:"Provide a secret under the form id:file"
+     ~docv:"SECRET"
+     ["secret"])
 
 let squash =
   Arg.value @@
