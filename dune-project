@@ -42,7 +42,7 @@ The scheduler tries to schedule similar builds on the same machine, to benefit f
   logs
   fmt
   (conf-libev (<> :os "win32"))
-  digestif
+  (digestif (>= 0.8))
   fpath
   lwt-dllist
   (prometheus-app (>= 1.0))
