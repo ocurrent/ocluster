@@ -131,7 +131,15 @@ let build_context t ~log ~tmpdir descr =
             | name -> Unix.rename (clone / name) (tmpdir / name)
           );
         if include_git descr then (
-          Process.check_call ~label:"cp .git" ~switch ~log ["cp"; "-a"; clone / ".git"; tmpdir / ".git"] >>!= fun () ->
+          let cmd, is_success =
+            if Sys.win32 then
+              ["robocopy"; clone / ".git"; tmpdir / ".git"; "/COPY:DATSO"; "/E"; "/R:0"; "/DCOPY:T"],
+              fun s -> s = 1
+            else
+              ["cp"; "-a"; clone / ".git"; tmpdir / ".git"],
+              fun s -> s = 0
+          in
+          Process.check_call ~label:"cp .git" ~switch ~log ~is_success cmd >>!= fun () ->
           Process.check_call ~label:"git-config" ~switch ~log ["git"; "-C"; tmpdir; "config"; "--unset"; "remote.origin.fetch"; "/pull/"] >>!= fun () ->
           Lwt_result.return ()
         ) else (
