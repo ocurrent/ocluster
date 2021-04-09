@@ -21,7 +21,7 @@ let pp_signal f x =
   else if x = sigterm then Fmt.string f "term"
   else Fmt.int f x
 
-let exec ~label ~log ~switch ?env ?(stdin="") ?(stderr=`FD_copy Unix.stdout) cmd =
+let exec ~label ~log ~switch ?env ?(stdin="") ?(stderr=`FD_copy Unix.stdout) ?(is_success=((=) 0)) cmd =
   Log.info (fun f -> f "Exec(%s): %a" label Fmt.(list ~sep:sp (quote string)) cmd);
   let cmd = "", Array.of_list cmd in
   let proc = Lwt_process.open_process ?env ~stderr cmd in
@@ -38,7 +38,7 @@ let exec ~label ~log ~switch ?env ?(stdin="") ?(stderr=`FD_copy Unix.stdout) cmd
   copy_thread >>= fun () -> (* Ensure all data has been copied before returning *)
   proc#status >|= function
   | _ when not (Lwt_switch.is_on switch) -> Error `Cancelled
-  | Unix.WEXITED 0 ->
+  | Unix.WEXITED n when is_success n ->
     begin match stdin_result with
       | Ok () -> Ok ()
       | Error (`Msg msg) -> Error (`Msg (Fmt.strf "Failed sending input to %s: %s" label msg))
@@ -47,8 +47,8 @@ let exec ~label ~log ~switch ?env ?(stdin="") ?(stderr=`FD_copy Unix.stdout) cmd
   | Unix.WSIGNALED x -> Error (`Msg (Fmt.strf "%s failed with signal %d" label x))
   | Unix.WSTOPPED x -> Error (`Msg (Fmt.strf "%s stopped with signal %a" label pp_signal x))
 
-let check_call ~label ~log ~switch ?env ?stdin ?stderr cmd =
-  exec ~label ~log ~switch ?env ?stdin ?stderr cmd >|= function
+let check_call ~label ~log ~switch ?env ?stdin ?stderr ?is_success cmd =
+  exec ~label ~log ~switch ?env ?stdin ?stderr ?is_success cmd >|= function
   | Ok () -> Ok ()
   | Error `Cancelled -> Error `Cancelled
   | Error (`Exit_code n) -> Error (`Msg (Fmt.strf "%s failed with exit-code %d" label n))

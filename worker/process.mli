@@ -11,6 +11,7 @@ val exec :
   ?env:string array ->
   ?stdin:string ->
   ?stderr:Lwt_process.redirection ->
+  ?is_success:(int -> bool) ->
   string list ->
   (unit, [> error]) Lwt_result.t
 
@@ -21,5 +22,6 @@ val check_call :
   ?env:string array ->
   ?stdin:string ->
   ?stderr:Lwt_process.redirection ->
+  ?is_success:(int -> bool) ->
   string list ->
   (unit, [> `Cancelled | `Msg of string]) Lwt_result.t
