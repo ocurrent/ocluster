@@ -25,10 +25,16 @@ module Sandbox = Obuilder.Runc_sandbox
 
 let ( / ) = Filename.concat
 
+let pp_timestamp f x =
+  let { Unix.tm_year; tm_mon; tm_mday; tm_hour; tm_min; tm_sec; _ } = Unix.gmtime x in
+  Fmt.pf f "%04d-%02d-%02d %02d:%02d.%02d"
+    (tm_year + 1900) (tm_mon + 1) tm_mday
+    tm_hour tm_min tm_sec
+
 let log_to log_data tag msg =
   match tag with
   | `Heading -> Log_data.info log_data "\n\027[01;34m%s\027[0m" msg
-  | `Note -> Log_data.info log_data "\027[01;2m\027[01;35m%s\027[0m" msg
+  | `Note -> Log_data.info log_data "\027[01;2m\027[01;35m%a %s\027[0m" pp_timestamp (Unix.gettimeofday ()) msg
   | `Output -> Log_data.write log_data msg
 
 let create ?prune_threshold config =
