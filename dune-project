@@ -1,4 +1,4 @@
-(lang dune 2.5)
+(lang dune 2.8)
 (name ocluster)
 (formatting disabled)
 (generate_opam_files true)
@@ -8,8 +8,7 @@
 (package
  (name ocluster-api)
  (synopsis "Cap'n Proto API for OCluster")
- (description
-  "OCaml bindings for the OCluster Cap'n Proto API.")
+ (description "OCaml bindings for the OCluster Cap'n Proto API.")
  (depends
   ppx_deriving
   lwt
@@ -21,16 +20,9 @@
  (name ocluster)
  (synopsis "Distribute build jobs to workers")
  (description
-"OCluster manages a pool of build workers.
-A build scheduler service accepts build jobs from clients and distributes them to worker machines using Cap'n Proto.
-Workers register themselves by connecting to the scheduler (and workers do not need to be able to accept incoming network connections).
-
-The scheduler can manage multiple pools (e.g. `linux-x86_64` and `linux-arm32`).
-Clients say which pool should handle their requests.
-At the moment, two build types are provided: building a Dockerfile, or building an OBuilder spec.
-In either case, the build may done in the context of some Git commit.
-The scheduler tries to schedule similar builds on the same machine, to benefit from caching.")
+  "OCluster manages a pool of build workers.\nA build scheduler service accepts build jobs from clients and distributes them to worker machines using Cap'n Proto.\nWorkers register themselves by connecting to the scheduler (and workers do not need to be able to accept incoming network connections).\n\nThe scheduler can manage multiple pools (e.g. `linux-x86_64` and `linux-arm32`).\nClients say which pool should handle their requests.\nAt the moment, two build types are provided: building a Dockerfile, or building an OBuilder spec.\nIn either case, the build may done in the context of some Git commit.\nThe scheduler tries to schedule similar builds on the same machine, to benefit from caching.")
  (depends
+  (ppx_expect (>= v0.14.1))
   prometheus
   ppx_sexp_conv
   dune-build-info
@@ -58,7 +50,8 @@ The scheduler tries to schedule similar builds on the same machine, to benefit f
 (package
  (name current_ocluster)
  (synopsis "OCurrent plugin for OCluster builds")
- (description "Creates a stage in an OCurrent pipeline for submitting jobs to OCluster.")
+ (description
+  "Creates a stage in an OCurrent pipeline for submitting jobs to OCluster.")
  (depends
   ppx_deriving
   (ocluster-api (= :version))

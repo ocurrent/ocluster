@@ -375,6 +375,5 @@ let () =
       test_case "admin" admin;
       test_case "clients" clients;
     ];
-    "scheduling", Test_scheduling.suite;
     "plugin", Test_plugin.suite;
   ]

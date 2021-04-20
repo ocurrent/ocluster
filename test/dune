@@ -1,12 +1,27 @@
 (test
   (name test)
   (package ocluster)
+  (modules test mock_builder mock_network test_plugin)
   (libraries
     alcotest-lwt
     capnp-rpc-net
     cluster_scheduler
     cluster_worker
     current_ocluster
+    db
+    fmt.tty
+    logs.fmt
+    lwt.unix
+    prometheus-app))
+
+(library
+  (name ocluster_expect_tests)
+  (package ocluster)
+  (modules test_scheduling)
+  (inline_tests)
+  (preprocess (pps ppx_expect))
+  (libraries
+    cluster_scheduler
     db
     fmt.tty
     logs.fmt

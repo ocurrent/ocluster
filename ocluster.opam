@@ -16,7 +16,8 @@ authors: ["talex5@gmail.com"]
 homepage: "https://github.com/ocurrent/ocluster"
 bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [
-  "dune" {>= "2.5"}
+  "dune" {>= "2.8"}
+  "ppx_expect" {>= "v0.14.1"}
   "prometheus"
   "ppx_sexp_conv"
   "dune-build-info"
@@ -41,9 +42,10 @@ depends: [
   "current_ocluster" {= version & with-test}
   "alcotest" {>= "1.0.0" & with-test}
   "alcotest-lwt" {>= "1.0.1" & with-test}
+  "odoc" {with-doc}
 ]
 build: [
-  ["dune" "subst"] {pinned}
+  ["dune" "subst"] {dev}
   [
     "dune"
     "build"
