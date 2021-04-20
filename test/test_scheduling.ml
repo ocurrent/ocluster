@@ -777,3 +777,49 @@ let%expect_test "inactive" =
     clients:
     cached: |}];
   Lwt.return_unit
+
+(* The admin-paused state is persisted over worker restarts. *)
+let%expect_test "persist_pause" =
+  with_test_db @@ fun db ->
+  let pool = Pool.create ~db ~name:"simple" in
+  let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
+  (* The admin pauses it: *)
+  Pool.set_active w1 false ~reason:Inactive_reasons.admin_pause;
+  Pool.shutdown w1;
+  (* Worker is now self-paused, admin-paused and shutting down: *)
+  print_pool pool;
+  [%expect{|
+    capacity: 1
+    queue: (backlog) []
+    registered:
+      worker-1 (0): (inactive: worker pause, admin pause, shutting down)
+    clients:
+    cached: |}];
+  (* The worker unpauses itself, but this will not persist: *)
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
+  Pool.release w1;
+  (* On reconnect, it is still admin-paused (and now worker-paused again too): *)
+  let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
+  print_pool pool;
+  [%expect{|
+    capacity: 1
+    queue: (backlog) []
+    registered:
+      worker-1 (0): (inactive: worker pause, admin pause)
+    clients:
+    cached: |}];
+  (* The admin unpauses it: *)
+  Pool.set_active w1 true ~reason:Inactive_reasons.admin_pause;
+  Pool.release w1;
+  (* On reconnect, it is still admin unpaused: *)
+  let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
+  print_pool pool;
+  [%expect{|
+    capacity: 1
+    queue: (backlog) []
+    registered:
+      worker-1 (0): []
+    clients:
+    cached: |}];
+  Lwt.return_unit
