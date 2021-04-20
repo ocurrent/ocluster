@@ -117,6 +117,23 @@ let await_builder () =
   Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example\nJob succeeded\n" result;
   Lwt.return_unit
 
+(* Two workers register with the same name. *)
+let already_registered () =
+  with_sched @@ fun ~admin:_ ~registry ->
+  let api = Cluster_api.Worker.local ~metrics:(fun _ -> assert false) ~self_update:(fun () -> assert false) in
+  let q1 = Cluster_api.Registration.register registry ~name:"worker-1" ~capacity:1 api in
+  Capability.wait_until_settled q1 >>= fun () ->
+  let q2 = Cluster_api.Registration.register registry ~name:"worker-1" ~capacity:1 api in
+  Capability.wait_until_settled q2 >>= fun () ->
+  let pp_err = Fmt.(option ~none:(unit "ok")) Capnp_rpc.Exception.pp in
+  let p1 = Fmt.strf "%a" pp_err (Capability.problem q1) in
+  let p2 = Fmt.strf "%a" pp_err (Capability.problem q2) in
+  Alcotest.(check string) "First worker connected" "ok" p1;
+  Alcotest.(check string) "Second was rejected" "Failed: Worker already registered!" p2;
+  Capability.dec_ref q1;
+  Capability.dec_ref api;
+  Lwt.return_unit
+
 (* A single builder can't do all the jobs and they queue up. *)
 let builder_capacity () =
   let builder = Mock_builder.create () in
@@ -347,7 +364,7 @@ let clients () =
     (fun () -> Alcotest.fail "Should have failed!")
     (fun _ -> Lwt.return_unit)
 
-let test_case name fn =
+let test_case ?(expected_warnings=0) name fn =
   Alcotest_lwt.test_case name `Quick @@ fun _ () ->
   let problems = Logs.(warn_count () + err_count ()) in
   fn () >>= fun () ->
@@ -355,7 +372,7 @@ let test_case name fn =
   Gc.full_major ();
   Lwt.pause () >|= fun () ->
   let problems' = Logs.(warn_count () + err_count ()) in
-  Alcotest.(check int) "Check log for warnings" 0 (problems' - problems)
+  Alcotest.(check int) "Check log for warnings" expected_warnings (problems' - problems)
 
 let () =
   Lwt_main.run @@ Alcotest_lwt.run ~verbose "build-scheduler" [
@@ -363,6 +380,7 @@ let () =
       test_case "simple" simple;
       test_case "fails" fails;
       test_case "await_builder" await_builder;
+      test_case "already_registered" already_registered ~expected_warnings:1;
       test_case "builder_capacity" builder_capacity;
       test_case "network" network;
       test_case "worker_disconnects" worker_disconnects;
