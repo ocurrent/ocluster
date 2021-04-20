@@ -42,6 +42,34 @@ end
 
 module Client_map = Map.Make(String)
 
+module Inactive_reasons = struct
+  type t = int
+
+  let empty = 0
+  let worker = 1
+  let admin_pause = 2
+  let admin_shutdown = 4
+
+  let mem a b =
+    (a land b) = a
+
+  let union = (lor)
+
+  let pp f x =
+    if x = empty then Fmt.string f "active"
+    else (
+      let first = ref true in
+      let add msg =
+        if !first then first := false
+        else Fmt.string f ", ";
+        Fmt.string f msg
+      in
+      if mem worker x then add "worker pause";
+      if mem admin_pause x then add "admin pause";
+      if mem admin_shutdown x then add "shutting down"
+    )
+end
+
 module Dao = struct
   type t = {
     query_cache : Sqlite3.stmt;
@@ -50,6 +78,9 @@ module Dao = struct
     get_rate : Sqlite3.stmt;
     set_rate : Sqlite3.stmt;
     remove_user : Sqlite3.stmt;
+    ensure_worker : Sqlite3.stmt;
+    set_paused : Sqlite3.stmt;
+    get_paused : Sqlite3.stmt;
   }
 
   let dump f (db, pool) =
@@ -85,6 +116,19 @@ module Dao = struct
       )
     |> Option.value ~default:1.0
 
+  let ensure_worker t worker =
+    Db.exec t.ensure_worker Sqlite3.Data.[ TEXT worker ]
+
+  let set_paused t ~worker v =
+    let v = Bool.to_int v |> Int64.of_int in
+    Db.exec t.set_paused Sqlite3.Data.[ INT v; TEXT worker ]
+
+  let get_paused t ~worker =
+    match Db.query_one t.get_paused Sqlite3.Data.[ TEXT worker ] with
+    | Sqlite3.Data.[ INT 1L ] -> true
+    | Sqlite3.Data.[ INT 0L ] -> false
+    | row -> Fmt.failwith "Bad row from DB: %a" Db.dump_row row
+
   let init db =
     Sqlite3.exec db "CREATE TABLE IF NOT EXISTS cached ( \
                      pool       TEXT NOT NULL, \
@@ -97,13 +141,20 @@ module Dao = struct
                      user       TEXT NOT NULL, \
                      rate       REAL NOT NULL, \
                      PRIMARY KEY (pool, user))" |> Db.or_fail ~cmd:"create pool_user_rate table";
+    Sqlite3.exec db "CREATE TABLE IF NOT EXISTS workers ( \
+                     id       TEXT NOT NULL, \
+                     paused   BOOLEAN DEFAULT FALSE, \
+                     PRIMARY KEY (id))" |> Db.or_fail ~cmd:"create workers table";
     let query_cache = Sqlite3.prepare db "SELECT worker FROM cached WHERE pool = ? AND cache_hint = ? ORDER BY worker" in
     let mark_cached = Sqlite3.prepare db "INSERT OR REPLACE INTO cached (pool, cache_hint, worker, created) VALUES (?, ?, ?, date('now'))" in
     let dump_cache = Sqlite3.prepare db "SELECT DISTINCT cache_hint FROM cached WHERE pool = ? ORDER BY cache_hint" in
     let set_rate = Sqlite3.prepare db "INSERT OR REPLACE INTO pool_user_rate (pool, user, rate) VALUES (?, ?, ?)" in
     let get_rate = Sqlite3.prepare db "SELECT rate FROM pool_user_rate WHERE pool = ? AND user = ?" in
     let remove_user = Sqlite3.prepare db "DELETE FROM pool_user_rate WHERE pool = ? AND user = ?" in
-    { query_cache; mark_cached; dump_cache; set_rate; get_rate; remove_user }
+    let ensure_worker = Sqlite3.prepare db "INSERT OR IGNORE INTO workers (id) VALUES (?)" in
+    let set_paused = Sqlite3.prepare db "UPDATE workers SET paused = ? WHERE id = ?" in
+    let get_paused = Sqlite3.prepare db "SELECT paused FROM workers WHERE id = ?" in
+    { query_cache; mark_cached; dump_cache; set_rate; get_rate; remove_user; ensure_worker; set_paused; get_paused }
 end
 
 let (let<>) x f =
@@ -230,10 +281,9 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
     name : string;
     capacity : int;
     mutable state : [ `Running of Backlog.t * unit Lwt_condition.t
-                    | `Inactive of unit Lwt.t * unit Lwt.u  (* ready/set_ready for resume *)
+                    | `Inactive of Inactive_reasons.t * unit Lwt.t * unit Lwt.u  (* ready/set_ready for resume *)
                     | `Finished ];
     mutable workload : int;     (* Total cost of items in worker's queue. *)
-    mutable shutdown : bool;    (* Worker is paused because it is shutting down. *)
   } and client_info = {
     id : string;
     mutable next_fair_start_time : float;
@@ -319,7 +369,7 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
     let rec aux () =
       match worker.state with
       | `Finished -> Lwt_result.fail `Finished
-      | `Inactive (ready, _) -> ready >>= aux
+      | `Inactive (_, ready, _) -> ready >>= aux
       | `Running (queue, cond) ->
         (* Check our local queue, in case something has already been assigned to us. *)
         match dequeue_opt queue worker with
@@ -376,13 +426,19 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
     if Worker_map.mem name t.workers then Error `Name_taken
     else (
       let ready, set_ready = Lwt.wait () in
+      Dao.ensure_worker t.db name;
+      let inactive_reasons =
+        Inactive_reasons.(union worker) (
+          if Dao.get_paused t.db ~worker:name then Inactive_reasons.admin_pause
+          else Inactive_reasons.empty
+        )
+      in
       let q = {
         parent = t;
         name;
-        state = `Inactive (ready, set_ready);
+        state = `Inactive (inactive_reasons, ready, set_ready);
         workload = 0;
         capacity;
-        shutdown = false;
       } in
       t.workers <- Worker_map.add name q t.workers;
       t.cluster_capacity <- t.cluster_capacity +. float capacity;
@@ -430,14 +486,15 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
     in
     aux ()
 
-  let set_inactive w =
+  let set_inactive ~reason w =
     let t = w.parent in
     match w.state with
     | `Finished -> failwith "Queue already closed!"
-    | `Inactive _ -> ()
+    | `Inactive (reasons, r, sr) ->
+      w.state <- `Inactive (Inactive_reasons.union reasons reason, r, sr)
     | `Running (worker_q, cond) ->
       let ready, set_ready = Lwt.wait () in
-      w.state <- `Inactive (ready, set_ready);
+      w.state <- `Inactive (reason, ready, set_ready);
       let len = Backlog.length worker_q in
       Log.info (fun f -> f "%S marked inactive (reassigning %d items)" w.name len);
       Prometheus.Gauge.inc_one (Metrics.workers_paused w.parent.pool);
@@ -453,31 +510,41 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
       end;
       Lwt_condition.broadcast cond ()   (* Wake the worker's pop thread. *)
 
-  let set_active w = function
-    | false -> set_inactive w
-    | true when w.shutdown ->
-      Log.info (fun f -> f "Ignoring request to activate %S as it is shutting down" w.name);
+  let set_active ~reason w active =
+    assert (reason <> Inactive_reasons.empty);
+    if Inactive_reasons.(mem admin_pause) reason then
+      Dao.set_paused w.parent.db ~worker:w.name (not active);
+    match active with
+    | false -> set_inactive ~reason w
     | true ->
       match w.state with
       | `Finished -> failwith "Queue already closed!"
       | `Running _ -> ()
-      | `Inactive (_, set_ready) ->
+      | `Inactive (reasons, _, set_ready) when Inactive_reasons.mem reasons reason ->
         Log.info (fun f -> f "Activate queue for %S" w.name);
         Prometheus.Gauge.dec_one (Metrics.workers_paused w.parent.pool);
         w.state <- `Running (Backlog.create ~queue:w.name (), Lwt_condition.create ());
         Lwt.wakeup set_ready ()
+      | `Inactive (reasons, ready, set_ready) ->
+        if Inactive_reasons.mem reason reasons then (
+          let reasons = reasons - reason in
+          Log.info (fun f -> f "Removed inactive reason %a for %S (now %a)"
+                       Inactive_reasons.pp reason
+                       w.name
+                       Inactive_reasons.pp reasons);
+          w.state <- `Inactive (reasons, ready, set_ready)
+        )
 
   let shutdown w =
     Log.info (fun f -> f "Worker %S is shutting down" w.name);
-    w.shutdown <- true;
-    set_active w false
+    set_active w false ~reason:Inactive_reasons.admin_shutdown
 
   (* Worker [w] has disconnected. *)
   let release w =
-    set_inactive w;
+    set_inactive ~reason:Inactive_reasons.worker w;
     Log.info (fun f -> f "Release worker %S" w.name);
     match w.state with
-    | `Inactive (_, set_ready) ->
+    | `Inactive (_, _, set_ready) ->
       w.state <- `Finished;
       let t = w.parent in
       t.workers <- Worker_map.remove w.name t.workers;
@@ -489,10 +556,14 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
 
   let connected_workers t = t.workers
 
-  let is_active worker =
+  let inactive_reasons worker =
     match worker.state with
-    | `Running _ -> true
-    | `Inactive _ | `Finished -> false
+    | `Running _ -> Inactive_reasons.empty
+    | `Inactive (reasons, _, _) -> reasons
+    | `Finished -> Inactive_reasons.worker
+
+  let is_active worker =
+    inactive_reasons worker = Inactive_reasons.empty
 
   let create ~name ~db =
     {
@@ -519,8 +590,7 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
 
   let pp_state f = function
     | { state = `Finished; _ } -> Fmt.string f "(finished)"
-    | { shutdown = true; _ } -> Fmt.string f "(shutting down)"
-    | { state = `Inactive _; _ } -> Fmt.string f "(inactive)"
+    | { state = `Inactive (reasons, _, _); _ } -> Fmt.pf f "(inactive: %a)" Inactive_reasons.pp reasons
     | { state = `Running (q, _); _} -> Backlog.dump f q
 
   let dump_workers f x =

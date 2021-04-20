@@ -5,6 +5,26 @@ module Dao : sig
   (** Ensure the required tables are created. *)
 end
 
+(** Why a worker queue is inactive. *)
+module Inactive_reasons : sig
+  type t
+  (** A set of reasons. *)
+
+  val worker : t
+  (** The worker may pause itself. *)
+
+  val admin_pause : t
+  (** The admin paused it. *)
+
+  val admin_shutdown : t
+  (** The admin is shutting it down. *)
+
+  val mem : t -> t -> bool
+  (** [mem a b] is [true] if [a] is in the set [b] (is a subset of [b]). *)
+
+  val pp : t Fmt.t
+end
+
 module Make (Item : S.ITEM) (Time : S.TIME) : sig
   type t
   (** A pool of workers and queued jobs. *)
@@ -60,15 +80,18 @@ module Make (Item : S.ITEM) (Time : S.TIME) : sig
   val pop : worker -> (Item.t, [> `Finished]) Lwt_result.t
   (** [pop worker] gets the next item for [worker]. *)
 
-  val set_active : worker -> bool -> unit
-  (** [set_active worker active] sets the worker's active flag.
-      When set to [true], items can be added from the main queue.
-      When changed to [false], any entries on the queue are pushed back to the
-      main queue, and the queue stops accepting new items.
-      If the worker is marked as shutting down then this has no effect. *)
+  val set_active : reason:Inactive_reasons.t -> worker -> bool -> unit
+  (** [set_active ~reason worker active] sets the worker's active flag for [reason].
+      A worker is active if it has no reasons to be inactive.
+      When active, items can be added from the main queue.
+      When inactive, any entries on the queue are pushed back to the
+      main queue, and the queue stops accepting new items. *)
+
+  val inactive_reasons : worker -> Inactive_reasons.t
+  (** [inactive_reasons worker] is the set of reasons why [worker]'s queue is inactive, if any. *)
 
   val is_active : worker -> bool
-  (** [is_active worker] returns [worker]'s active flag. *)
+  (** [is_active worker] is [inactive_reasons worker = empty]. *)
 
   val shutdown : worker -> unit
   (** [shutdown worker] marks [worker] as shutting down. The worker is

@@ -47,6 +47,7 @@ module Item = struct
 end
 
 module Pool_api = struct
+  module Inactive_reasons = Pool.Inactive_reasons
   module Pool = Pool.Make(Item)(Unix)
 
   type t = {
@@ -101,13 +102,13 @@ module Pool_api = struct
       Log.warn (fun f -> f "Worker %S already registered!" name);
       e
     | Ok q ->
-      Pool.set_active q true;
+      Pool.set_active q true ~reason:Inactive_reasons.worker;
       Log.info (fun f -> f "Registered new worker %S" name);
       Hashtbl.add t.workers name worker;
       Lwt_condition.broadcast t.cond ();
       let queue = Cluster_api.Queue.local
         ~pop:(pop q)
-        ~set_active:(Pool.set_active q)
+        ~set_active:(Pool.set_active ~reason:Inactive_reasons.worker q)
         ~release:(fun () ->
           Hashtbl.remove t.workers name;
           Capability.dec_ref worker;
@@ -139,7 +140,7 @@ module Pool_api = struct
     in
     let set_active name active =
       match Astring.String.Map.find_opt name (Pool.connected_workers t.pool) with
-      | Some worker -> Pool.set_active worker active; Ok ()
+      | Some worker -> Pool.set_active worker active ~reason:Inactive_reasons.admin_pause; Ok ()
       | None -> Error `Unknown_worker
     in
     let update name =

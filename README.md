@@ -251,7 +251,6 @@ ocluster-admin -c ./capnp-secrets/admin.cap pause linux-x86_64 my-host
 
 A paused worker will not be assigned any more items until it is unpaused, but
 it will continue with any jobs it is already running. Use `unpause` to resume it.
-Note that if a paused worker disconnects and reconnects, it will be unpaused automatically.
 
 Instead of specifying a worker, you can also use `--all` to pause or unpause all workers in a pool.
 
