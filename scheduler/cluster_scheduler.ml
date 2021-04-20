@@ -100,6 +100,7 @@ module Pool_api = struct
     match Pool.register t.pool ~name ~capacity with
     | Error `Name_taken as e ->
       Log.warn (fun f -> f "Worker %S already registered!" name);
+      Capability.dec_ref worker;
       e
     | Ok q ->
       Pool.set_active q true ~reason:Inactive_reasons.worker;
