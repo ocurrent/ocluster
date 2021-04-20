@@ -14,11 +14,13 @@ let local ~register =
       match worker with
       | None -> Service.fail "Missing worker argument!"
       | Some worker ->
-        let response, results = Service.Response.create Results.init_pointer in
-        let queue = register ~name ~capacity worker in
-        Results.queue_set results (Some queue);
-        Capability.dec_ref queue;
-        Service.return response
+        match register ~name ~capacity worker with
+        | Error `Name_taken -> Service.fail "Worker already registered!"
+        | Ok queue ->
+          let response, results = Service.Response.create Results.init_pointer in
+          Results.queue_set results (Some queue);
+          Capability.dec_ref queue;
+          Service.return response
   end
 
 module X = Raw.Client.Registration

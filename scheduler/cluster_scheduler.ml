@@ -97,14 +97,15 @@ module Pool_api = struct
 
   let register t ~name ~capacity worker =
     match Pool.register t.pool ~name ~capacity with
-    | Error `Name_taken ->
-      Fmt.failwith "Worker already registered!";
+    | Error `Name_taken as e ->
+      Log.warn (fun f -> f "Worker %S already registered!" name);
+      e
     | Ok q ->
       Pool.set_active q true;
       Log.info (fun f -> f "Registered new worker %S" name);
       Hashtbl.add t.workers name worker;
       Lwt_condition.broadcast t.cond ();
-      Cluster_api.Queue.local
+      let queue = Cluster_api.Queue.local
         ~pop:(pop q)
         ~set_active:(Pool.set_active q)
         ~release:(fun () ->
@@ -112,6 +113,8 @@ module Pool_api = struct
           Capability.dec_ref worker;
           Pool.release q
         )
+      in
+      Ok queue
 
   let registration_service t =
     let register = register t in
