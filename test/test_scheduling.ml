@@ -26,6 +26,7 @@ module Fake_time = struct
     now := !now +. float x
 end
 
+module Inactive_reasons = Cluster_scheduler.Pool.Inactive_reasons
 module Pool = Cluster_scheduler.Pool.Make(Item)(Fake_time)
 
 let job_state x =
@@ -92,8 +93,8 @@ let%expect_test "simple" =
   let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
   let w2 = Pool.register pool ~name:"worker-2" ~capacity:1 |> Result.get_ok in
   let user = Pool.client pool ~client_id:"u1" in
-  Pool.set_active w1 true;
-  Pool.set_active w2 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
+  Pool.set_active w2 true ~reason:Inactive_reasons.worker;
   let w1a = Pool.pop w1 in
   let w2a = Pool.pop w2 in
   submit user ~urgent:false @@ job "job1";
@@ -116,8 +117,8 @@ let%expect_test "cached_scheduling" =
   let pool = Pool.create ~db ~name:"cached_scheduling" in
   let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
   let w2 = Pool.register pool ~name:"worker-2" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w1 true;
-  Pool.set_active w2 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
+  Pool.set_active w2 true ~reason:Inactive_reasons.worker;
   let w1a = Pool.pop w1 in
   let w2a = Pool.pop w2 in
   (* Workers ready *)
@@ -227,8 +228,8 @@ let%expect_test "unbalanced" =
   let pool = Pool.create ~db ~name:"unbalanced" in
   let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
   let w2 = Pool.register pool ~name:"worker-2" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w1 true;
-  Pool.set_active w2 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
+  Pool.set_active w2 true ~reason:Inactive_reasons.worker;
   let user = Pool.client pool ~client_id:"u1" in
   Pool.Client.set_rate user 2.0;
   submit user ~urgent:false @@ job "job1" ~cache_hint:"a";
@@ -276,7 +277,7 @@ let%expect_test "no_workers" =
   submit user ~urgent:false @@ job "job1" ~cache_hint:"a";
   submit user ~urgent:false @@ job "job2" ~cache_hint:"a";
   let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w1 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
   let _ = Pool.pop w1 in
   Pool.release w1;
   Lwt.pause () >>= fun () ->
@@ -290,7 +291,7 @@ let%expect_test "no_workers" =
     cached: a: [worker-1]
   |}];
   let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w1 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
   flush_queue w1 >|= fun () ->
   [%expect {| Flush job2 |}]
 
@@ -301,7 +302,7 @@ let%expect_test "persist" =
     let pool = Pool.create ~db ~name:"persist" in
     (* worker-1 handles job1 *)
     let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
-    Pool.set_active w1 true;
+    Pool.set_active w1 true ~reason:Inactive_reasons.worker;
     let user = Pool.client pool ~client_id:"u1" in
     submit user ~urgent:false @@ job "job1" ~cache_hint:"a";
     let _ = Pool.pop w1 in
@@ -312,10 +313,10 @@ let%expect_test "persist" =
   let user = Pool.client pool ~client_id:"u1" in
   (* Worker 2 registers first, and so would normally get the first job: *)
   let w2 = Pool.register pool ~name:"worker-2" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w2 true;
+  Pool.set_active w2 true ~reason:Inactive_reasons.worker;
   let w2a = Pool.pop w2 in
   let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w1 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
   let w1a = Pool.pop w1 in
   submit user ~urgent:false @@ job "job2" ~cache_hint:"a";
   Lwt.pause () >>= fun () ->
@@ -339,14 +340,14 @@ let%expect_test "urgent" =
   submit user ~urgent:true  @@ job "job3" ~cache_hint:"a";
   submit user ~urgent:false @@ job "job4" ~cache_hint:"b";
   let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w1 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
   let w1a = Pool.pop w1 in
   (* Worker 1 / job 1 *)
   print_result (job_state w1a);
   [%expect{| job2 |}];
   (* Worker 2 joins and gets job 4, due to the cache hints: *)
   let w2 = Pool.register pool ~name:"worker-2" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w2 true;
+  Pool.set_active w2 true ~reason:Inactive_reasons.worker;
   let w2a = Pool.pop w2 in
   (* Worker 2 / job 1 *)
   print_result (job_state w2a);
@@ -381,7 +382,7 @@ let%expect_test "urgent_worker" =
   submit user ~urgent:false @@ job "job2" ~cache_hint:"a";
   submit user ~urgent:false @@ job "job3" ~cache_hint:"b";
   let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w1 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
   let w1a = Pool.pop w1 in
   (* Worker 1 / job 1 *)
   print_result (job_state w1a);
@@ -389,7 +390,7 @@ let%expect_test "urgent_worker" =
   (* Worker 2 joins and gets job 3, due to the cache hints, putting job2 on
      worker 1's queue. *)
   let w2 = Pool.register pool ~name:"worker-2" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w2 true;
+  Pool.set_active w2 true ~reason:Inactive_reasons.worker;
   let w2a = Pool.pop w2 in
   (* Worker 2 / job 1 *)
   print_result (job_state w2a);
@@ -436,13 +437,13 @@ let%expect_test "inactive" =
   with_test_db @@ fun db ->
   let pool = Pool.create ~db ~name:"inactive" in
   let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w1 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
   let w1a = Pool.pop w1 in
   let user = Pool.client pool ~client_id:"u1" in
   submit user ~urgent:false @@ job "job1" ~cache_hint:"a";
   submit user ~urgent:false @@ job "job2" ~cache_hint:"a";
   let w2 = Pool.register pool ~name:"worker-2" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w2 true;
+  Pool.set_active w2 true ~reason:Inactive_reasons.worker;
   let w2a = Pool.pop w2 in
   Lwt.pause () >>= fun () ->
   (* Both jobs assigned to Worker-1 *)
@@ -457,14 +458,14 @@ let%expect_test "inactive" =
     cached: a: [worker-1]
   |}];
   (* Deactivate worker-1. Its job is reassigned. *)
-  Pool.set_active w1 false;
+  Pool.set_active w1 false ~reason:Inactive_reasons.worker;
   (* Job reassigned to Worker-2 *)
   print_pool pool;
   [%expect{|
     capacity: 2
     queue: (ready) []
     registered:
-      worker-1 (0): (inactive)
+      worker-1 (0): (inactive: worker pause)
       worker-2 (10): [u1:job2@10s(10)]
     clients: u1(1)+12s
     cached: a: [worker-1; worker-2]
@@ -479,19 +480,19 @@ let%expect_test "inactive" =
   Pool.Client.set_rate user 2.0;
   submit user ~urgent:false @@ job "job3" ~cache_hint:"a";
   (* Deactivate worker-2. *)
-  Pool.set_active w2 false;
+  Pool.set_active w2 false ~reason:Inactive_reasons.worker;
   (* Job unassigned *)
   print_pool pool;
   [%expect{|
     capacity: 2
     queue: (backlog) [u1:job3@12s]
     registered:
-      worker-1 (0): (inactive)
-      worker-2 (0): (inactive)
+      worker-1 (0): (inactive: worker pause)
+      worker-2 (0): (inactive: worker pause)
     clients: u1(2)+13s
     cached: a: [worker-1; worker-2]
   |}];
-  Pool.set_active w2 true;
+  Pool.set_active w2 true ~reason:Inactive_reasons.worker;
   Pool.release w1;
   flush_queue w2 >|= fun () ->
   [%expect {| Flush job3 |}]
@@ -502,8 +503,8 @@ let%expect_test "cancel_worker_queue" =
   let pool = Pool.create ~db ~name:"cancel_worker_queue" in
   let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
   let w2 = Pool.register pool ~name:"worker-2" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w1 true;
-  Pool.set_active w2 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
+  Pool.set_active w2 true ~reason:Inactive_reasons.worker;
   let w1a = Pool.pop w1 in
   let w2a = Pool.pop w2 in
   let user = Pool.client pool ~client_id:"u1" in
@@ -542,14 +543,14 @@ let%expect_test "cancel_worker_queue" =
     cached: a: [worker-1], b: [worker-2]
   |}];
   Pool.release w2;
-  Pool.set_active w1 false;
+  Pool.set_active w1 false ~reason:Inactive_reasons.worker;
   (* Job3 pushed back *)
   print_pool pool;
   [%expect{|
     capacity: 1
     queue: (backlog) [u1:job3@6s]
     registered:
-      worker-1 (0): (inactive)
+      worker-1 (0): (inactive: worker pause)
     clients: u1(2)+12s
     cached: a: [worker-1], b: [worker-2]
   |}];
@@ -580,7 +581,7 @@ let%expect_test "push_back" =
   let pool = Pool.create ~db ~name:"push_back" in
   let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
   let w2 = Pool.register pool ~name:"worker-2" ~capacity:1 |> Result.get_ok in
-  Pool.set_active w1 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
   let _w1a = Pool.pop w1 in
   let _w2a = Pool.pop w2 in
   let user = Pool.client pool ~client_id:"u1" in
@@ -589,7 +590,7 @@ let%expect_test "push_back" =
   Lwt.pause () >>= fun () ->
   submit user ~urgent:false @@ job "job2" ~cache_hint:"a";
   submit user ~urgent:false @@ job "job3" ~cache_hint:"a";
-  Pool.set_active w2 true;
+  Pool.set_active w2 true ~reason:Inactive_reasons.worker;
   Lwt.pause () >>= fun () ->
   (* Jobs assigned *)
   print_pool pool;
@@ -603,18 +604,18 @@ let%expect_test "push_back" =
     cached: a: [worker-1]
   |}];
   Pool.release w2;
-  Pool.set_active w1 false;
+  Pool.set_active w1 false ~reason:Inactive_reasons.worker;
   (* Jobs pushed back *)
   print_pool pool;
   [%expect{|
     capacity: 1
     queue: (backlog) [u1:job3@6s u1:job2@5s]
     registered:
-      worker-1 (0): (inactive)
+      worker-1 (0): (inactive: worker pause)
     clients: u1(2)+7s
     cached: a: [worker-1]
   |}];
-  Pool.set_active w1 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
   flush_queue w1 >|= fun () ->
   [%expect {|
     Flush job2
@@ -631,8 +632,8 @@ let%expect_test "fairness" =
   let bob = Pool.client pool ~client_id:"bob" in
   Pool.Client.set_rate alice 2.0;
   Pool.Client.set_rate bob 2.0;
-  Pool.set_active w1 true;
-  Pool.set_active w2 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
+  Pool.set_active w2 true ~reason:Inactive_reasons.worker;
   let w1a = Pool.pop w1 in
   let w2a = Pool.pop w2 in
   submit alice ~urgent:false @@ job "a1";
@@ -680,8 +681,8 @@ let%expect_test "fairness_rates" =
   let bob = Pool.client pool ~client_id:"bob" in
   Pool.Client.set_rate alice 5.0;
   Pool.Client.set_rate bob 1.0;
-  Pool.set_active w1 true;
-  Pool.set_active w2 true;
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
+  Pool.set_active w2 true ~reason:Inactive_reasons.worker;
   let w1a = Pool.pop w1 in
   let w2a = Pool.pop w2 in
   (* Alice submits 30s worth of work, but using 5 machines expects to take 6s. *)
@@ -720,3 +721,59 @@ let%expect_test "fairness_rates" =
     Flush b2
     Flush b3
   |}]
+
+(* Keep track of inactive reasons. *)
+let%expect_test "inactive" =
+  with_test_db @@ fun db ->
+  let pool = Pool.create ~db ~name:"simple" in
+  let w1 = Pool.register pool ~name:"worker-1" ~capacity:1 |> Result.get_ok in
+  (* Workers start paused: *)
+  print_pool pool;
+  [%expect{|
+    capacity: 1
+    queue: (backlog) []
+    registered:
+      worker-1 (0): (inactive: worker pause)
+    clients:
+    cached: |}];
+  (* Now also paused by admin: *)
+  Pool.set_active w1 false ~reason:Inactive_reasons.admin_pause;
+  print_pool pool;
+  [%expect{|
+    capacity: 1
+    queue: (backlog) []
+    registered:
+      worker-1 (0): (inactive: worker pause, admin pause)
+    clients:
+    cached: |}];
+  (* Worker unpauses, but is still inactive: *)
+  Pool.set_active w1 true ~reason:Inactive_reasons.worker;
+  print_pool pool;
+  [%expect{|
+    capacity: 1
+    queue: (backlog) []
+    registered:
+      worker-1 (0): (inactive: admin pause)
+    clients:
+    cached: |}];
+  (* Admin also unpauses: *)
+  Pool.set_active w1 true ~reason:Inactive_reasons.admin_pause;
+  print_pool pool;
+  [%expect{|
+    capacity: 1
+    queue: (backlog) []
+    registered:
+      worker-1 (0): []
+    clients:
+    cached: |}];
+  (* Shutdown: *)
+  Pool.shutdown w1;
+  print_pool pool;
+  [%expect{|
+    capacity: 1
+    queue: (backlog) []
+    registered:
+      worker-1 (0): (inactive: shutting down)
+    clients:
+    cached: |}];
+  Lwt.return_unit
