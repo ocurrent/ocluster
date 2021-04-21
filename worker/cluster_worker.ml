@@ -171,8 +171,8 @@ let check_docker_partition t =
   match t.prune_threshold with
   | None -> Lwt_result.return ()
   | Some prune_threshold ->
-    Lwt_process.pread_line("", [| "docker"; "info"; "-f"; "{{.DockerRootDir}}" |]) >>= fun line ->
-    Df.free_space_percent (String.trim line) >|= fun free ->
+    Lwt_process.pread_line("", [| "docker"; "info"; "-f"; "{{.DockerRootDir}}" |]) >|= fun line ->
+    let free = Df.free_space_percent (String.trim line) in
     Log.info (fun f -> f "Docker partition: %.0f%% free" free);
     if free < prune_threshold then Error `Disk_space_low
     else Ok ()
