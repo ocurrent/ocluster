@@ -116,15 +116,15 @@ module Dao = struct
       )
     |> Option.value ~default:1.0
 
-  let ensure_worker t worker =
-    Db.exec t.ensure_worker Sqlite3.Data.[ TEXT worker ]
+  let ensure_worker t ~pool worker =
+    Db.exec t.ensure_worker Sqlite3.Data.[ TEXT pool; TEXT worker ]
 
-  let set_paused t ~worker v =
+  let set_paused t ~pool ~worker v =
     let v = Bool.to_int v |> Int64.of_int in
-    Db.exec t.set_paused Sqlite3.Data.[ INT v; TEXT worker ]
+    Db.exec t.set_paused Sqlite3.Data.[ INT v; TEXT pool; TEXT worker ]
 
-  let get_paused t ~worker =
-    match Db.query_one t.get_paused Sqlite3.Data.[ TEXT worker ] with
+  let get_paused t ~pool ~worker =
+    match Db.query_one t.get_paused Sqlite3.Data.[ TEXT pool; TEXT worker ] with
     | Sqlite3.Data.[ INT 1L ] -> true
     | Sqlite3.Data.[ INT 0L ] -> false
     | row -> Fmt.failwith "Bad row from DB: %a" Db.dump_row row
@@ -142,18 +142,19 @@ module Dao = struct
                      rate       REAL NOT NULL, \
                      PRIMARY KEY (pool, user))" |> Db.or_fail ~cmd:"create pool_user_rate table";
     Sqlite3.exec db "CREATE TABLE IF NOT EXISTS workers ( \
-                     id       TEXT NOT NULL, \
-                     paused   BOOLEAN DEFAULT FALSE, \
-                     PRIMARY KEY (id))" |> Db.or_fail ~cmd:"create workers table";
+                     pool       TEXT NOT NULL, \
+                     id         TEXT NOT NULL, \
+                     paused     BOOLEAN DEFAULT FALSE, \
+                     PRIMARY KEY (pool, id))" |> Db.or_fail ~cmd:"create workers table";
     let query_cache = Sqlite3.prepare db "SELECT worker FROM cached WHERE pool = ? AND cache_hint = ? ORDER BY worker" in
     let mark_cached = Sqlite3.prepare db "INSERT OR REPLACE INTO cached (pool, cache_hint, worker, created) VALUES (?, ?, ?, date('now'))" in
     let dump_cache = Sqlite3.prepare db "SELECT DISTINCT cache_hint FROM cached WHERE pool = ? ORDER BY cache_hint" in
     let set_rate = Sqlite3.prepare db "INSERT OR REPLACE INTO pool_user_rate (pool, user, rate) VALUES (?, ?, ?)" in
     let get_rate = Sqlite3.prepare db "SELECT rate FROM pool_user_rate WHERE pool = ? AND user = ?" in
     let remove_user = Sqlite3.prepare db "DELETE FROM pool_user_rate WHERE pool = ? AND user = ?" in
-    let ensure_worker = Sqlite3.prepare db "INSERT OR IGNORE INTO workers (id) VALUES (?)" in
-    let set_paused = Sqlite3.prepare db "UPDATE workers SET paused = ? WHERE id = ?" in
-    let get_paused = Sqlite3.prepare db "SELECT paused FROM workers WHERE id = ?" in
+    let ensure_worker = Sqlite3.prepare db "INSERT OR IGNORE INTO workers (pool, id) VALUES (?, ?)" in
+    let set_paused = Sqlite3.prepare db "UPDATE workers SET paused = ? WHERE pool = ? AND id = ?" in
+    let get_paused = Sqlite3.prepare db "SELECT paused FROM workers WHERE pool = ? AND id = ?" in
     { query_cache; mark_cached; dump_cache; set_rate; get_rate; remove_user; ensure_worker; set_paused; get_paused }
 end
 
@@ -426,10 +427,10 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
     if Worker_map.mem name t.workers then Error `Name_taken
     else (
       let ready, set_ready = Lwt.wait () in
-      Dao.ensure_worker t.db name;
+      Dao.ensure_worker t.db ~pool:t.pool name;
       let inactive_reasons =
         Inactive_reasons.(union worker) (
-          if Dao.get_paused t.db ~worker:name then Inactive_reasons.admin_pause
+          if Dao.get_paused t.db ~pool:t.pool ~worker:name then Inactive_reasons.admin_pause
           else Inactive_reasons.empty
         )
       in
@@ -513,7 +514,7 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
   let set_active ~reason w active =
     assert (reason <> Inactive_reasons.empty);
     if Inactive_reasons.(mem admin_pause) reason then
-      Dao.set_paused w.parent.db ~worker:w.name (not active);
+      Dao.set_paused w.parent.db ~pool:w.parent.pool ~worker:w.name (not active);
     match active with
     | false -> set_inactive ~reason w
     | true ->
