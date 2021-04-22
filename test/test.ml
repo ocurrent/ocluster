@@ -156,6 +156,8 @@ let builder_capacity () =
   Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example3\nJob succeeded\n" result;
   Lwt.return_unit
 
+let worker_info = Alcotest.of_pp Cluster_api.Pool_admin.pp_worker_info
+
 let admin () =
   with_sched @@ fun ~admin ~registry:_ ->
   Cluster_api.Admin.pools admin >>= fun pools ->
@@ -163,6 +165,23 @@ let admin () =
   Capability.with_ref (Cluster_api.Admin.pool admin "pool") @@ fun pool ->
   Cluster_api.Pool_admin.show pool >>= fun state ->
   Logs.info (fun f -> f "Pool state:\n%s" state);
+  (* Add a paused worker: *)
+  Cluster_api.Pool_admin.set_active pool "worker-1" false ~auto_create:true >>= fun () ->
+  Cluster_api.Pool_admin.workers pool >>= fun workers ->
+  Alcotest.(check (list worker_info)) "Workers" [
+    { Cluster_api.Pool_admin.name = "worker-1"; connected = false; active = false };
+  ] workers;
+  (* Unpause it: *)
+  Cluster_api.Pool_admin.set_active pool "worker-1" true >>= fun () ->
+  Cluster_api.Pool_admin.workers pool >>= fun workers ->
+  Alcotest.(check (list worker_info)) "Workers" [
+    { Cluster_api.Pool_admin.name = "worker-1"; connected = false; active = true };
+  ] workers;
+  (* Forget it: *)
+  Cluster_api.Pool_admin.forget pool "worker-1" >>= fun r ->
+  assert (r = Ok ());
+  Cluster_api.Pool_admin.workers pool >>= fun workers ->
+  Alcotest.(check (list worker_info)) "Workers" [] workers;
   Lwt.return_unit
 
 (* Test our mock network. *)

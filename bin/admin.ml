@@ -51,12 +51,12 @@ let show cap_path pool =
     Cluster_api.Pool_admin.show pool >|= fun status ->
     print_endline (String.trim status)
 
-let set_active active all cap_path pool worker =
+let set_active active all auto_create cap_path pool worker =
   run cap_path @@ fun admin_service ->
   Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
   match worker with
   | Some worker ->
-    Cluster_api.Pool_admin.set_active pool worker active
+    Cluster_api.Pool_admin.set_active ~auto_create pool worker active
   | None ->
     Cluster_api.Pool_admin.workers pool >>= function
     | [] ->
@@ -64,7 +64,7 @@ let set_active active all cap_path pool worker =
       Lwt.return_unit
     | workers when all ->
       let workers =
-        workers |> List.filter_map (fun { Cluster_api.Pool_admin.name; active = prev } ->
+        workers |> List.filter_map (fun { Cluster_api.Pool_admin.name; active = prev; connected = _ } ->
           if prev = active then (Fmt.pr "(worker %S is already done)@." name; None)
           else Some name
         )
@@ -81,18 +81,11 @@ let set_active active all cap_path pool worker =
         Fmt.pr "Success.@."
       )
     | workers ->
-      let pp_active f = function
-        | true -> Fmt.string f "active"
-        | false -> Fmt.string f "paused"
-      in
-      let pp_worker_info f { Cluster_api.Pool_admin.name; active } =
-        Fmt.pf f "%s (%a)" name pp_active active
-      in
       Fmt.epr "@[<v>Specify which worker you want to affect (or use --all).@,Candidates are:@,%a@."
-        Fmt.(list ~sep:cut pp_worker_info) workers;
+        Fmt.(list ~sep:cut Cluster_api.Pool_admin.pp_worker_info) workers;
       exit 1
 
-let pp_worker_info f { Cluster_api.Pool_admin.name; _ } =
+let pp_worker_name f { Cluster_api.Pool_admin.name; _ } =
   Fmt.string f name
 
 let update cap_path pool worker =
@@ -120,7 +113,7 @@ let update cap_path pool worker =
         exit 1
       | Ok () ->
         Fmt.pr "Canary updated OK. Updating the others: [%a]@."
-          Fmt.(list ~sep:sp pp_worker_info) ws;
+          Fmt.(list ~sep:sp pp_worker_name) ws;
         ws
         |> List.map (fun (w:Cluster_api.Pool_admin.worker_info) ->
             Cluster_api.Pool_admin.update pool w.name >|= function
@@ -131,6 +124,30 @@ let update cap_path pool worker =
           )
         |> Lwt.join >|= fun () ->
         Fmt.pr "All pool workers restarted.@."
+
+let forget cap_path pool worker =
+  run cap_path @@ fun admin_service ->
+  Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
+  match worker with
+  | Some worker ->
+    begin
+      Cluster_api.Pool_admin.forget pool worker >|= function
+      | Ok () -> ()
+      | Error (`Capnp ex) ->
+        Fmt.pr "%a@." Capnp_rpc.Error.pp ex;
+        exit 1
+    end
+  | None ->
+    Cluster_api.Pool_admin.workers pool >>= function
+    | [] ->
+      Fmt.epr "No workers in pool!@.";
+      exit 1
+    | workers ->
+      let disconnected = List.filter (fun i -> not i.Cluster_api.Pool_admin.connected) workers in
+      let workers = if disconnected = [] then workers else disconnected in
+      Fmt.epr "@[<v>Specify which worker you want to forget.@,Candidates are:@,%a@."
+        Fmt.(list ~sep:cut Cluster_api.Pool_admin.pp_worker_info) workers;
+      exit 1
 
 (* Command-line parsing *)
 
@@ -180,6 +197,13 @@ let all =
     ~doc:"All workers"
     ["all"]
 
+let auto_create =
+  Arg.value @@
+  Arg.flag @@
+  Arg.info
+    ~doc:"Create worker first if unknown"
+    ["auto-create"]
+
 let add_client =
   let doc = "Create a new client endpoint for submitting jobs" in
   Term.(const add_client $ connect_addr $ Arg.required (client_id ~pos:0)),
@@ -207,12 +231,12 @@ let show =
 
 let pause =
   let doc = "Set a worker to be unavailable for further jobs" in
-  Term.(const (set_active false) $ all $ connect_addr $ Arg.required pool_pos $ worker),
+  Term.(const (set_active false) $ all $ auto_create $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "pause" ~doc
 
 let unpause =
   let doc = "Resume a paused worker" in
-  Term.(const (set_active true) $ all $ connect_addr $ Arg.required pool_pos $ worker),
+  Term.(const (set_active true) $ all $ auto_create $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "unpause" ~doc
 
 let update =
@@ -220,7 +244,12 @@ let update =
   Term.(const update $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "update" ~doc
 
-let cmds = [add_client; remove_client; list_clients; set_rate; show; pause; unpause; update]
+let forget =
+  let doc = "Forget about an old worker" in
+  Term.(const forget $ connect_addr $ Arg.required pool_pos $ worker),
+  Term.info "forget" ~doc
+
+let cmds = [add_client; remove_client; list_clients; set_rate; show; pause; unpause; update; forget]
 
 let default_cmd =
   let doc = "a command-line admin client for the build-scheduler" in

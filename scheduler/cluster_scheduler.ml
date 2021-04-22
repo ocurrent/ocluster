@@ -131,21 +131,24 @@ module Pool_api = struct
 
   let admin_service ~validate_client t =
     let show () = Fmt.to_to_string Pool.show t.pool in
-    let workers () =
-      Pool.connected_workers t.pool
-      |> Astring.String.Map.bindings
-      |> List.map (fun (name, worker) ->
-          let active = Pool.is_active worker in
-          { Cluster_api.Pool_admin.name; active }
-        )
+    let workers () = Pool.known_workers t.pool in
+    let set_active ~auto_create name active =
+      if auto_create || Pool.worker_known t.pool name then (
+        Pool.with_worker t.pool name (fun worker ->
+            Pool.set_active worker active ~reason:Inactive_reasons.admin_pause; Ok ()
+          )
+      ) else (
+        Error `Unknown_worker
+      )
     in
-    let set_active name active =
-      match Astring.String.Map.find_opt name (Pool.connected_workers t.pool) with
-      | Some worker -> Pool.set_active worker active ~reason:Inactive_reasons.admin_pause; Ok ()
-      | None -> Error `Unknown_worker
+    let forget name =
+      match Pool.forget_worker t.pool name with
+      | Ok () -> Service.return_empty ()
+      | Error `Still_connected -> Service.fail "Worker %S is still connected!" name
+      | Error `Unknown_worker -> Service.fail "Worker %S not known in this pool" name
     in
     let update name =
-      match Astring.String.Map.find_opt name (Pool.connected_workers t.pool) with
+      match Pool.Worker_map.find_opt name (Pool.connected_workers t.pool) with
       | None -> Service.fail "Unknown worker"
       | Some w ->
         let cap = Option.get (worker t name) in
@@ -158,7 +161,7 @@ module Pool_api = struct
         | Ok () ->
           Log.info (fun f -> f "Waiting for %S to reconnect after update" name);
           let rec aux () =
-            match Astring.String.Map.find_opt name (Pool.connected_workers t.pool) with
+            match Pool.Worker_map.find_opt name (Pool.connected_workers t.pool) with
             | Some new_w when new_w != w -> Lwt_result.return (Service.Response.create_empty ())
             | _ -> Lwt_condition.wait t.cond >>= aux
           in
@@ -175,7 +178,7 @@ module Pool_api = struct
         Ok ()
       ) else Error `No_such_user
     in
-    Cluster_api.Pool_admin.local ~show ~workers ~worker:(worker t) ~set_active ~update ~set_rate
+    Cluster_api.Pool_admin.local ~show ~workers ~worker:(worker t) ~set_active ~update ~forget ~set_rate
 
   let remove_client t ~client_id =
     Pool.remove_client t.pool ~client_id

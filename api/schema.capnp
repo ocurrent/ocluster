@@ -138,21 +138,32 @@ interface Submission {
 }
 
 struct WorkerInfo {
-  name   @0 :Text;
-  active @1 :Bool;
+  name      @0 :Text;
+  active    @1 :Bool;
+  connected @2 :Bool;
 }
 
 interface PoolAdmin {
   show      @0 () -> (state :Text);
   workers   @1 () -> (workers : List(WorkerInfo));
   worker    @3 (worker :Text) -> (worker :Worker);
-  setActive @2 (worker :Text, active :Bool) -> ();
+
+  setActive @2 (worker :Text, active :Bool, autoCreate :Bool) -> ();
+  # Mark worker as active or paused.
+  # This active flag is independent of the Queue.setActive one
+  # (the worker is paused if either the admin or the worker sets it inactive).
+  # This can be used even when the worker is disconnected.
+  # If autoCreate is true then this can be used even with an unknown worker,
+  # which may be useful if you want a new worker to start paused, for example.
 
   update    @4 (worker :Text) -> ();
   # Drain worker, ask it to restart with the latest version, and return when it comes back.
 
   setRate   @5 (id :Text, rate :Float64) -> ();
   # Set the expected share of the pool for this client.
+
+  forget    @6 (worker :Text) -> ();
+  # Remove worker from the set of known workers.
 }
 
 interface Admin {

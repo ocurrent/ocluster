@@ -4,9 +4,18 @@ open Capnp_rpc_lwt
 type worker_info = {
   name : string;
   active : bool;
+  connected : bool;
 }
 
-let local ~show ~workers ~worker ~set_active ~update ~set_rate =
+let pp_worker_info f { name; active; connected } =
+  let notes = if active then [] else ["paused"] in
+  let notes = if connected then notes else "disconnected" :: notes in
+  if notes = [] then
+    Fmt.string f name
+  else
+    Fmt.pf f "%s (@[<h>%a@])" name Fmt.(list ~sep:comma string) notes
+
+let local ~show ~workers ~worker ~set_active ~update ~forget ~set_rate =
   let module X = Raw.Service.PoolAdmin in
   X.local @@ object
     inherit X.service
@@ -24,11 +33,12 @@ let local ~show ~workers ~worker ~set_active ~update ~set_rate =
       let response, results = Service.Response.create Results.init_pointer in
       let items = workers () in
       let arr = Results.workers_init results (List.length items) in
-      items |> List.iteri (fun i { name; active } ->
+      items |> List.iteri (fun i { name; active; connected } ->
           let slot = Capnp.Array.get arr i in
           let module B = Raw.Builder.WorkerInfo in
           B.name_set slot name;
-          B.active_set slot active
+          B.active_set slot active;
+          B.connected_set slot connected
         );
       Service.return response
 
@@ -36,8 +46,9 @@ let local ~show ~workers ~worker ~set_active ~update ~set_rate =
       let open X.SetActive in
       let worker = Params.worker_get params in
       let active = Params.active_get params in
+      let auto_create = Params.auto_create_get params in
       release_param_caps ();
-      match set_active worker active with
+      match set_active ~auto_create worker active with
       | Ok () -> Service.return_empty ()
       | Error `Unknown_worker -> Service.fail "Unknown worker"
 
@@ -58,6 +69,12 @@ let local ~show ~workers ~worker ~set_active ~update ~set_rate =
       let name = Params.worker_get params in
       release_param_caps ();
       update name
+
+    method forget_impl params release_param_caps =
+      let open X.Forget in
+      let name = Params.worker_get params in
+      release_param_caps ();
+      forget name
 
     method set_rate_impl params release_param_caps =
       let open X.SetRate in
@@ -86,7 +103,8 @@ let workers t =
   Results.workers_get_list results |> List.map @@ fun worker ->
   let name = R.name_get worker in
   let active = R.active_get worker in
-  { name; active }
+  let connected = R.connected_get worker in
+  { name; active; connected }
 
 let worker t worker =
   let open X.Worker in
@@ -94,15 +112,22 @@ let worker t worker =
   Params.worker_set params worker;
   Capability.call_for_caps t method_id request Results.worker_get_pipelined
 
-let set_active t worker active =
+let set_active ?(auto_create=false) t worker active =
   let open X.SetActive in
   let request, params = Capability.Request.create Params.init_pointer in
   Params.worker_set params worker;
   Params.active_set params active;
+  Params.auto_create_set params auto_create;
   Capability.call_for_unit_exn t method_id request
 
 let update t worker =
   let open X.Update in
+  let request, params = Capability.Request.create Params.init_pointer in
+  Params.worker_set params worker;
+  Capability.call_for_unit t method_id request
+
+let forget t worker =
+  let open X.Forget in
   let request, params = Capability.Request.create Params.init_pointer in
   Params.worker_set params worker;
   Capability.call_for_unit t method_id request
