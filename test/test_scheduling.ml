@@ -127,8 +127,8 @@ let%expect_test "cached_scheduling" =
     capacity: 2
     queue: (ready) [worker-2 worker-1]
     registered:
-      worker-1 (0): []
-      worker-2 (0): []
+      worker-1 (0): [] (0 running)
+      worker-2 (0): [] (0 running)
     disconnected:
     clients:
     cached:
@@ -146,8 +146,8 @@ let%expect_test "cached_scheduling" =
     capacity: 2
     queue: (backlog) [u1:job5@12s u1:job4@11s u1:job3@10s]
     registered:
-      worker-1 (10): [u1:job1@0s(10)]
-      worker-2 (10): [u1:job2@5s(10)]
+      worker-1 (10): [u1:job1@0s(10)] (0 running)
+      worker-2 (10): [u1:job2@5s(10)] (0 running)
     disconnected:
     clients: u1(2)+17s
     cached: a: [worker-1], b: [worker-2]
@@ -159,8 +159,8 @@ let%expect_test "cached_scheduling" =
     capacity: 2
     queue: (backlog) [u1:job5@12s u1:job4@11s u1:job3@10s]
     registered:
-      worker-1 (0): []
-      worker-2 (0): []
+      worker-1 (0): [] (1 running)
+      worker-2 (0): [] (1 running)
     disconnected:
     clients: u1(2)+17s
     cached: a: [worker-1], b: [worker-2]
@@ -172,6 +172,7 @@ let%expect_test "cached_scheduling" =
   print_result (job_state w2a);
   [%expect{| job2 |}];
   (* Worker 2 asks for another job, but the next two jobs would be better done on worker-1. *)
+  Pool.job_finished w2;
   let w2b = Pool.pop w2 in
   (* Jobs 3 and 4 assigned to worker-1 *)
   print_pool pool;
@@ -179,8 +180,8 @@ let%expect_test "cached_scheduling" =
     capacity: 2
     queue: (backlog) []
     registered:
-      worker-1 (4): [u1:job4@11s(2) u1:job3@10s(2)]
-      worker-2 (0): []
+      worker-1 (4): [u1:job4@11s(2) u1:job3@10s(2)] (1 running)
+      worker-2 (0): [] (1 running)
     disconnected:
     clients: u1(2)+17s
     cached: a: [worker-1], b: [worker-2], c: [worker-2]
@@ -189,6 +190,7 @@ let%expect_test "cached_scheduling" =
   print_result (job_state w2b);
   [%expect{| job5 |}];
   (* Worker 1 leaves. Its two queued jobs get reassigned. *)
+  Pool.job_finished w2;
   let w2c = Pool.pop w2 in
   (* Worker 2 / job 3 *)
   print_result (job_state w2c);
@@ -202,7 +204,7 @@ let%expect_test "cached_scheduling" =
     capacity: 1
     queue: (backlog) [u1:job4@11s]
     registered:
-      worker-2 (0): []
+      worker-2 (0): [] (1 running)
     disconnected:
       worker-1
     clients: u1(2)+17s
@@ -211,6 +213,7 @@ let%expect_test "cached_scheduling" =
   (* Worker 2 / job 3 *)
   print_result (job_state w2c);
   [%expect{| job3 |}];
+  Pool.job_finished w2;
   let w2d = Pool.pop w2 in
   (* Worker 2 / job 4 *)
   print_result (job_state w2d);
@@ -259,8 +262,8 @@ let%expect_test "unbalanced" =
     queue: (backlog) []
     registered:
       worker-1 (12): [u1:job7@10s(2) u1:job6@9s(2) u1:job5@8s(2) u1:job4@7s(2)
-                      u1:job3@6s(2) u1:job2@5s(2)]
-      worker-2 (0): []
+                      u1:job3@6s(2) u1:job2@5s(2)] (1 running)
+      worker-2 (0): [] (1 running)
     disconnected:
     clients: u1(2)+12s
     cached: a: [worker-1; worker-2]
@@ -372,7 +375,7 @@ let%expect_test "urgent" =
     capacity: 1
     queue: (backlog) [u1:job1@0s u1:job3@12s+urgent]
     registered:
-      worker-2 (0): []
+      worker-2 (0): [] (1 running)
     disconnected:
       worker-1
     clients: u1(1)+24s
@@ -415,8 +418,8 @@ let%expect_test "urgent_worker" =
     capacity: 2
     queue: (backlog) []
     registered:
-      worker-1 (2): [u1:job2@10s(2)]
-      worker-2 (0): []
+      worker-1 (2): [u1:job2@10s(2)] (1 running)
+      worker-2 (0): [] (1 running)
     disconnected:
     clients: u1(1)+22s
     cached: a: [worker-1], b: [worker-2]
@@ -435,8 +438,8 @@ let%expect_test "urgent_worker" =
     capacity: 2
     queue: (backlog) []
     registered:
-      worker-1 (6): [u1:job2@10s(2) u1:job6@24s(2+urgent) u1:job4@22s(2+urgent)]
-      worker-2 (0): []
+      worker-1 (6): [u1:job2@10s(2) u1:job6@24s(2+urgent) u1:job4@22s(2+urgent)] (1 running)
+      worker-2 (0): [] (2 running)
     disconnected:
     clients: u1(2)+25s
     cached: a: [worker-1], b: [worker-2]
@@ -468,8 +471,8 @@ let%expect_test "inactive" =
     capacity: 2
     queue: (ready) [worker-2]
     registered:
-      worker-1 (2): [u1:job2@10s(2)]
-      worker-2 (0): []
+      worker-1 (2): [u1:job2@10s(2)] (1 running)
+      worker-2 (0): [] (0 running)
     disconnected:
     clients: u1(1)+12s
     cached: a: [worker-1]
@@ -482,8 +485,8 @@ let%expect_test "inactive" =
     capacity: 2
     queue: (ready) []
     registered:
-      worker-1 (0): (inactive: worker pause)
-      worker-2 (10): [u1:job2@10s(10)]
+      worker-1 (0): (inactive: worker pause) (1 running)
+      worker-2 (10): [u1:job2@10s(10)] (0 running)
     disconnected:
     clients: u1(1)+12s
     cached: a: [worker-1; worker-2]
@@ -505,8 +508,8 @@ let%expect_test "inactive" =
     capacity: 2
     queue: (backlog) [u1:job3@12s]
     registered:
-      worker-1 (0): (inactive: worker pause)
-      worker-2 (0): (inactive: worker pause)
+      worker-1 (0): (inactive: worker pause) (1 running)
+      worker-2 (0): (inactive: worker pause) (1 running)
     disconnected:
     clients: u1(2)+13s
     cached: a: [worker-1; worker-2]
@@ -542,8 +545,8 @@ let%expect_test "cancel_worker_queue" =
     capacity: 2
     queue: (ready) []
     registered:
-      worker-1 (4): [u1:job3@6s(2) u1:job2@5s(2)]
-      worker-2 (0): []
+      worker-1 (4): [u1:job3@6s(2) u1:job2@5s(2)] (1 running)
+      worker-2 (0): [] (0 running)
     disconnected:
     clients: u1(2)+12s
     cached: a: [worker-1], b: [worker-2]
@@ -557,8 +560,8 @@ let%expect_test "cancel_worker_queue" =
     capacity: 2
     queue: (ready) []
     registered:
-      worker-1 (2): [u1:job3@6s(2)]
-      worker-2 (0): []
+      worker-1 (2): [u1:job3@6s(2)] (1 running)
+      worker-2 (0): [] (0 running)
     disconnected:
     clients: u1(2)+12s
     cached: a: [worker-1], b: [worker-2]
@@ -571,7 +574,7 @@ let%expect_test "cancel_worker_queue" =
     capacity: 1
     queue: (backlog) [u1:job3@6s]
     registered:
-      worker-1 (0): (inactive: worker pause)
+      worker-1 (0): (inactive: worker pause) (1 running)
     disconnected:
       worker-2
     clients: u1(2)+12s
@@ -624,8 +627,8 @@ let%expect_test "push_back" =
     capacity: 2
     queue: (ready) [worker-2]
     registered:
-      worker-1 (4): [u1:job3@6s(2) u1:job2@5s(2)]
-      worker-2 (0): []
+      worker-1 (4): [u1:job3@6s(2) u1:job2@5s(2)] (1 running)
+      worker-2 (0): [] (0 running)
     disconnected:
     clients: u1(2)+7s
     cached: a: [worker-1]
@@ -638,7 +641,7 @@ let%expect_test "push_back" =
     capacity: 1
     queue: (backlog) [u1:job3@6s u1:job2@5s]
     registered:
-      worker-1 (0): (inactive: worker pause)
+      worker-1 (0): (inactive: worker pause) (1 running)
     disconnected:
       worker-2
     clients: u1(2)+7s
@@ -686,8 +689,8 @@ let%expect_test "fairness" =
     capacity: 2
     queue: (backlog) [bob:b3@10s alice:a3@10s bob:b2@5s bob:b1@0s]
     registered:
-      worker-1 (0): []
-      worker-2 (0): []
+      worker-1 (0): [] (1 running)
+      worker-2 (0): [] (1 running)
     disconnected:
     clients: alice(2)+15s bob(2)+15s
     cached: : [worker-1; worker-2]
@@ -738,8 +741,8 @@ let%expect_test "fairness_rates" =
     capacity: 2
     queue: (backlog) [bob:b3@20s bob:b2@10s alice:a3@4s bob:b1@0s]
     registered:
-      worker-1 (0): []
-      worker-2 (0): []
+      worker-1 (0): [] (1 running)
+      worker-2 (0): [] (1 running)
     disconnected:
     clients: alice(5)+6s bob(1)+30s
     cached: : [worker-1; worker-2]
@@ -764,7 +767,7 @@ let%expect_test "inactive" =
     capacity: 1
     queue: (backlog) []
     registered:
-      worker-1 (0): (inactive: worker pause)
+      worker-1 (0): (inactive: worker pause) (0 running)
     disconnected:
     clients:
     cached: |}];
@@ -775,7 +778,7 @@ let%expect_test "inactive" =
     capacity: 1
     queue: (backlog) []
     registered:
-      worker-1 (0): (inactive: worker pause, admin pause)
+      worker-1 (0): (inactive: worker pause, admin pause) (0 running)
     disconnected:
     clients:
     cached: |}];
@@ -786,7 +789,7 @@ let%expect_test "inactive" =
     capacity: 1
     queue: (backlog) []
     registered:
-      worker-1 (0): (inactive: admin pause)
+      worker-1 (0): (inactive: admin pause) (0 running)
     disconnected:
     clients:
     cached: |}];
@@ -797,7 +800,7 @@ let%expect_test "inactive" =
     capacity: 1
     queue: (backlog) []
     registered:
-      worker-1 (0): []
+      worker-1 (0): [] (0 running)
     disconnected:
     clients:
     cached: |}];
@@ -808,7 +811,7 @@ let%expect_test "inactive" =
     capacity: 1
     queue: (backlog) []
     registered:
-      worker-1 (0): (inactive: shutting down)
+      worker-1 (0): (inactive: shutting down) (0 running)
     disconnected:
     clients:
     cached: |}];
@@ -828,7 +831,7 @@ let%expect_test "persist_pause" =
     capacity: 1
     queue: (backlog) []
     registered:
-      worker-1 (0): (inactive: worker pause, admin pause, shutting down)
+      worker-1 (0): (inactive: worker pause, admin pause, shutting down) (0 running)
     disconnected:
     clients:
     cached: |}];
@@ -842,7 +845,7 @@ let%expect_test "persist_pause" =
     capacity: 1
     queue: (backlog) []
     registered:
-      worker-1 (0): (inactive: worker pause, admin pause)
+      worker-1 (0): (inactive: worker pause, admin pause) (0 running)
     disconnected:
     clients:
     cached: |}];
@@ -857,7 +860,7 @@ let%expect_test "persist_pause" =
     capacity: 1
     queue: (backlog) []
     registered:
-      worker-1 (0): []
+      worker-1 (0): [] (0 running)
     disconnected:
     clients:
     cached: |}];

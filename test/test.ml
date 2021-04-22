@@ -156,6 +156,73 @@ let builder_capacity () =
   Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example3\nJob succeeded\n" result;
   Lwt.return_unit
 
+let expect_status_change status prev next =
+  let rec aux () =
+    if !status = prev then Lwt.pause () >>= aux
+    else (
+      Alcotest.(check string) "Status" next !status;
+      Lwt.return_unit
+    )
+  in aux ()
+
+(* The admin drains a worker. *)
+let drain () =
+  let builder = Mock_builder.create () in
+  with_sched @@ fun ~admin ~registry ->
+  Capability.with_ref (Cluster_api.Admin.add_client admin "client") @@ fun submission_service ->
+  Lwt_switch.with_switch @@ fun switch ->
+  Mock_builder.run ~switch builder (Mock_network.sturdy registry) ~capacity:2;
+  let r1 = submit submission_service "example1" in
+  let r2 = submit submission_service "example2" in
+  let r3 = submit submission_service "example3" in
+  Lwt.pause () >>= fun () ->
+  let pool = Cluster_api.Admin.pool admin "pool" in
+  let status = ref "" in
+  let progress = Cluster_api.Progress.local (fun x -> status := x) in
+  Mock_builder.await builder "example1" >>= fun _ ->
+  let drain = Cluster_api.Pool_admin.drain ~progress pool "worker-1" in
+  Capability.dec_ref progress;
+  expect_status_change status "" "Running jobs: 2" >>= fun () ->
+  Mock_builder.set builder "example1" @@ Ok "hash";
+  expect_status_change status "Running jobs: 2" "Running jobs: 1" >>= fun () ->
+  Mock_builder.set builder "example2" @@ Ok "hash";
+  r1 >>= fun result ->
+  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example1\nJob succeeded\n" result;
+  r2 >>= fun result ->
+  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example2\nJob succeeded\n" result;
+  drain >>= fun () ->
+  Cluster_api.Pool_admin.set_active pool "worker-1" true >>= fun () ->
+  Mock_builder.set builder "example3" @@ Ok "hash";
+  r3 >>= fun result ->
+  Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example3\nJob succeeded\n" result;
+  Capability.dec_ref pool;
+  Lwt.return_unit
+
+(* The admin drains a worker, which completes due to the worker crashing. *)
+let drain_crash () =
+  let builder = Mock_builder.create () in
+  with_sched @@ fun ~admin ~registry ->
+  Capability.with_ref (Cluster_api.Admin.add_client admin "client") @@ fun submission_service ->
+  Lwt_switch.with_switch @@ fun builder_switch ->
+  let network_switch = Lwt_switch.create () in
+  Mock_builder.run_remote builder ~builder_switch ~network_switch registry;
+  let r1 = submit submission_service "example1" in
+  Mock_builder.await builder "example1" >>= fun _ ->
+  let pool = Cluster_api.Admin.pool admin "pool" in
+  let status = ref "" in
+  let progress = Cluster_api.Progress.local (fun x -> print_endline x; status := x) in
+  let drain = Cluster_api.Pool_admin.drain ~progress pool "worker-1" in
+  Capability.dec_ref progress;
+  expect_status_change status "" "Running jobs: 1" >>= fun () ->
+  (* Worker crashes instead of finishing the job *)
+  Lwt_switch.turn_off network_switch >>= fun () ->
+  expect_status_change status "Running jobs: 1" "Running jobs: 0" >>= fun () ->
+  r1 >>= fun result ->
+  Alcotest.(check string) "Check job failed" "Error tailing logs: Disconnected: Connection closed\nFAILED\n" result;
+  drain >>= fun () ->
+  Capability.dec_ref pool;
+  Lwt.return_unit
+
 let worker_info = Alcotest.of_pp Cluster_api.Pool_admin.pp_worker_info
 
 let admin () =
@@ -409,6 +476,8 @@ let () =
       test_case "cancel_ticket_late" cancel_ticket_late;
       test_case "release_ticket" release_ticket;
       test_case "release_ticket_late" release_ticket_late;
+      test_case "drain" drain;
+      test_case "drain_crash" drain_crash;
       test_case "admin" admin;
       test_case "clients" clients;
     ];

@@ -46,6 +46,16 @@ module Item = struct
     | x -> Fmt.string f x
 end
 
+let report_progress ?progress msg =
+  msg |> Fmt.kstr @@ fun msg ->
+  match progress with
+  | None -> Lwt.return_unit
+  | Some progress ->
+    Cluster_api.Progress.report progress msg >|= function
+    | Ok () -> ()
+    | Error (`Capnp ex) ->
+      Logs.info (fun f -> f "Failed to send progress report (%s): %a" msg Capnp_rpc.Error.pp ex)
+
 module Pool_api = struct
   module Inactive_reasons = Pool.Inactive_reasons
   module Pool = Pool.Make(Item)(Unix)
@@ -94,6 +104,7 @@ module Pool_api = struct
     | Ok { set_job; descr } ->
       Capability.inc_ref job;
       Capability.resolve_ok set_job job;
+      Lwt.on_termination (Cluster_api.Job.result job) (fun () -> Pool.job_finished q);
       Ok descr
 
   let register t ~name ~capacity worker =
@@ -147,14 +158,47 @@ module Pool_api = struct
       | Error `Still_connected -> Service.fail "Worker %S is still connected!" name
       | Error `Unknown_worker -> Service.fail "Worker %S not known in this pool" name
     in
-    let update name =
+    let drain ?progress name =
       match Pool.Worker_map.find_opt name (Pool.connected_workers t.pool) with
-      | None -> Service.fail "Unknown worker"
+      | None ->
+        if Pool.worker_known t.pool name then (
+          (* Disconnected, so already drained. Just make sure it will be paused on reconnect. *)
+          Pool.with_worker t.pool name (fun worker ->
+              Pool.set_active worker false ~reason:Inactive_reasons.admin_pause;
+            );
+          report_progress ?progress "Disconnected (nothing to drain)" >>= fun () ->
+          Lwt_result.return (Service.Response.create_empty ())
+        ) else Lwt_result.fail (`Capnp (Capnp_rpc.Error.exn "Unknown worker"))
+      | Some w ->
+        (* Drain a connected worker. *)
+        Pool.set_active w false ~reason:Inactive_reasons.admin_pause;
+        let rec aux prev =
+          report_progress ?progress "Running jobs: %d" prev >>= fun () ->
+          if prev = 0 then Lwt_result.return (Service.Response.create_empty ())
+          else (
+            Pool.running_jobs w ~prev >>= aux
+          )
+        in
+        Pool.running_jobs w >>= aux
+    in
+    let update ?progress name =
+      match Pool.Worker_map.find_opt name (Pool.connected_workers t.pool) with
+      | None -> Lwt_result.fail (`Capnp (Capnp_rpc.Error.exn "Unknown worker"))
       | Some w ->
         let cap = Option.get (worker t name) in
         Pool.shutdown w;        (* Prevent any new items being assigned to it. *)
-        Service.return_lwt @@ fun () ->
         Capability.with_ref cap @@ fun worker ->
+        let rec aux prev =
+          if prev = 0 then Lwt.return ()
+          else (
+            report_progress ?progress "Running jobs: %d" prev >>= fun () ->
+            Pool.running_jobs w ~prev >>= aux
+          )
+        in
+        (* Drain worker (with progress updates) *)
+        Pool.running_jobs w >>= aux >>= fun () ->
+        (* Restart *)
+        report_progress ?progress "Restarting" >>= fun () ->
         Log.info (fun f -> f "Restarting %S" name);
         Cluster_api.Worker.self_update worker >>= function
         | Error _ as e -> Lwt.return e
@@ -178,7 +222,7 @@ module Pool_api = struct
         Ok ()
       ) else Error `No_such_user
     in
-    Cluster_api.Pool_admin.local ~show ~workers ~worker:(worker t) ~set_active ~update ~forget ~set_rate
+    Cluster_api.Pool_admin.local ~show ~workers ~worker:(worker t) ~set_active ~update ~drain ~forget ~set_rate
 
   let remove_client t ~client_id =
     Pool.remove_client t.pool ~client_id

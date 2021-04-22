@@ -307,6 +307,8 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
                     | `Inactive of Inactive_reasons.t * unit Lwt.t * unit Lwt.u  (* ready/set_ready for resume *)
                     | `Finished ];
     mutable workload : int;     (* Total cost of items in worker's queue. *)
+    mutable running : int;      (* Number of jobs currently running. *)
+    job_finished_cond : unit Lwt_condition.t;
   } and client_info = {
     id : string;
     mutable next_fair_start_time : float;
@@ -400,6 +402,7 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
           let item = ticket.item in
           Log.info (fun f -> f "%S takes %a from its local queue" worker.name Item.pp item);
           mark_cached ticket.item worker;
+          worker.running <- worker.running + 1;
           Prometheus.Counter.inc_one (Metrics.jobs_accepted t.pool);
           dec_pending_count t ticket;
           Lwt_result.return ticket.item
@@ -427,12 +430,25 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
                 let item = ticket.item in
                 Log.info (fun f -> f "%S takes %a from the main queue" worker.name Item.pp item);
                 mark_cached item worker;
+                worker.running <- worker.running + 1;
                 Prometheus.Counter.inc_one (Metrics.jobs_accepted t.pool);
                 dec_pending_count t ticket;
                 Lwt_result.return item
               )
     in
     aux ()
+
+  let job_finished worker =
+    Log.debug (fun f -> f "%S finishes a job" worker.name);
+    worker.running <- worker.running - 1;
+    Lwt_condition.broadcast worker.job_finished_cond ()
+
+  let rec running_jobs ?(prev=(-1)) worker =
+    if worker.running <> prev then Lwt.return worker.running
+    else (
+      Lwt_condition.wait worker.job_finished_cond >>= fun () ->
+      running_jobs ~prev worker
+    )
 
   (* Worker is leaving and system is backlogged. Move the worker's items to the backlog. *)
   let rec push_back worker worker_q q =
@@ -461,6 +477,8 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
         name;
         state = `Inactive (inactive_reasons, ready, set_ready);
         workload = 0;
+        running = 0;
+        job_finished_cond = Lwt_condition.create ();
         capacity;
       } in
       t.workers <- Worker_map.add name q t.workers;
@@ -648,7 +666,7 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
 
   let dump_workers f x =
     let pp_item f (id, w) =
-      Fmt.pf f "@,%s (%d): @[%a@]" id w.workload pp_state w in
+      Fmt.pf f "@,%s (%d): @[%a@] (%d running)" id w.workload pp_state w w.running in
     Worker_map.bindings x
     |> Fmt.(list ~sep:nop) pp_item f
 
