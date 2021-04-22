@@ -391,7 +391,7 @@ The `scheduler` service also writes out `./capnp-secrets/stress-admin.cap`, whic
 For example:
 
 ```
-dune exec -- ocluster-admin show ./capnp-secrets/stress-admin.cap linux-x86_64
+dune exec -- ocluster-admin show -c ./capnp-secrets/stress-admin.cap linux-x86_64
 ```
 
 You can also create your own client endpoints and submit your own jobs, in addition to those submitted by the testbed itself.
