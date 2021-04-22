@@ -82,6 +82,9 @@ module Make (Item : S.ITEM) (Time : S.TIME) : sig
   val pop : worker -> (Item.t, [> `Finished]) Lwt_result.t
   (** [pop worker] gets the next item for [worker]. *)
 
+  val job_finished : worker -> unit
+  (** [job_finished worker] is called when [worker] completes a job. *)
+
   val set_active : reason:Inactive_reasons.t -> worker -> bool -> unit
   (** [set_active ~reason worker active] sets the worker's active flag for [reason].
       A worker is active if it has no reasons to be inactive.

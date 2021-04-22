@@ -94,6 +94,7 @@ module Pool_api = struct
     | Ok { set_job; descr } ->
       Capability.inc_ref job;
       Capability.resolve_ok set_job job;
+      Lwt.on_termination (Cluster_api.Job.result job) (fun () -> Pool.job_finished q);
       Ok descr
 
   let register t ~name ~capacity worker =
