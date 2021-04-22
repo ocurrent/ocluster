@@ -85,6 +85,10 @@ module Make (Item : S.ITEM) (Time : S.TIME) : sig
   val job_finished : worker -> unit
   (** [job_finished worker] is called when [worker] completes a job. *)
 
+  val running_jobs : ?prev:int -> worker -> int Lwt.t
+  (** [running_jobs worker] returns the number of jobs running on [worker].
+      @param prev Wait until the number is different to [prev] before returning. *)
+
   val set_active : reason:Inactive_reasons.t -> worker -> bool -> unit
   (** [set_active ~reason worker active] sets the worker's active flag for [reason].
       A worker is active if it has no reasons to be inactive.

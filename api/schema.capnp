@@ -143,6 +143,12 @@ struct WorkerInfo {
   connected @2 :Bool;
 }
 
+# A callback for receiving progress updates.
+interface Progress {
+  report @0 (status :Text) -> ();
+  # Called when the status changes.
+}
+
 interface PoolAdmin {
   show      @0 () -> (state :Text);
   workers   @1 () -> (workers : List(WorkerInfo));
@@ -156,8 +162,14 @@ interface PoolAdmin {
   # If autoCreate is true then this can be used even with an unknown worker,
   # which may be useful if you want a new worker to start paused, for example.
 
-  update    @4 (worker :Text) -> ();
+  drain     @7 (worker :Text, progress :Progress) -> ();
+  # Mark the worker as paused and wait until no jobs are running.
+  # Returns immediately if the worker isn't connected.
+  # If given, [progress] receives one-line progress reports.
+
+  update    @4 (worker :Text, progress :Progress) -> ();
   # Drain worker, ask it to restart with the latest version, and return when it comes back.
+  # If given, [progress] receives one-line progress reports.
 
   setRate   @5 (id :Text, rate :Float64) -> ();
   # Set the expected share of the pool for this client.

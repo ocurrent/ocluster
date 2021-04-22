@@ -15,7 +15,7 @@ let pp_worker_info f { name; active; connected } =
   else
     Fmt.pf f "%s (@[<h>%a@])" name Fmt.(list ~sep:comma string) notes
 
-let local ~show ~workers ~worker ~set_active ~update ~forget ~set_rate =
+let local ~show ~workers ~worker ~set_active ~drain ~update ~forget ~set_rate =
   let module X = Raw.Service.PoolAdmin in
   X.local @@ object
     inherit X.service
@@ -67,8 +67,22 @@ let local ~show ~workers ~worker ~set_active ~update ~forget ~set_rate =
     method update_impl params release_param_caps =
       let open X.Update in
       let name = Params.worker_get params in
+      let progress = Params.progress_get params in
       release_param_caps ();
-      update name
+      Service.return_lwt @@ fun () ->
+      Lwt.finalize
+        (fun () -> update ?progress name)
+        (fun () -> Option.iter Capability.dec_ref progress; Lwt.return_unit)
+
+    method drain_impl params release_param_caps =
+      let open X.Drain in
+      let name = Params.worker_get params in
+      let progress = Params.progress_get params in
+      release_param_caps ();
+      Service.return_lwt @@ fun () ->
+      Lwt.finalize
+        (fun () -> drain ?progress name)
+        (fun () -> Option.iter Capability.dec_ref progress; Lwt.return_unit)
 
     method forget_impl params release_param_caps =
       let open X.Forget in
@@ -120,10 +134,18 @@ let set_active ?(auto_create=false) t worker active =
   Params.auto_create_set params auto_create;
   Capability.call_for_unit_exn t method_id request
 
-let update t worker =
+let drain ?progress t worker =
+  let open X.Drain in
+  let request, params = Capability.Request.create Params.init_pointer in
+  Params.worker_set params worker;
+  Params.progress_set params progress;
+  Capability.call_for_unit_exn t method_id request
+
+let update ?progress t worker =
   let open X.Update in
   let request, params = Capability.Request.create Params.init_pointer in
   Params.worker_set params worker;
+  Params.progress_set params progress;
   Capability.call_for_unit t method_id request
 
 let forget t worker =

@@ -308,6 +308,7 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
                     | `Finished ];
     mutable workload : int;     (* Total cost of items in worker's queue. *)
     mutable running : int;      (* Number of jobs currently running. *)
+    job_finished_cond : unit Lwt_condition.t;
   } and client_info = {
     id : string;
     mutable next_fair_start_time : float;
@@ -439,7 +440,15 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
 
   let job_finished worker =
     Log.debug (fun f -> f "%S finishes a job" worker.name);
-    worker.running <- worker.running - 1
+    worker.running <- worker.running - 1;
+    Lwt_condition.broadcast worker.job_finished_cond ()
+
+  let rec running_jobs ?(prev=(-1)) worker =
+    if worker.running <> prev then Lwt.return worker.running
+    else (
+      Lwt_condition.wait worker.job_finished_cond >>= fun () ->
+      running_jobs ~prev worker
+    )
 
   (* Worker is leaving and system is backlogged. Move the worker's items to the backlog. *)
   let rec push_back worker worker_q q =
@@ -469,6 +478,7 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
         state = `Inactive (inactive_reasons, ready, set_ready);
         workload = 0;
         running = 0;
+        job_finished_cond = Lwt_condition.create ();
         capacity;
       } in
       t.workers <- Worker_map.add name q t.workers;
