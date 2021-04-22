@@ -254,6 +254,8 @@ it will continue with any jobs it is already running. Use `unpause` to resume it
 
 Instead of specifying a worker, you can also use `--all` to pause or unpause all workers in a pool.
 
+If you want to set the state of a worker that hasn't ever connected to the scheduler, use `--auto-create`.
+
 To update all workers in a pool:
 
 ```
@@ -267,6 +269,12 @@ Note that the worker just exits, assuming a service manager will restart it. If 
 you'll need to restart the worker yourself at this point.
 
 You can also give the name of a worker as an extra argument to update just that worker.
+
+To forget about an old worker (so that it no longer shows up under `disconnected:` in the state display:
+
+```
+ocluster-admin -c ./capnp-secrets/admin.cap forget linux-x86_64 my-host
+```
 
 ### Fair queuing
 

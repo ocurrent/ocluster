@@ -35,6 +35,8 @@ module Make (Item : S.ITEM) (Time : S.TIME) : sig
   type worker
   (** A connected worker. *)
 
+  module Worker_map : Map.S with type key = string
+
   module Client : sig
     type t
     (** A connected client. *)
@@ -97,13 +99,27 @@ module Make (Item : S.ITEM) (Time : S.TIME) : sig
   (** [shutdown worker] marks [worker] as shutting down. The worker is
       set to inactive, and cannot become active again. *)
 
-  val connected_workers : t -> worker Astring.String.Map.t
+  val connected_workers : t -> worker Worker_map.t
   (** [connected_workers t] is the set of workers currently connected, whether active or not,
       indexed by name. *)
+
+  val known_workers : t -> Cluster_api.Pool_admin.worker_info list
+  (** [known_workers t] lists all workers known to the pool, whether connected or not. *)
+
+  val with_worker : t -> string -> (worker -> 'a) -> 'a
+  (** [with_worker t name f] is [f worker] if [worker] is in [connected_workers].
+      If not, it temporarily registers it, runs [f], and then releases it. *) 
+
+  val worker_known : t -> string -> bool
+  (** [worker_known t name] is [true] when worker [name] has previously registered with this pool,
+      whether currently connected or not. *)
 
   val release : worker -> unit
   (** [release worker] marks [worker] as disconnected.
       [worker] cannot be used again after this (use [register] to get a new one). *)
+
+  val forget_worker : t -> string -> (unit, [`Unknown_worker | `Still_connected]) result
+  (** [forget_worker t name] removes [name] from the set of known workers. *)
 
   val show : t Fmt.t
   (** [show] shows the state of the system, including registered workers and queued jobs. *)

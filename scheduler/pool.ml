@@ -78,7 +78,10 @@ module Dao = struct
     get_rate : Sqlite3.stmt;
     set_rate : Sqlite3.stmt;
     remove_user : Sqlite3.stmt;
+    worker_known : Sqlite3.stmt;
+    known_workers : Sqlite3.stmt;
     ensure_worker : Sqlite3.stmt;
+    forget_worker : Sqlite3.stmt;
     set_paused : Sqlite3.stmt;
     get_paused : Sqlite3.stmt;
   }
@@ -116,15 +119,30 @@ module Dao = struct
       )
     |> Option.value ~default:1.0
 
-  let ensure_worker t worker =
-    Db.exec t.ensure_worker Sqlite3.Data.[ TEXT worker ]
+  let known_workers t ~pool =
+    Db.query t.known_workers Sqlite3.Data.[ TEXT pool ] |> List.map @@ function
+    | Sqlite3.Data.[ TEXT worker; INT 1L ] -> worker, true
+    | Sqlite3.Data.[ TEXT worker; INT 0L ] -> worker, false
+    | row -> Fmt.failwith "Bad row from DB: %a" Db.dump_row row
 
-  let set_paused t ~worker v =
+  let worker_known t ~pool worker =
+    match Db.query_one t.worker_known Sqlite3.Data.[ TEXT pool; TEXT worker ] with
+    | Sqlite3.Data.[ INT 1L ] -> true
+    | Sqlite3.Data.[ INT 0L ] -> false
+    | row -> Fmt.failwith "Bad row from DB: %a" Db.dump_row row
+
+  let ensure_worker t ~pool worker =
+    Db.exec t.ensure_worker Sqlite3.Data.[ TEXT pool; TEXT worker ]
+
+  let forget_worker t ~pool worker =
+    Db.exec t.forget_worker Sqlite3.Data.[ TEXT pool; TEXT worker ]
+
+  let set_paused t ~pool ~worker v =
     let v = Bool.to_int v |> Int64.of_int in
-    Db.exec t.set_paused Sqlite3.Data.[ INT v; TEXT worker ]
+    Db.exec t.set_paused Sqlite3.Data.[ INT v; TEXT pool; TEXT worker ]
 
-  let get_paused t ~worker =
-    match Db.query_one t.get_paused Sqlite3.Data.[ TEXT worker ] with
+  let get_paused t ~pool ~worker =
+    match Db.query_one t.get_paused Sqlite3.Data.[ TEXT pool; TEXT worker ] with
     | Sqlite3.Data.[ INT 1L ] -> true
     | Sqlite3.Data.[ INT 0L ] -> false
     | row -> Fmt.failwith "Bad row from DB: %a" Db.dump_row row
@@ -142,19 +160,24 @@ module Dao = struct
                      rate       REAL NOT NULL, \
                      PRIMARY KEY (pool, user))" |> Db.or_fail ~cmd:"create pool_user_rate table";
     Sqlite3.exec db "CREATE TABLE IF NOT EXISTS workers ( \
-                     id       TEXT NOT NULL, \
-                     paused   BOOLEAN DEFAULT FALSE, \
-                     PRIMARY KEY (id))" |> Db.or_fail ~cmd:"create workers table";
+                     pool       TEXT NOT NULL, \
+                     id         TEXT NOT NULL, \
+                     paused     BOOLEAN DEFAULT FALSE, \
+                     PRIMARY KEY (pool, id))" |> Db.or_fail ~cmd:"create workers table";
     let query_cache = Sqlite3.prepare db "SELECT worker FROM cached WHERE pool = ? AND cache_hint = ? ORDER BY worker" in
     let mark_cached = Sqlite3.prepare db "INSERT OR REPLACE INTO cached (pool, cache_hint, worker, created) VALUES (?, ?, ?, date('now'))" in
     let dump_cache = Sqlite3.prepare db "SELECT DISTINCT cache_hint FROM cached WHERE pool = ? ORDER BY cache_hint" in
     let set_rate = Sqlite3.prepare db "INSERT OR REPLACE INTO pool_user_rate (pool, user, rate) VALUES (?, ?, ?)" in
     let get_rate = Sqlite3.prepare db "SELECT rate FROM pool_user_rate WHERE pool = ? AND user = ?" in
     let remove_user = Sqlite3.prepare db "DELETE FROM pool_user_rate WHERE pool = ? AND user = ?" in
-    let ensure_worker = Sqlite3.prepare db "INSERT OR IGNORE INTO workers (id) VALUES (?)" in
-    let set_paused = Sqlite3.prepare db "UPDATE workers SET paused = ? WHERE id = ?" in
-    let get_paused = Sqlite3.prepare db "SELECT paused FROM workers WHERE id = ?" in
-    { query_cache; mark_cached; dump_cache; set_rate; get_rate; remove_user; ensure_worker; set_paused; get_paused }
+    let known_workers = Sqlite3.prepare db "SELECT id, paused FROM workers WHERE pool = ?" in
+    let worker_known = Sqlite3.prepare db "SELECT EXISTS (SELECT 1 FROM workers WHERE pool = ? AND id = ?)" in
+    let ensure_worker = Sqlite3.prepare db "INSERT OR IGNORE INTO workers (pool, id) VALUES (?, ?)" in
+    let forget_worker = Sqlite3.prepare db "DELETE FROM workers WHERE pool = ? AND id = ?" in
+    let set_paused = Sqlite3.prepare db "UPDATE workers SET paused = ? WHERE pool = ? AND id = ?" in
+    let get_paused = Sqlite3.prepare db "SELECT paused FROM workers WHERE pool = ? AND id = ?" in
+    { query_cache; mark_cached; dump_cache; set_rate; get_rate; remove_user;
+      known_workers; worker_known; ensure_worker; forget_worker; set_paused; get_paused }
 end
 
 let (let<>) x f =
@@ -168,7 +191,7 @@ let pp_rough_duration f x =
     Fmt.pf f "%.0fm" (x /. 60.)
 
 module Make (Item : S.ITEM)(Time : S.TIME) = struct
-  module Worker_map = Astring.String.Map
+  module Worker_map = Map.Make(String)
 
   type ticket = {
     key : < >;
@@ -426,10 +449,10 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
     if Worker_map.mem name t.workers then Error `Name_taken
     else (
       let ready, set_ready = Lwt.wait () in
-      Dao.ensure_worker t.db name;
+      Dao.ensure_worker t.db ~pool:t.pool name;
       let inactive_reasons =
         Inactive_reasons.(union worker) (
-          if Dao.get_paused t.db ~worker:name then Inactive_reasons.admin_pause
+          if Dao.get_paused t.db ~pool:t.pool ~worker:name then Inactive_reasons.admin_pause
           else Inactive_reasons.empty
         )
       in
@@ -513,7 +536,7 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
   let set_active ~reason w active =
     assert (reason <> Inactive_reasons.empty);
     if Inactive_reasons.(mem admin_pause) reason then
-      Dao.set_paused w.parent.db ~worker:w.name (not active);
+      Dao.set_paused w.parent.db ~pool:w.parent.pool ~worker:w.name (not active);
     match active with
     | false -> set_inactive ~reason w
     | true ->
@@ -556,6 +579,25 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
 
   let connected_workers t = t.workers
 
+  let with_worker t name f =
+    match register t ~name ~capacity:0 with
+    | Error `Name_taken -> f (Worker_map.find name t.workers)
+    | Ok w ->
+      Fun.protect (fun () -> f w)
+        ~finally:(fun () -> release w)
+
+  let worker_known t name =
+    Dao.worker_known t.db ~pool:t.pool name
+
+  let forget_worker t name =
+    if worker_known t name then (
+      if Worker_map.mem name t.workers then Error `Still_connected
+      else (
+        Dao.forget_worker t.db ~pool:t.pool name;
+        Ok ()
+      )
+    ) else Error `Unknown_worker
+
   let inactive_reasons worker =
     match worker.state with
     | `Running _ -> Inactive_reasons.empty
@@ -564,6 +606,17 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
 
   let is_active worker =
     inactive_reasons worker = Inactive_reasons.empty
+
+  let known_workers t =
+    Dao.known_workers t.db ~pool:t.pool
+    |> List.map (fun (name, paused) ->
+        let connected, active =
+          match Worker_map.find_opt name t.workers with
+          | None -> false, not paused
+          | Some w -> true, is_active w
+        in
+        { Cluster_api.Pool_admin.name; active; connected }
+      )
 
   let create ~name ~db =
     {
@@ -599,6 +652,13 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
     Worker_map.bindings x
     |> Fmt.(list ~sep:nop) pp_item f
 
+  let dump_disconnected =
+    let pp_item f (id, paused) =
+      Fmt.pf f "@,%s" id;
+      if paused then Fmt.string f " (paused)"
+    in
+    Fmt.(list ~sep:nop) pp_item
+
   let dump_main f = function
     | `Backlog (q : Backlog.t) ->
       Fmt.pf f "(backlog) %a" Backlog.dump q
@@ -620,11 +680,19 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
     let now = Time.gettimeofday () in
     Fmt.(seq ~sep:sp (dump_client t ~now)) f (Client_map.to_seq clients)
 
-  let pp_common f ({pool = _; db = _; main; clients; workers; cluster_capacity; pending_cached = _} as t) =
-    Fmt.pf f "capacity: %.0f@,queue: @[%a@]@,@[<v2>registered:%a@]@,clients: @[<hov>%a@]"
+  let pp_common f ({pool; db; main; clients; workers; cluster_capacity; pending_cached = _} as t) =
+    let disconnected =
+      Dao.known_workers db ~pool
+      |> List.filter_map (fun (name, paused) ->
+          if Worker_map.mem name workers then None
+          else Some (name, paused)
+        )
+    in
+    Fmt.pf f "capacity: %.0f@,queue: @[%a@]@,@[<v2>registered:%a@]@,@[<v2>disconnected:%a@]@,clients: @[<hov>%a@]"
       cluster_capacity
       dump_main main
       dump_workers workers
+      dump_disconnected disconnected
       (dump_clients t) clients
 
   let show f t =
