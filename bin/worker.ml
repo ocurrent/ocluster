@@ -1,7 +1,7 @@
 open Lwt.Infix
 
-let setup_log default_level =
-  Prometheus_unix.Logging.init ?default_level ();
+let setup_log ?(formatter=Format.err_formatter) default_level =
+  Prometheus_unix.Logging.init ~formatter ?default_level ();
   ()
 
 let or_die = function
@@ -41,7 +41,8 @@ let update_docker () =
 let update_normal () =
   Lwt.return (fun () -> Lwt.return ())
 
-let main () registration_path capacity name allow_push prune_threshold state_dir obuilder =
+let main default_level ?formatter registration_path capacity name allow_push prune_threshold state_dir obuilder =
+  setup_log ?formatter default_level;
   let update =
     if Sys.file_exists "/.dockerenv" then update_docker
     else update_normal
@@ -53,6 +54,14 @@ let main () registration_path capacity name allow_push prune_threshold state_dir
   end
 
 (* Command-line parsing *)
+
+let main ~install (default_level, args1) ((registration_path, capacity, name, allow_push, prune_threshold, state_dir, obuilder), args2) =
+  let (name', display, text) = ("ocluster-worker", "OCluster Worker", "Run a build worker") in
+  if install then
+    `Ok (Winsvc_wrapper.install name' display text (args1 @ args2))
+  else
+    `Ok (Winsvc_wrapper.run name' state_dir (fun ?formatter () ->
+             main default_level ?formatter registration_path capacity name allow_push prune_threshold state_dir obuilder))
 
 open Cmdliner
 
@@ -124,12 +133,32 @@ module Obuilder_config = struct
     Term.pure make $ Obuilder.Runc_sandbox.cmdliner $ store
 end
 
-let setup_log =
-  Term.(const setup_log $ Logs_cli.level ())
+let worker_opts_t =
+  let worker_opts registration_path capacity name allow_push prune_threshold state_dir obuilder =
+    (registration_path, capacity, name, allow_push, prune_threshold, state_dir, obuilder) in
+  Term.(with_used_args
+    (const worker_opts $ connect_addr $ capacity $ worker_name $ allow_push
+     $ prune_threshold $ state_dir $ Obuilder_config.v))
 
-let cmd =
+let cmd ~install =
   let doc = "Run a build worker" in
-  Term.(const main $ setup_log $ connect_addr $ capacity $ worker_name $ allow_push $ prune_threshold $ state_dir $ Obuilder_config.v),
-  Term.info "ocluster-worker" ~doc ~version:Version.t
+  let man = [
+    `P "On $(b,Windows), specify '$(b,install)' as the first \
+        command-line paramater to install the worker as a Windows \
+        service with the specified parameters, and '$(b,remove)' to \
+        remove the worker from the services." ] in
+  Term.(ret (const (main ~install) $ with_used_args (Logs_cli.level ()) $ worker_opts_t)),
+  Term.info "ocluster-worker" ~doc ~man ~version:Version.t
 
-let () = Term.(exit @@ eval cmd)
+let () =
+  match Array.to_list Sys.argv with
+  | hd :: "install" :: argv ->
+    Term.(exit @@ eval ~argv:(Array.of_list (hd :: argv)) (cmd ~install:true))
+  | _ :: "remove" :: args ->
+    if args <> [] then begin
+      prerr_endline "'remove' should be used only once, in first position.";
+      exit 1
+    end else
+      Winsvc_wrapper.remove "ocluster-worker"
+  | _ ->
+    Term.(exit @@ eval (cmd ~install:false))
