@@ -22,7 +22,7 @@ depends: [
   "fmt"
   "prometheus"
   "ppx_deriving_yojson"
-  "ocaml" {>= "4.10.0"}
+  "ocaml" {>= "4.12.0"}
   "odoc" {with-doc}
 ]
 build: [

@@ -114,20 +114,13 @@ module Obuilder_config = struct
       ~docv:"STORE"
       ["obuilder-store"]
 
-  let fast_sync =
-    Arg.value @@
-    Arg.flag @@
-    Arg.info
-      ~doc:"Ignore sync syscalls for OBuilder builds (requires runc >= 1.0.0-rc92)"
-      ["fast-sync"]
-
   let v =
-    let make fast_sync = function
+    let make sandbox_config = function
       | None -> None
-      | Some store -> Some (Cluster_worker.Obuilder_config.v ~fast_sync store)
+      | Some store -> Some (Cluster_worker.Obuilder_config.v sandbox_config store)
     in
     let open Cmdliner.Term in
-    Term.pure make $ fast_sync $ store
+    Term.pure make $ Obuilder.Runc_sandbox.cmdliner $ store
 end
 
 let cmd =

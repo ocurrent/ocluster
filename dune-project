@@ -15,7 +15,7 @@
   (capnp-rpc-lwt (>= 1.2))
   fmt
   ppx_deriving_yojson
-  (ocaml (>= 4.10.0))))
+  (ocaml (>= 4.12.0))))
 (package
  (name ocluster)
  (synopsis "Distribute build jobs to workers")
@@ -43,7 +43,7 @@
   obuilder
   psq
   (mirage-crypto (>= 0.8.5))
-  (ocaml (>= 4.10.0))
+  (ocaml (>= 4.12.0))
   (current_ocluster (and (= :version) :with-test))
   (alcotest (and (>= 1.0.0) :with-test))
   (alcotest-lwt (and (>= 1.0.1) :with-test))))
@@ -66,4 +66,4 @@
   fmt
   prometheus
   ppx_deriving_yojson
-  (ocaml (>= 4.10.0))))
+  (ocaml (>= 4.12.0))))
