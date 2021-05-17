@@ -58,6 +58,8 @@
   lwt
   (current (>= 0.3))
   (current_git (>= 0.3))
+  (current_web (and (>= 0.3) :with-test))
+  (current_github (and (>= 0.3) :with-test))
   (capnp-rpc-unix (>= 0.9.0))
   duration
   logs
