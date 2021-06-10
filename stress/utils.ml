@@ -14,7 +14,7 @@ let submit cap ~name ~i ~pool ~urgent ~cache_hint =
   let descr = Api.Submission.obuilder_build job_id in
   Capability.with_ref (Api.Submission.submit cap ~action:descr ~pool ~urgent ~cache_hint) @@ fun ticket ->
   Capability.with_ref (Api.Ticket.job ticket) @@ fun job ->
-  Capability.wait_until_settled job >>= fun () ->
+  Capability.await_settled_exn job >>= fun () ->
   Logs.info (fun f -> f "%s: job %S running" name job_id);
   Api.Job.result job >|= function
   | Ok _ -> Logs.info (fun f -> f "%s : job %S finished" name job_id);

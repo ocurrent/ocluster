@@ -16,7 +16,7 @@ depends: [
   "current_git" {>= "0.3"}
   "current_web" {>= "0.3" & with-test}
   "current_github" {>= "0.3" & with-test}
-  "capnp-rpc-unix" {>= "0.9.0"}
+  "capnp-rpc-unix" {>= "1.2"}
   "duration"
   "logs"
   "fmt"
