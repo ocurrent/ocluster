@@ -1,6 +1,6 @@
 FROM ocaml/opam:debian-10-ocaml-4.12@sha256:ba38dbfbfa92b0dca7171ac33d81276e7209912baf26887ecc20c382d15f32e4 AS build
 RUN sudo apt-get update && sudo apt-get install libev-dev capnproto m4 pkg-config libsqlite3-dev libgmp-dev -y --no-install-recommends
-RUN cd ~/opam-repository && git pull origin -q master && git reset --hard 1bd3ea712eef197c62c6ab92b2642cc2cda11be2 && opam update
+RUN cd ~/opam-repository && git pull origin -q master && git reset --hard 03e325a688740a7b1e6c61892483975480c8e550 && opam update
 COPY --chown=opam ocluster-api.opam ocluster.opam /src/
 COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/

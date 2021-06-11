@@ -12,7 +12,7 @@
  (depends
   ppx_deriving
   lwt
-  (capnp-rpc-lwt (>= 0.9.0))
+  (capnp-rpc-lwt (>= 1.2))
   fmt
   ppx_deriving_yojson
   (ocaml (>= 4.10.0))))
@@ -30,7 +30,7 @@
   lwt
   capnp-rpc-lwt
   capnp-rpc-net
-  (capnp-rpc-unix (>= 0.9.0))
+  (capnp-rpc-unix (>= 1.2))
   logs
   fmt
   (conf-libev (<> :os "win32"))
@@ -60,7 +60,7 @@
   (current_git (>= 0.3))
   (current_web (and (>= 0.3) :with-test))
   (current_github (and (>= 0.3) :with-test))
-  (capnp-rpc-unix (>= 0.9.0))
+  (capnp-rpc-unix (>= 1.2))
   duration
   logs
   fmt

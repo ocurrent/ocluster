@@ -80,7 +80,7 @@ module Pool_api = struct
     let queued_jobs = Metrics.client_queued_jobs ~client_id:(Pool.Client.client_id client) ~pool:(Pool.Client.pool_id client) ~urgent in
     Prometheus.Gauge.inc_one queued_jobs;
     Lwt.async (fun () ->
-        Capability.wait_until_settled job >|= fun () ->
+        Capability.await_settled job >|= fun (_ : _ result) ->
         Prometheus.Gauge.dec_one queued_jobs
       );
     let cancel () =

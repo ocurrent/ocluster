@@ -122,9 +122,9 @@ let already_registered () =
   with_sched @@ fun ~admin:_ ~registry ->
   let api = Cluster_api.Worker.local ~metrics:(fun _ -> assert false) ~self_update:(fun () -> assert false) in
   let q1 = Cluster_api.Registration.register registry ~name:"worker-1" ~capacity:1 api in
-  Capability.wait_until_settled q1 >>= fun () ->
+  Capability.await_settled q1 >>= fun (_ : _ result) ->
   let q2 = Cluster_api.Registration.register registry ~name:"worker-1" ~capacity:1 api in
-  Capability.wait_until_settled q2 >>= fun () ->
+  Capability.await_settled q2 >>= fun (_ : _ result) ->
   let pp_err = Fmt.(option ~none:(unit "ok")) Capnp_rpc.Exception.pp in
   let p1 = Fmt.strf "%a" pp_err (Capability.problem q1) in
   let p2 = Fmt.strf "%a" pp_err (Capability.problem q2) in
@@ -433,8 +433,8 @@ let clients () =
   let action = Cluster_api.Submission.docker_build (`Contents "example") in
   let ticket1 = Cluster_api.Submission.submit client1 ~pool:"pool" ~action ~cache_hint:"1" in
   let ticket2 = Cluster_api.Submission.submit client2 ~pool:"pool" ~action ~cache_hint:"1" in
-  Capability.wait_until_settled ticket1 >>= fun () ->
-  Capability.wait_until_settled ticket2 >>= fun () ->
+  Capability.await_settled ticket1 >>= fun (_ : _ result) ->
+  Capability.await_settled ticket2 >>= fun (_ : _ result) ->
   let pp_err = Fmt.(option ~none:(unit "ok")) Capnp_rpc.Exception.pp in
   let problem1 = Fmt.strf "%a" pp_err (Capability.problem ticket1) in
   Alcotest.(check string) "Access revoked" "Failed: Access has been revoked" problem1;
@@ -442,7 +442,7 @@ let clients () =
   Alcotest.(check string) "Access OK" "ok" problem2;
   Capability.dec_ref ticket2;
   Capability.with_ref (Cluster_api.Admin.add_client admin "client2") @@ fun client2b ->
-  Capability.wait_until_settled client2b >>= fun () ->
+  Capability.await_settled client2b >>= fun (_ : _ result) ->
   let problem = Fmt.strf "%a" pp_err (Capability.problem client2b) in
   Alcotest.(check string) "Duplicate user" {|Failed: Client "client2" already registered!|} problem;
   Lwt.try_bind

@@ -98,6 +98,8 @@ let disconnect_while_queued () =
   let pipeline t = Current_ocluster.build t spec ~pool:"pool" ~src:(Current.return []) ~options in
   setup ~pipeline @@ fun ~registry ~await_result ~break ->
   Lwt.pause () >>= fun () ->
+  Lwt.pause () >>= fun () ->
+  Lwt.pause () >>= fun () ->
   break () >>= fun () ->
   (* The plugin will immediately reconnect to the scheduler.
      Now add a worker and the job should run. *)

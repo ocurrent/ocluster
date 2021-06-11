@@ -29,13 +29,6 @@ type t = {
   max_pipeline : int;
 }
 
-(* Replace this with the version in capnp-rpc 1.2, once released *)
-let await_settled_exn t =
-  Capability.wait_until_settled t >|= fun () ->
-  match Capability.problem t with
-  | None -> ()
-  | Some e -> Fmt.failwith "%a" Capnp_rpc.Exception.pp e
-
 (* Return a proxy to the scheduler, starting a new connection if we don't
    currently have a working one. *)
 let sched ~job t =
@@ -51,7 +44,7 @@ let sched ~job t =
       Lwt.catch
         (fun () ->
            Sturdy_ref.connect_exn conn.sr >>= fun cap ->
-           await_settled_exn cap >|= fun () ->
+           Capability.await_settled_exn cap >|= fun () ->
            cap
         )
         (fun ex ->
@@ -75,6 +68,14 @@ let rate_limit t pool urgent =
 let urgent_if_high = function
   | `High -> true
   | `Low -> false
+
+let with_state metric fn =
+  Prometheus.Gauge.inc_one metric;
+  Lwt.finalize fn
+    (fun () ->
+       Prometheus.Gauge.dec_one metric;
+       Lwt.return_unit
+    )
 
 (* This is called by [Current.Job] once the confirmation threshold allows the job to be submitted. *)
 let submit ~job ~pool ~action ~cache_hint ?src ?secrets ~urgent t ~priority ~switch:_ =
@@ -113,16 +114,12 @@ let submit ~job ~pool ~action ~cache_hint ?src ?secrets ~urgent t ~priority ~swi
                   let ticket = Cluster_api.Submission.submit ~urgent ?src ?secrets sched ~pool ~action ~cache_hint in
                   let build_job = Cluster_api.Ticket.job ticket in
                   stage := `Get_ticket ticket;       (* Allow the user to cancel it now. *)
-                  Prometheus.Gauge.inc_one Metrics.queue_get_ticket;
-                  await_settled_exn ticket >>= fun () ->
-                  Prometheus.Gauge.dec_one Metrics.queue_get_ticket;
+                  with_state Metrics.queue_get_ticket (fun () -> Capability.await_settled ticket) >>!= fun () ->
                   Current.Job.log job "Waiting for worker...";
-                  Prometheus.Gauge.inc_one Metrics.queue_get_worker;
-                  await_settled_exn build_job >>= fun () ->
-                  Prometheus.Gauge.dec_one Metrics.queue_get_worker;
+                  with_state Metrics.queue_get_worker (fun () -> Capability.await_settled build_job) >>!= fun () ->
                   Capability.dec_ref ticket;
                   stage := `Got_worker;
-                  Lwt.return build_job
+                  Lwt_result.return build_job
                )
           )
           (function
@@ -136,15 +133,19 @@ let submit ~job ~pool ~action ~cache_hint ?src ?secrets ~urgent t ~priority ~swi
       in
       limiter_thread := Some use_thread;
       use_thread >>= fun build_job ->
-      Lwt.pause () >>= fun () ->
-      match Capability.problem build_job with
-      | None -> Lwt.return build_job
-      | Some err ->
+      match build_job with
+      | Ok build_job -> Lwt.return build_job
+      | Error err ->
+        Lwt.pause () >>= fun () ->
         if Capability.problem sched = None then (
           (* The job failed but we're still connected to the scheduler. Report the error. *)
           Lwt.fail_with (Fmt.strf "%a" Capnp_rpc.Exception.pp err)
         ) else (
           limiter_thread := None;
+          begin match !stage with
+            | `Init | `Got_worker | `Rate_limit -> ()
+            | `Get_ticket ticket -> Capability.dec_ref ticket
+          end;
           stage := `Init;
           aux ()
         )
