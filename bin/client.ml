@@ -1,9 +1,6 @@
 open Lwt.Infix
 open Capnp_rpc_lwt
 
-let () =
-  Logging.init ()
-
 let or_die = function
   | Ok x -> x
   | Error `Msg m -> failwith m
@@ -62,7 +59,7 @@ let read_whole_file path =
   let len = in_channel_length ic in
   really_input_string ic len
 
-let submit { submission_path; pool; repository; commits; cache_hint; urgent; secrets } spec =
+let submit () { submission_path; pool; repository; commits; cache_hint; urgent; secrets } spec =
   let src =
     match repository, commits with
     | None, [] -> None
@@ -268,7 +265,7 @@ let submit_docker_options =
 
 let submit_docker =
   let doc = "Submit a Docker build to the scheduler" in
-  Term.(const submit $ submit_options_common $ submit_docker_options),
+  Term.(const submit $ Logging.term $ submit_options_common $ submit_docker_options),
   Term.info "submit-docker" ~doc
 
 let submit_obuilder_options =
@@ -279,7 +276,7 @@ let submit_obuilder_options =
 
 let submit_obuilder =
   let doc = "Submit an OBuilder build to the scheduler" in
-  Term.(const submit $ submit_options_common $ submit_obuilder_options),
+  Term.(const submit $ Logging.term $ submit_options_common $ submit_obuilder_options),
   Term.info "submit-obuilder" ~doc
 
 let cmds = [submit_docker; submit_obuilder]

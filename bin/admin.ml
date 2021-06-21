@@ -1,9 +1,6 @@
 open Lwt.Infix
 open Capnp_rpc_lwt
 
-let () =
-  Logging.init ()
-
 let or_die = function
   | Ok x -> x
   | Error `Msg m -> failwith m
@@ -19,28 +16,28 @@ let run cap_path fn =
     Printf.eprintf "%s\n%!" msg;
     exit 1
 
-let add_client cap_path id =
+let add_client () cap_path id =
   run cap_path @@ fun admin_service ->
   Capability.with_ref (Cluster_api.Admin.add_client admin_service id) @@ fun client ->
   Persistence.save_exn client >|= fun uri ->
   print_endline (Uri.to_string uri)
 
-let remove_client cap_path id =
+let remove_client () cap_path id =
   run cap_path @@ fun admin_service ->
   Cluster_api.Admin.remove_client admin_service id
 
-let list_clients cap_path =
+let list_clients () cap_path =
   run cap_path @@ fun admin_service ->
   Cluster_api.Admin.list_clients admin_service >|= function
   | [] -> Fmt.epr "No clients.@."
   | clients -> List.iter print_endline clients
 
-let set_rate cap_path pool_id client_id rate =
+let set_rate () cap_path pool_id client_id rate =
   run cap_path @@ fun admin_service ->
   let pool = Cluster_api.Admin.pool admin_service pool_id in
   Cluster_api.Pool_admin.set_rate pool ~client_id rate
 
-let show cap_path pool =
+let show () cap_path pool =
   run cap_path @@ fun admin_service ->
   match pool with
   | None ->
@@ -60,7 +57,7 @@ let drain pool workers =
     ) in
   Lwt.join jobs
 
-let set_active active all auto_create wait cap_path pool worker =
+let set_active active () all auto_create wait cap_path pool worker =
   run cap_path @@ fun admin_service ->
   Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
   match worker with
@@ -106,7 +103,7 @@ let set_active active all auto_create wait cap_path pool worker =
 let pp_worker_name f { Cluster_api.Pool_admin.name; _ } =
   Fmt.string f name
 
-let update cap_path pool worker =
+let update () cap_path pool worker =
   run cap_path @@ fun admin_service ->
   Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
   match worker with
@@ -150,7 +147,7 @@ let update cap_path pool worker =
             Fmt.(list ~sep:cut pp_worker_name) disconnected
         )
 
-let forget cap_path pool worker =
+let forget () cap_path pool worker =
   run cap_path @@ fun admin_service ->
   Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
   match worker with
@@ -238,47 +235,47 @@ let wait =
 
 let add_client =
   let doc = "Create a new client endpoint for submitting jobs" in
-  Term.(const add_client $ connect_addr $ Arg.required (client_id ~pos:0)),
+  Term.(const add_client $ Logging.term $ connect_addr $ Arg.required (client_id ~pos:0)),
   Term.info "add-client" ~doc
 
 let remove_client =
   let doc = "Unregister a client." in
-  Term.(const remove_client $ connect_addr $ Arg.required (client_id ~pos:0)),
+  Term.(const remove_client $ Logging.term $ connect_addr $ Arg.required (client_id ~pos:0)),
   Term.info "remove-client" ~doc
 
 let list_clients =
   let doc = "List registered clients" in
-  Term.(const list_clients $ connect_addr),
+  Term.(const list_clients $ Logging.term $ connect_addr),
   Term.info "list-clients" ~doc
 
 let set_rate =
   let doc = "Set expected number of parallel jobs for a pool/client combination" in
-  Term.(const set_rate $ connect_addr $ Arg.required pool_pos $ Arg.required (client_id ~pos:1) $ Arg.required (rate ~pos:2)),
+  Term.(const set_rate $ Logging.term $ connect_addr $ Arg.required pool_pos $ Arg.required (client_id ~pos:1) $ Arg.required (rate ~pos:2)),
   Term.info "set-rate" ~doc
 
 let show =
   let doc = "Show information about a service, pool or worker" in
-  Term.(const show $ connect_addr $ Arg.value pool_pos),
+  Term.(const show $ Logging.term $ connect_addr $ Arg.value pool_pos),
   Term.info "show" ~doc
 
 let pause =
   let doc = "Set a worker to be unavailable for further jobs" in
-  Term.(const (set_active false) $ all $ auto_create $ wait $ connect_addr $ Arg.required pool_pos $ worker),
+  Term.(const (set_active false) $ Logging.term $ all $ auto_create $ wait $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "pause" ~doc
 
 let unpause =
   let doc = "Resume a paused worker" in
-  Term.(const (set_active true) $ all $ auto_create $ const false $ connect_addr $ Arg.required pool_pos $ worker),
+  Term.(const (set_active true) $ Logging.term $ all $ auto_create $ const false $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "unpause" ~doc
 
 let update =
   let doc = "Drain and then update worker(s)" in
-  Term.(const update $ connect_addr $ Arg.required pool_pos $ worker),
+  Term.(const update $ Logging.term $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "update" ~doc
 
 let forget =
   let doc = "Forget about an old worker" in
-  Term.(const forget $ connect_addr $ Arg.required pool_pos $ worker),
+  Term.(const forget $ Logging.term $ connect_addr $ Arg.required pool_pos $ worker),
   Term.info "forget" ~doc
 
 let cmds = [add_client; remove_client; list_clients; set_rate; show; pause; unpause; update; forget]

@@ -4,8 +4,9 @@ module Restorer = Capnp_rpc_net.Restorer
 
 let ( / ) = Filename.concat
 
-let () =
-  Prometheus_unix.Logging.init ()
+let setup_log default_level =
+  Prometheus_unix.Logging.init ?default_level ();
+  ()
 
 let or_die = function
   | Ok x -> x
@@ -84,7 +85,7 @@ let provision_client ~admin ~secrets_dir id =
     Logs.app (fun f -> f "Wrote capability reference to %S" path)
   )
 
-let main capnp secrets_dir pools prometheus_config state_dir default_clients =
+let main () capnp secrets_dir pools prometheus_config state_dir default_clients =
   if not (dir_exists state_dir) then Unix.mkdir state_dir 0o755;
   let db = Sqlite3.db_open (state_dir / "scheduler.db") in
   Sqlite3.busy_timeout db 1000;
@@ -171,9 +172,12 @@ let default_clients =
     ~docv:"NAME"
     ["default-clients"]
 
+let setup_log =
+  Term.(const setup_log $ Logs_cli.level ())
+
 let cmd =
   let doc = "Manage build workers" in
-  Term.(const main $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir $ pools $ listen_prometheus $ state_dir $ default_clients),
+  Term.(const main $ setup_log $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir $ pools $ listen_prometheus $ state_dir $ default_clients),
   Term.info "ocluster-scheduler" ~doc ~version:Version.t
 
 let () = Term.(exit @@ eval cmd)

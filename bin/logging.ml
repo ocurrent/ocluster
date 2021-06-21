@@ -16,8 +16,11 @@ let reporter =
   in
   { Logs.report = report }
 
-let init () =
-  Fmt_tty.setup_std_outputs ();
-  Logs.(set_level (Some Warning));
+let init style_renderer level =
+  Fmt_tty.setup_std_outputs ?style_renderer ();
+  Logs.set_level level;
   (* Logs.Src.set_level Capnp_rpc.Debug.src (Some Debug); *)
   Logs.set_reporter reporter
+
+let term =
+  Cmdliner.Term.(const init $ Fmt_cli.style_renderer () $ Logs_cli.level ())
