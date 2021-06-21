@@ -22,7 +22,7 @@ depends: [
   "ppx_sexp_conv"
   "dune-build-info"
   "ocluster-api" {= version}
-  "lwt"
+  "lwt" {>= "5.4.1"}
   "capnp-rpc-lwt"
   "capnp-rpc-net"
   "capnp-rpc-unix" {>= "1.2"}
@@ -38,7 +38,7 @@ depends: [
   "obuilder"
   "psq"
   "mirage-crypto" {>= "0.8.5"}
-  "ocaml" {>= "4.10.0"}
+  "ocaml" {>= "4.12.0"}
   "current_ocluster" {= version & with-test}
   "alcotest" {>= "1.0.0" & with-test}
   "alcotest-lwt" {>= "1.0.1" & with-test}

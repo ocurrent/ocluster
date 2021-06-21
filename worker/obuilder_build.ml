@@ -7,10 +7,10 @@ type builder = Builder : (module Obuilder.BUILDER with type t = 'a) * 'a -> buil
 module Config = struct
   type t = {
     store_spec : [ `Zfs of string | `Btrfs of string ];
-    fast_sync : bool;
+    sandbox_config : Obuilder.Runc_sandbox.config;
   }
 
-  let v ~fast_sync store_spec = { store_spec; fast_sync }
+  let v sandbox_config store_spec = { store_spec; sandbox_config }
 end
 
 type t = {
@@ -22,6 +22,7 @@ type t = {
 }
 
 module Sandbox = Obuilder.Runc_sandbox
+module Fetcher = Obuilder.Docker
 
 let ( / ) = Filename.concat
 
@@ -38,10 +39,10 @@ let log_to log_data tag msg =
   | `Output -> Log_data.write log_data msg
 
 let create ?prune_threshold config =
-  let { Config.store_spec; fast_sync } = config in
+  let { Config.store_spec; sandbox_config } = config in
   Obuilder.Store_spec.to_store store_spec >>= fun (Store ((module Store), store)) ->
-  Sandbox.create ~fast_sync ~runc_state_dir:(Store.state_dir store / "runc") () >>= fun sandbox ->
-  let module Builder = Obuilder.Builder(Store)(Sandbox) in
+  let module Builder = Obuilder.Builder(Store)(Sandbox)(Fetcher) in
+  Sandbox.create ~state_dir:(Store.state_dir store / "runc") sandbox_config >>= fun sandbox ->
   let builder = Builder.v ~store ~sandbox in
   Log.info (fun f -> f "Performing OBuilder self-test...");
   Builder.healthcheck builder >|= function

@@ -11,11 +11,11 @@
  (description "OCaml bindings for the OCluster Cap'n Proto API.")
  (depends
   ppx_deriving
-  lwt
+  (lwt (>= 5.4.1))
   (capnp-rpc-lwt (>= 1.2))
   fmt
   ppx_deriving_yojson
-  (ocaml (>= 4.10.0))))
+  (ocaml (>= 4.12.0))))
 (package
  (name ocluster)
  (synopsis "Distribute build jobs to workers")
@@ -27,7 +27,7 @@
   ppx_sexp_conv
   dune-build-info
   (ocluster-api (= :version))
-  lwt
+  (lwt (>= 5.4.1))
   capnp-rpc-lwt
   capnp-rpc-net
   (capnp-rpc-unix (>= 1.2))
@@ -43,7 +43,7 @@
   obuilder
   psq
   (mirage-crypto (>= 0.8.5))
-  (ocaml (>= 4.10.0))
+  (ocaml (>= 4.12.0))
   (current_ocluster (and (= :version) :with-test))
   (alcotest (and (>= 1.0.0) :with-test))
   (alcotest-lwt (and (>= 1.0.1) :with-test))))
@@ -55,7 +55,7 @@
  (depends
   ppx_deriving
   (ocluster-api (= :version))
-  lwt
+  (lwt (>= 5.4.1))
   (current (>= 0.3))
   (current_git (>= 0.3))
   (current_web (and (>= 0.3) :with-test))
@@ -66,4 +66,4 @@
   fmt
   prometheus
   ppx_deriving_yojson
-  (ocaml (>= 4.10.0))))
+  (ocaml (>= 4.12.0))))

@@ -6,7 +6,7 @@ type job_spec = [
 module Obuilder_config : sig
   type t
 
-  val v : fast_sync:bool -> [ `Zfs of string | `Btrfs of string ] -> t
+  val v : Obuilder.Runc_sandbox.config -> [ `Zfs of string | `Btrfs of string ] -> t
 end
 
 val run :
