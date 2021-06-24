@@ -1,7 +1,8 @@
 open Lwt.Infix
 
-let () =
-  Prometheus_unix.Logging.init ()
+let setup_log default_level =
+  Prometheus_unix.Logging.init ?default_level ();
+  ()
 
 let or_die = function
   | Ok x -> x
@@ -40,7 +41,7 @@ let update_docker () =
 let update_normal () =
   Lwt.return (fun () -> Lwt.return ())
 
-let main registration_path capacity name allow_push prune_threshold state_dir obuilder =
+let main () registration_path capacity name allow_push prune_threshold state_dir obuilder =
   let update =
     if Sys.file_exists "/.dockerenv" then update_docker
     else update_normal
@@ -123,9 +124,12 @@ module Obuilder_config = struct
     Term.pure make $ Obuilder.Runc_sandbox.cmdliner $ store
 end
 
+let setup_log =
+  Term.(const setup_log $ Logs_cli.level ())
+
 let cmd =
   let doc = "Run a build worker" in
-  Term.(const main $ connect_addr $ capacity $ worker_name $ allow_push $ prune_threshold $ state_dir $ Obuilder_config.v),
+  Term.(const main $ setup_log $ connect_addr $ capacity $ worker_name $ allow_push $ prune_threshold $ state_dir $ Obuilder_config.v),
   Term.info "ocluster-worker" ~doc ~version:Version.t
 
 let () = Term.(exit @@ eval cmd)
