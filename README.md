@@ -51,7 +51,8 @@ ocluster-scheduler \
   --capnp-listen-address=tcp:0.0.0.0:9000 \
   --capnp-public-address=tcp:127.0.0.1:9000 \
   --state-dir=/var/lib/ocluster-scheduler \
-  --pools=linux-arm32,linux-x86_64
+  --pools=linux-arm32,linux-x86_64 \
+  --verbose
 ```
 
 Replace the last line with whatever build pools you want. The names can be anything you like.
@@ -92,7 +93,8 @@ To run the build service locally:
 ocluster-worker \
   --connect=./capnp-secrets/pool-linux-x86_64.cap \
   --state-dir=/var/lib/ocluster-worker \
-  --name=my-host --capacity=1 --prune-threshold=20
+  --name=my-host --capacity=1 --prune-threshold=20 \
+  --verbose
 ```
 
 Each builder must be given a unique name.
