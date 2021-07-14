@@ -48,12 +48,14 @@ let show () cap_path pool =
     Cluster_api.Pool_admin.show pool >|= fun status ->
     print_endline (String.trim status)
 
-let progress label = Cluster_api.Progress.local (Fmt.pr "%s: %s@." label)
+let with_progress label =
+  Capability.with_ref (Cluster_api.Progress.local (Fmt.pr "%s: %s@." label))
 
 let drain pool workers =
   Fmt.pr "Waiting for jobs to finish...@.";
   let jobs = workers |> List.map (fun w ->
-      Cluster_api.Pool_admin.drain ~progress:(progress w) pool w
+      with_progress w @@ fun progress ->
+      Cluster_api.Pool_admin.drain ~progress pool w
     ) in
   Lwt.join jobs
 
@@ -109,7 +111,8 @@ let update () cap_path pool worker =
   match worker with
   | Some worker ->
     begin
-      Cluster_api.Pool_admin.update ~progress:(progress worker) pool worker >|= function
+      with_progress worker @@ fun progress ->
+      Cluster_api.Pool_admin.update ~progress pool worker >|= function
       | Ok () -> Fmt.pr "Restarted@."
       | Error (`Capnp ex) ->
         Fmt.pr "%a@." Capnp_rpc.Error.pp ex;
@@ -125,7 +128,8 @@ let update () cap_path pool worker =
       exit 1
     | w :: ws ->
       Fmt.pr "Testing update on first worker in pool: %S@." w.name;
-      Cluster_api.Pool_admin.update ~progress:(progress w.name) pool w.name >>= function
+      with_progress w.name (fun progress -> Cluster_api.Pool_admin.update ~progress pool w.name)
+      >>= function
       | Error (`Capnp ex) ->
         Fmt.pr "%a@." Capnp_rpc.Error.pp ex;
         exit 1
@@ -134,7 +138,8 @@ let update () cap_path pool worker =
           Fmt.(list ~sep:sp pp_worker_name) ws;
         ws
         |> List.map (fun (w:Cluster_api.Pool_admin.worker_info) ->
-            Cluster_api.Pool_admin.update ~progress:(progress w.name) pool w.name >|= function
+            with_progress w.name @@ fun progress ->
+            Cluster_api.Pool_admin.update ~progress pool w.name >|= function
             | Ok () -> Fmt.pr "%S restarted OK.@." w.name
             | Error (`Capnp ex) ->
               Fmt.pr "%S: %a@." w.name Capnp_rpc.Error.pp ex;
