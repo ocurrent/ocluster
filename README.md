@@ -89,7 +89,8 @@ contains a secret token granting it access.
 To run the build service locally:
 
 ```
-ocluster-worker ./capnp-secrets/pool-linux-x86_64.cap \
+ocluster-worker \
+  --connect=./capnp-secrets/pool-linux-x86_64.cap \
   --state-dir=/var/lib/ocluster-worker \
   --name=my-host --capacity=1 --prune-threshold=20
 ```

@@ -66,11 +66,11 @@ let worker_name =
 
 let connect_addr =
   Arg.required @@
-  Arg.pos 0 Arg.(some file) None @@
+  Arg.opt Arg.(some file) None @@
   Arg.info
     ~doc:"Path of register.cap from build-scheduler"
     ~docv:"ADDR"
-    []
+    ["c"; "connect"]
 
 let capacity =
   Arg.value @@
