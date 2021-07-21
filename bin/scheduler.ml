@@ -4,8 +4,8 @@ module Restorer = Capnp_rpc_net.Restorer
 
 let ( / ) = Filename.concat
 
-let setup_log default_level =
-  Prometheus_unix.Logging.init ?default_level ();
+let setup_log ?(formatter=Format.err_formatter) default_level =
+  Prometheus_unix.Logging.init ~formatter ?default_level ();
   ()
 
 let or_die = function
@@ -85,7 +85,8 @@ let provision_client ~admin ~secrets_dir id =
     Logs.app (fun f -> f "Wrote capability reference to %S" path)
   )
 
-let main () capnp secrets_dir pools prometheus_config state_dir default_clients =
+let main default_level ?formatter capnp secrets_dir pools prometheus_config state_dir default_clients =
+  setup_log ?formatter default_level;
   if not (dir_exists state_dir) then Unix.mkdir state_dir 0o755;
   let db = Sqlite3.db_open (state_dir / "scheduler.db") in
   Sqlite3.busy_timeout db 1000;
@@ -121,6 +122,14 @@ let main () capnp secrets_dir pools prometheus_config state_dir default_clients 
   end
 
 (* Command-line parsing *)
+
+let main ~install (default_level, args1) ((capnp, secrets_dir, pools, prometheus_config, state_dir, default_clients), args2) =
+  let (name, display, text) = ("ocluster-scheduler", "OCluster Scheduler", "Manage build workers") in
+  if install then
+    `Ok (Winsvc_wrapper.install name display text (args1 @args2))
+  else
+    `Ok (Winsvc_wrapper.run name state_dir (fun ?formatter () ->
+             main default_level ?formatter capnp secrets_dir pools prometheus_config state_dir default_clients))
 
 open Cmdliner
 
@@ -172,12 +181,32 @@ let default_clients =
     ~docv:"NAME"
     ["default-clients"]
 
-let setup_log =
-  Term.(const setup_log $ Logs_cli.level ())
+let scheduler_opts_t =
+  let scheduler_opts capnp secrets_dir pools prometheus_config state_dir default_clients  =
+    (capnp, secrets_dir, pools, prometheus_config, state_dir, default_clients) in
+  Term.(with_used_args
+    (const scheduler_opts $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir $ pools
+     $ listen_prometheus $ state_dir $ default_clients))
 
-let cmd =
+let cmd ~install =
   let doc = "Manage build workers" in
-  Term.(const main $ setup_log $ Capnp_rpc_unix.Vat_config.cmd $ secrets_dir $ pools $ listen_prometheus $ state_dir $ default_clients),
-  Term.info "ocluster-scheduler" ~doc ~version:Version.t
+  let man = [
+    `P "On $(b,Windows), specify '$(b,install)' as the first \
+        command-line paramater to install the scheduler as a Windows \
+        service with the specified parameters, and '$(b,remove)' to \
+        remove the scheduler from the services." ] in
+  Term.(ret (const (main ~install) $ with_used_args (Logs_cli.level ()) $ scheduler_opts_t)),
+  Term.info "ocluster-scheduler" ~doc ~man ~version:Version.t
 
-let () = Term.(exit @@ eval cmd)
+let () =
+  match Array.to_list Sys.argv with
+  | hd :: "install" :: argv ->
+    Term.(exit @@ eval ~argv:(Array.of_list (hd :: argv)) (cmd ~install:true))
+  | _ :: "remove" :: args ->
+    if args <> [] then begin
+      prerr_endline "'remove' should be used only once, in first position.";
+      exit 1
+    end else
+      Winsvc_wrapper.remove "ocluster-scheduler"
+  | _ ->
+    Term.(exit @@ eval (cmd ~install:false))

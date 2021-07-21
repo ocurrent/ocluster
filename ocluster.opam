@@ -27,13 +27,14 @@ depends: [
   "capnp-rpc-net"
   "capnp-rpc-unix" {>= "1.2"}
   "extunix" {>= "0.3.2"}
+  "winsvc" {>= "1.0.1" & os = "win32"}
   "logs"
   "fmt"
   "conf-libev" {os != "win32"}
   "digestif" {>= "0.8"}
   "fpath"
   "lwt-dllist"
-  "prometheus-app" {>= "1.0"}
+  "prometheus-app" {>= "1.1"}
   "cohttp-lwt-unix"
   "sqlite3"
   "obuilder"
