@@ -9,20 +9,9 @@ RUN opam install -y --deps-only .
 ADD --chown=opam . .
 RUN opam config exec -- dune build ./_build/install/default/bin/ocluster-worker
 
-FROM golang:1.15-buster AS runc
-RUN apt-get update && apt-get -y install libseccomp-dev
-RUN wget https://github.com/opencontainers/runc/archive/v1.0.0-rc92.tar.gz
-RUN mkdir -p github.com/opencontainers
-RUN tar xf v1.0.0-rc92.tar.gz -C github.com/opencontainers
-RUN mv github.com/opencontainers/runc-* github.com/opencontainers/runc
-WORKDIR github.com/opencontainers/runc
-RUN make
-RUN make install
-
 FROM debian:10
 RUN apt-get update && apt-get install docker.io libev4 curl gnupg2 git libsqlite3-dev ca-certificates netbase -y --no-install-recommends
 WORKDIR /var/lib/ocluster-worker
 ENTRYPOINT ["/usr/local/bin/ocluster-worker"]
 ENV PROGRESS_NO_TRUNC=1
 COPY --from=build /src/_build/install/default/bin/ocluster-worker /usr/local/bin/
-COPY --from=runc /usr/local/sbin/runc /usr/local/bin/
