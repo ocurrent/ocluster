@@ -34,6 +34,7 @@
   (extunix (>= 0.3.2))
   (winsvc (and (>= 1.0.1) (= :os "win32")))
   (cmdliner (>= 1.1.0))
+  (win-eventlog (>= 0.4))
   logs
   fmt
   (conf-libev (<> :os "win32"))

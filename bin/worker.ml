@@ -1,7 +1,8 @@
 open Lwt.Infix
 
-let setup_log ?(formatter=Format.err_formatter) default_level =
+let setup_log ?(formatter=Format.err_formatter) default_level name =
   Prometheus_unix.Logging.init ~formatter ?default_level ();
+  if Sys.win32 then Logging.combine_prometheus_eventlog name;
   ()
 
 let or_die = function
@@ -42,7 +43,7 @@ let update_normal () =
   Lwt.return (fun () -> Lwt.return ())
 
 let main default_level ?formatter registration_path capacity name allow_push prune_threshold state_dir obuilder =
-  setup_log ?formatter default_level;
+  setup_log ?formatter default_level name;
   let update =
     if Sys.file_exists "/.dockerenv" then update_docker
     else update_normal
@@ -162,6 +163,8 @@ let () =
   | hd :: "install" :: argv ->
     exit (Cmd.eval ~argv:(Array.of_list (hd :: argv)) (cmd ~install:true))
   | _ :: "remove" :: name :: args -> remove name args
-  | _ :: name :: args when Astring.String.is_prefix ~affix:"remove=" name -> remove name args
+  | _ :: name :: args when Astring.String.is_prefix ~affix:"remove=" name ->
+    let name = Astring.String.span ~max:(String.length "remove=") name |> snd in
+    remove name args
   | _ ->
     exit (Cmd.eval (cmd ~install:false))

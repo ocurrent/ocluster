@@ -26,3 +26,15 @@ let term =
   let open Cmdliner in
   let docs = Manpage.s_common_options in
   Term.(const init $ Fmt_cli.style_renderer ~docs () $ Logs_cli.level ~docs ())
+
+let combine_prometheus_eventlog name =
+  let prometheus = Logs.reporter () in
+  let eventlog = Win_eventlog.Log_eventlog.reporter ~eventlog:(Win_eventlog.Eventlog.register name) ~event:0x1 () in
+  let report = fun src level ~over k msgf ->
+    if level = Logs.Debug then
+      prometheus.Logs.report src level ~over k msgf
+    else
+      let v = eventlog.Logs.report src level ~over:(fun () -> ()) k msgf in
+      prometheus.Logs.report src level ~over (fun () -> v) msgf
+  in
+  Logs.set_reporter { Logs.report }

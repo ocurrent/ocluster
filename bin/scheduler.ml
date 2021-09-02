@@ -6,6 +6,7 @@ let ( / ) = Filename.concat
 
 let setup_log ?(formatter=Format.err_formatter) default_level =
   Prometheus_unix.Logging.init ~formatter ?default_level ();
+  if Sys.win32 then Logging.combine_prometheus_eventlog "ocluster-scheduler";
   ()
 
 let or_die = function
