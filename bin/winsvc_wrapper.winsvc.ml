@@ -18,6 +18,7 @@ let run name state_dir (main:?formatter:Format.formatter -> unit -> unit) =
       let stop () = Lwt_unix.send_notification stop_notification
     end)
   in
+  Random.self_init ();
   try
     let name = Printf.sprintf "%s-%d.log" (Sys.executable_name |> Filename.basename |> Filename.remove_extension) (Random.bits ()) in
     let f = Filename.concat state_dir name in
