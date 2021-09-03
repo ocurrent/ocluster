@@ -54,13 +54,11 @@ let main default_level ?formatter registration_path capacity name allow_push pru
   end
 
 (* Command-line parsing *)
-
 let main ~install (default_level, args1) ((registration_path, capacity, name, allow_push, prune_threshold, docker_max_df_size, obuilder_prune_threshold, state_dir, obuilder), args2) =
-  let (name', display, text) = ("ocluster-worker", "OCluster Worker", "Run a build worker") in
   if install then
-    Ok (Winsvc_wrapper.install name' display text (args1 @ args2))
+    Ok (Winsvc_wrapper.install name "OCluster Worker" "Run a build worker" (args1 @ args2))
   else
-    Ok (Winsvc_wrapper.run name' state_dir (fun ?formatter () ->
+    Ok (Winsvc_wrapper.run name state_dir (fun ?formatter () ->
              main default_level ?formatter registration_path capacity name allow_push prune_threshold docker_max_df_size obuilder_prune_threshold state_dir obuilder))
 
 open Cmdliner
@@ -162,22 +160,25 @@ let cmd ~install =
   let man = [
     `P "On $(b,Windows), specify '$(b,install)' as the first \
         command-line paramater to install the worker as a Windows \
-        service with the specified parameters, and '$(b,remove)' to \
-        remove the worker from the services." ] in
+        service with the specified parameters, and '$(b,remove) \
+        $(i,name)' to remove the worker $(i,name) from the services." ] in
   let info = Cmd.info "ocluster-worker" ~doc ~man ~version:Version.t in
   Cmd.v info
     Term.(term_result'
       (const (main ~install) $ with_used_args (Logs_cli.level ()) $ worker_opts_t))
 
 let () =
-  match Array.to_list Sys.argv with
-  | hd :: "install" :: argv ->
-    exit (Cmd.eval ~argv:(Array.of_list (hd :: argv)) (cmd ~install:true))
-  | _ :: "remove" :: args ->
+  let remove name args =
     if args <> [] then begin
       prerr_endline "'remove' should be used only once, in first position.";
       exit 1
     end else
-      Winsvc_wrapper.remove "ocluster-worker"
+      Winsvc_wrapper.remove name
+  in
+  match Array.to_list Sys.argv with
+  | hd :: "install" :: argv ->
+    exit (Cmd.eval ~argv:(Array.of_list (hd :: argv)) (cmd ~install:true))
+  | _ :: "remove" :: name :: args -> remove name args
+  | _ :: name :: args when Astring.String.is_prefix ~affix:"remove=" name -> remove name args
   | _ ->
     exit (Cmd.eval (cmd ~install:false))
