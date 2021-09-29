@@ -56,7 +56,7 @@ let rec flush_queue w =
 
 let run fn =
   Lwt_main.run @@ begin
-    Lwt_unix.yield () >>= fun () ->       (* Ensure we're inside the Lwt mainloop. Lwt.pause behaves strangely otherwise. *)
+    Lwt.pause () >>= fun () ->       (* Ensure we're inside the Lwt mainloop. Lwt.pause behaves strangely otherwise. *)
     Fake_time.now := 1.0;
     fn () >>= fun () ->
     Lwt.pause () >|= fun () ->
