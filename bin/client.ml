@@ -265,8 +265,9 @@ let submit_docker_options =
 
 let submit_docker =
   let doc = "Submit a Docker build to the scheduler" in
+  let sdocs = Manpage.s_common_options in
   Term.(const submit $ Logging.term $ submit_options_common $ submit_docker_options),
-  Term.info "submit-docker" ~doc
+  Term.info "submit-docker" ~doc ~sdocs
 
 let submit_obuilder_options =
   let make spec =
@@ -276,8 +277,9 @@ let submit_obuilder_options =
 
 let submit_obuilder =
   let doc = "Submit an OBuilder build to the scheduler" in
+  let sdocs = Manpage.s_common_options in
   Term.(const submit $ Logging.term $ submit_options_common $ submit_obuilder_options),
-  Term.info "submit-obuilder" ~doc
+  Term.info "submit-obuilder" ~doc ~sdocs
 
 let cmds = [submit_docker; submit_obuilder]
 

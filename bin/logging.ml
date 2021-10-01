@@ -23,4 +23,7 @@ let init style_renderer level =
   Logs.set_reporter reporter
 
 let term =
-  Cmdliner.Term.(const init $ Fmt_cli.style_renderer () $ Logs_cli.level ())
+  let open Cmdliner in
+  Term.(const init
+ $ Fmt_cli.style_renderer ~docs:Manpage.s_common_options ()
+ $ Logs_cli.level ~docs:Manpage.s_common_options ())
