@@ -19,7 +19,7 @@ module Ty = struct
   let to_string : t -> string = Hashtbl.find by_value
   let of_string : string -> t = Hashtbl.find by_name
 
-  let pp = Fmt.using (Hashtbl.find_opt by_value) Fmt.(option ~none:(unit "(unregistered type)") string)
+  let pp = Fmt.using (Hashtbl.find_opt by_value) Fmt.(option ~none:(any "(unregistered type)") string)
 end
 
 type digest = string

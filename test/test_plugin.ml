@@ -12,7 +12,7 @@ let with_sched fn =
     (fun () ->
        let sched = Cluster_scheduler.create ~db ["pool"] in
        let load ~validate ~sturdy_ref = function
-         | Cluster_scheduler.Client, name -> 
+         | Cluster_scheduler.Client, name ->
            Lwt.return @@ Restorer.grant (Cluster_scheduler.submission_service ~validate ~sturdy_ref sched name)
          | (ty, _) -> Fmt.failwith "Unknown SturdyRef type %a found in database!" Cluster_scheduler.Sqlite_loader.Ty.pp ty
        in
@@ -119,13 +119,13 @@ let two_jobs () =
     let* b1 = Current.state (Current_ocluster.build t spec1 ~pool:"pool" ~src:(Current.return []) ~options)
     and* b2 = Current.state (Current_ocluster.build t spec2 ~pool:"pool" ~src:(Current.return []) ~options) in
     Logs.info (fun f -> f "@[<v>b1 = %a@,b2 = %a@]"
-                  (Current_term.Output.pp (Fmt.unit "()")) b1
-                  (Current_term.Output.pp (Fmt.unit "()")) b2
+                  (Current_term.Output.pp (Fmt.any "()")) b1
+                  (Current_term.Output.pp (Fmt.any "()")) b2
               );
     match b1, b2 with
     | Ok (), Error (`Msg _)
     | Error (`Msg _), Ok () -> Current.return ()
-    | Error (`Msg x), Error (`Msg y) -> Current.fail (Fmt.strf "%s,%s" x y)
+    | Error (`Msg x), Error (`Msg y) -> Current.fail (Fmt.str "%s,%s" x y)
     | _ -> Current.active `Running
   in
   setup ~pipeline @@ fun ~registry ~await_result ~break:_ ->

@@ -32,7 +32,7 @@ let read_log job =
   let buffer = Buffer.create 1024 in
   let rec aux start =
     Cluster_api.Job.log job start >>= function
-    | Error (`Capnp e) -> Lwt.return (Fmt.strf "Error tailing logs: %a@." Capnp_rpc.Error.pp e)
+    | Error (`Capnp e) -> Lwt.return (Fmt.str "Error tailing logs: %a@." Capnp_rpc.Error.pp e)
     | Ok ("", _) -> Lwt.return (Buffer.contents buffer)
     | Ok (data, next) ->
       Buffer.add_string buffer data;
@@ -49,7 +49,7 @@ let submit service dockerfile =
   result >|= function
   | Ok "" -> log
   | Ok x -> Fmt.failwith "Unexpected job output: %S" x
-  | Error (`Capnp _) -> Fmt.strf "%sFAILED@." log
+  | Error (`Capnp _) -> Fmt.str "%sFAILED@." log
 
 let with_sched fn =
   let db = Sqlite3.db_open ":memory:" in
@@ -125,9 +125,9 @@ let already_registered () =
   Capability.await_settled q1 >>= fun (_ : _ result) ->
   let q2 = Cluster_api.Registration.register registry ~name:"worker-1" ~capacity:1 api in
   Capability.await_settled q2 >>= fun (_ : _ result) ->
-  let pp_err = Fmt.(option ~none:(unit "ok")) Capnp_rpc.Exception.pp in
-  let p1 = Fmt.strf "%a" pp_err (Capability.problem q1) in
-  let p2 = Fmt.strf "%a" pp_err (Capability.problem q2) in
+  let pp_err = Fmt.(option ~none:(any "ok")) Capnp_rpc.Exception.pp in
+  let p1 = Fmt.str "%a" pp_err (Capability.problem q1) in
+  let p2 = Fmt.str "%a" pp_err (Capability.problem q2) in
   Alcotest.(check string) "First worker connected" "ok" p1;
   Alcotest.(check string) "Second was rejected" "Failed: Worker already registered!" p2;
   Capability.dec_ref q1;
@@ -435,15 +435,15 @@ let clients () =
   let ticket2 = Cluster_api.Submission.submit client2 ~pool:"pool" ~action ~cache_hint:"1" in
   Capability.await_settled ticket1 >>= fun (_ : _ result) ->
   Capability.await_settled ticket2 >>= fun (_ : _ result) ->
-  let pp_err = Fmt.(option ~none:(unit "ok")) Capnp_rpc.Exception.pp in
-  let problem1 = Fmt.strf "%a" pp_err (Capability.problem ticket1) in
+  let pp_err = Fmt.(option ~none:(any "ok")) Capnp_rpc.Exception.pp in
+  let problem1 = Fmt.str "%a" pp_err (Capability.problem ticket1) in
   Alcotest.(check string) "Access revoked" "Failed: Access has been revoked" problem1;
-  let problem2 = Fmt.strf "%a" pp_err (Capability.problem ticket2) in
+  let problem2 = Fmt.str "%a" pp_err (Capability.problem ticket2) in
   Alcotest.(check string) "Access OK" "ok" problem2;
   Capability.dec_ref ticket2;
   Capability.with_ref (Cluster_api.Admin.add_client admin "client2") @@ fun client2b ->
   Capability.await_settled client2b >>= fun (_ : _ result) ->
-  let problem = Fmt.strf "%a" pp_err (Capability.problem client2b) in
+  let problem = Fmt.str "%a" pp_err (Capability.problem client2b) in
   Alcotest.(check string) "Duplicate user" {|Failed: Client "client2" already registered!|} problem;
   Lwt.try_bind
     (fun () -> Cluster_api.Admin.remove_client admin "client1")

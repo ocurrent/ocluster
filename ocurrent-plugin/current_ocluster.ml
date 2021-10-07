@@ -89,12 +89,12 @@ module Op = struct
             )
         in
         begin match dockerfile with
-          | `Contents content -> Current.Job.write job (Fmt.strf "@.Dockerfile:@.@.\o033[34m%s\o033[0m@.@." content)
+          | `Contents content -> Current.Job.write job (Fmt.str "@.Dockerfile:@.@.\o033[34m%s\o033[0m@.@." content)
           | `Path _ -> ()
         end;
         Cluster_api.Submission.docker_build ?push_to ~options dockerfile
       | `Obuilder { spec = `Contents spec } ->
-        Current.Job.write job (Fmt.strf "@.OBuilder spec:@.@.\o033[34m%s\o033[0m@.@." spec);
+        Current.Job.write job (Fmt.str "@.OBuilder spec:@.@.\o033[34m%s\o033[0m@.@." spec);
         Cluster_api.Submission.obuilder_build spec
     in
     let src = single_repo src in
