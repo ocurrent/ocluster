@@ -209,7 +209,7 @@ module Pool_api = struct
             | Some new_w when new_w != w -> Lwt_result.return (Service.Response.create_empty ())
             | _ -> Lwt_condition.wait t.cond >>= aux
           in
-          let timeout = 
+          let timeout =
             Lwt_unix.sleep restart_timeout >|= fun () ->
             Error (`Capnp (Capnp_rpc.Error.exn "Timeout waiting for worker to reconnect!"))
           in
@@ -245,7 +245,7 @@ let submission_service ~validate ~sturdy_ref t client_id =
     | None ->
       match String.Map.find_opt pool_id t.pools with
       | None ->
-        let msg = Fmt.strf "Pool ID %S not one of @[<h>{%a}@]" pool_id (String.Map.pp ~sep:Fmt.comma pp_pool_name) t.pools in
+        let msg = Fmt.str "Pool ID %S not one of @[<h>{%a}@]" pool_id (String.Map.pp ~sep:Fmt.comma pp_pool_name) t.pools in
         Error (Capnp_rpc.Exception.v msg)
       | Some pool ->
         let client = Pool_api.Pool.client pool.pool ~client_id in

@@ -41,7 +41,7 @@ let docker_build t ~switch ~log ~src:_ ~secrets:_ = function
     | `Path _ -> assert false
     | `Contents dockerfile ->
       Logs.info (fun f -> f "Mock build got %S" dockerfile);
-      Cluster_worker.Log_data.write log (Fmt.strf "Building %s@." dockerfile);
+      Cluster_worker.Log_data.write log (Fmt.str "Building %s@." dockerfile);
       let reply = get t dockerfile in
       Lwt_switch.add_hook_or_exec (Some switch) (fun () ->
           if Lwt.state reply = Lwt.Sleep then
@@ -68,6 +68,6 @@ let run_remote ~builder_switch ~network_switch ?(capacity=1) ?(name="worker-1") 
   in
   Lwt.on_failure thread
     (fun ex ->
-       Logs.debug (fun f -> f "Mock builder failed: %a" Fmt.exn ex); 
+       Logs.debug (fun f -> f "Mock builder failed: %a" Fmt.exn ex);
        if Lwt_switch.is_on builder_switch && Lwt_switch.is_on network_switch then raise ex
     )

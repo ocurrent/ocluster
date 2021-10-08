@@ -60,7 +60,7 @@ let read_file path =
 
 let min_reconnect_time = 10.0   (* Don't try to connect more than once per 10 seconds *)
 
-type job_spec = [ 
+type job_spec = [
   | `Docker of [ `Contents of string | `Path of string ] * Cluster_api.Docker.Spec.options
   | `Obuilder of [ `Contents of string ]
 ]
@@ -97,7 +97,7 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; auth } =
      realising they didn't have access. So for now, only allow pushing to repositories
      listed in [allow_push]. *)
   if not (List.mem repo t.allow_push) then
-    Lwt_result.fail (`Msg (Fmt.strf "To allow pushing to this repository, start the worker with --allow-push %S" repo))
+    Lwt_result.fail (`Msg (Fmt.str "To allow pushing to this repository, start the worker with --allow-push %S" repo))
   else (
     Lwt_mutex.with_lock docker_push_lock @@ fun () ->
     Lwt_io.with_temp_dir ~prefix:"build-worker-" ~suffix:"-docker" @@ fun config_dir ->
@@ -114,14 +114,14 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; auth } =
            We don't want to return a multi-arch image here, because "docker manifest" would reject that. *)
         match List.find_opt (String.is_prefix ~affix:(repo ^ "@")) (String.cuts ~sep:" " ids) with
         | Some repo_id -> Lwt_result.return repo_id
-        | None -> Lwt_result.fail (`Msg (Fmt.strf "Can't find target repository '%s@...' in list %S!" repo ids)) in
+        | None -> Lwt_result.fail (`Msg (Fmt.str "Can't find target repository '%s@...' in list %S!" repo ids)) in
     match auth with
     | None -> tag_and_push ()
     | Some (user, password) ->
       let login_cmd = docker ["login"; "--password-stdin"; "--username"; user] in
       Process.exec ~label:"docker-login" ~switch ~log ~stdin:password ~stderr:`Keep login_cmd >>= function
       | Error (`Exit_code _) ->
-        Lwt_result.fail (`Msg (Fmt.strf "Failed to docker-login as %S" user))
+        Lwt_result.fail (`Msg (Fmt.str "Failed to docker-login as %S" user))
       | Error (`Msg _ | `Cancelled as e) -> Lwt_result.fail e
       | Ok () -> tag_and_push ()
   )
@@ -293,7 +293,7 @@ let loop ~switch ?obuilder t queue =
                       let t1 = Unix.gettimeofday () in
                       Prometheus.Summary.observe (Metrics.job_time "error") (t1 -. t0);
                       Log.warn (fun f -> f "Build failed: %a" Fmt.exn ex);
-                      Log_data.write log (Fmt.strf "Uncaught exception: %a@." Fmt.exn ex);
+                      Log_data.write log (Fmt.str "Uncaught exception: %a@." Fmt.exn ex);
                       Log_data.close log;
                       Lwt.wakeup_exn set_outcome ex;
                       Lwt.return_unit)
@@ -311,7 +311,7 @@ let loop ~switch ?obuilder t queue =
   loop ()
 
 let error_msg fmt =
-  fmt |> Fmt.kstrf @@ fun x -> Error (`Msg x)
+  fmt |> Fmt.kstr @@ fun x -> Error (`Msg x)
 
 (* Check [path] points below [src]. Don't follow symlinks. *)
 let check_contains ~path src =

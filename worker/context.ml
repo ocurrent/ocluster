@@ -40,7 +40,7 @@ module Repo = struct
   let id t =
     let base = Filename.basename (Uri.path t.url) in
     let digest = Hash.digest_string (Uri.to_string t.url) in
-    Fmt.strf "%s-%s" base (Hash.to_hex digest)
+    Fmt.str "%s-%s" base (Hash.to_hex digest)
 
   let local_copy t =
     repos_dir t.context / id t

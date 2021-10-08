@@ -41,15 +41,15 @@ let exec ~label ~log ~switch ?env ?(stdin="") ?(stderr=`FD_copy Unix.stdout) ?(i
   | Unix.WEXITED n when is_success n ->
     begin match stdin_result with
       | Ok () -> Ok ()
-      | Error (`Msg msg) -> Error (`Msg (Fmt.strf "Failed sending input to %s: %s" label msg))
+      | Error (`Msg msg) -> Error (`Msg (Fmt.str "Failed sending input to %s: %s" label msg))
     end
   | Unix.WEXITED n -> Error (`Exit_code n)
-  | Unix.WSIGNALED x -> Error (`Msg (Fmt.strf "%s failed with signal %d" label x))
-  | Unix.WSTOPPED x -> Error (`Msg (Fmt.strf "%s stopped with signal %a" label pp_signal x))
+  | Unix.WSIGNALED x -> Error (`Msg (Fmt.str "%s failed with signal %d" label x))
+  | Unix.WSTOPPED x -> Error (`Msg (Fmt.str "%s stopped with signal %a" label pp_signal x))
 
 let check_call ~label ~log ~switch ?env ?stdin ?stderr ?is_success cmd =
   exec ~label ~log ~switch ?env ?stdin ?stderr ?is_success cmd >|= function
   | Ok () -> Ok ()
   | Error `Cancelled -> Error `Cancelled
-  | Error (`Exit_code n) -> Error (`Msg (Fmt.strf "%s failed with exit-code %d" label n))
+  | Error (`Exit_code n) -> Error (`Msg (Fmt.str "%s failed with exit-code %d" label n))
   | Error (`Msg _) as e -> e

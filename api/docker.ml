@@ -1,5 +1,5 @@
 let error_msg fmt =
-  fmt |> Fmt.kstrf @@ fun x -> Error (`Msg x)
+  fmt |> Fmt.kstr @@ fun x -> Error (`Msg x)
 
 module Image_id = struct
   type t = { repo : string; tag : string }
@@ -21,7 +21,7 @@ module Image_id = struct
     | None -> error_msg "Missing ':TAG' in target %S" s
     | Some (repo, tag) ->
       v_opt ~repo ~tag
-      |> Result.map_error (fun (`Msg m) -> `Msg (Fmt.strf "%s in %S" m s))
+      |> Result.map_error (fun (`Msg m) -> `Msg (Fmt.str "%s in %S" m s))
 
   let repo t = t.repo
   let tag t = t.tag

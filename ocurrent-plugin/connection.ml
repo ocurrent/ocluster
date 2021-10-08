@@ -139,7 +139,7 @@ let submit ~job ~pool ~action ~cache_hint ?src ?secrets ~urgent t ~priority ~swi
         Lwt.pause () >>= fun () ->
         if Capability.problem sched = None then (
           (* The job failed but we're still connected to the scheduler. Report the error. *)
-          Lwt.fail_with (Fmt.strf "%a" Capnp_rpc.Exception.pp err)
+          Lwt.fail_with (Fmt.str "%a" Capnp_rpc.Exception.pp err)
         ) else (
           limiter_thread := None;
           begin match !stage with

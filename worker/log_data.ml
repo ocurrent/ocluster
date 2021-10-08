@@ -8,7 +8,7 @@ type t = {
                  | `Finished ]
 }
 
-let create () = 
+let create () =
   {
     data = Buffer.create 10240;
     cond = `Running (Lwt_condition.create ());
@@ -59,4 +59,4 @@ let close t =
     Fmt.failwith "Log already closed!"
 
 let info t fmt =
-  Fmt.kstrf (write t) (fmt ^^ "@.")
+  Fmt.kstr (write t) (fmt ^^ "@.")
