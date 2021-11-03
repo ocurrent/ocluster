@@ -41,6 +41,7 @@ val with_urgent : urgency -> t -> t
 (** [with_urgent x t] is a copy of [t] with urgency policy [x]. *)
 
 val build :
+  ?level:Current.Level.t ->
   ?label:string ->
   ?cache_hint:string ->
   t ->
@@ -53,6 +54,7 @@ val build :
     Note: all commits in [src] must be in the same repository. *)
 
 val build_and_push :
+  ?level:Current.Level.t ->
   ?label:string ->
   ?cache_hint:string ->
   t ->
@@ -67,6 +69,7 @@ val build_and_push :
     If [t] doesn't have [push_auth] configured, this still tests the build, but returns an error at the end. *)
 
 val build_obuilder :
+  ?level:Current.Level.t ->
   ?label:string ->
   ?cache_hint:string ->
   t ->
@@ -79,6 +82,7 @@ val build_obuilder :
 
 module Raw : sig
   val build : 
+    ?level:Current.Level.t ->
     ?cache_hint:string ->
     t ->
     pool:string ->
@@ -88,6 +92,7 @@ module Raw : sig
     unit Current.Primitive.t
 
   val build_and_push :
+    ?level:Current.Level.t ->
     ?cache_hint:string ->
     t ->
     push_target:Cluster_api.Docker.Image_id.t ->
@@ -98,6 +103,7 @@ module Raw : sig
     string Current.Primitive.t
 
   val build_obuilder :
+    ?level:Current.Level.t ->
     ?cache_hint:string ->
     t ->
     pool:string ->
