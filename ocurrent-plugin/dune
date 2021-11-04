@@ -5,6 +5,7 @@
    current
    current.cache
    current_git
+   obuilder-spec
    duration
    prometheus
    fmt

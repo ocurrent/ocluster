@@ -36,5 +36,5 @@ val pool :
 val run_job :
   job:Current.Job.t ->
   Cluster_api.Raw.Client.Job.t Capability.t ->
-  (string, [> `Msg of string ]) result Lwt.t
+  (string * Artifacts.t option, [> `Msg of string ]) result Lwt.t
 (** [run_job ~job ocluster_job] tails the log of [ocluster_job] to [job] and then returns the job's result. *)

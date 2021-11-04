@@ -1,6 +1,7 @@
 (** This module provides an OCurrent plugin for building with OCluster. *)
 
 module Connection = Connection
+module Artifacts = Artifacts
 
 type t
 (** The configuration for accessing the build cluster. *)
@@ -49,7 +50,7 @@ val build :
   src:Current_git.Commit_id.t list Current.t ->
   options:Cluster_api.Docker.Spec.options ->
   [ `Contents of string Current.t | `Path of string ] ->
-  unit Current.t
+  Artifacts.t option Current.t
 (** [build t ~pool ~src ~options dockerfile] builds [dockerfile] in context [src] using pool [pool] within build cluster [t].
     Note: all commits in [src] must be in the same repository. *)
 
@@ -76,7 +77,7 @@ val build_obuilder :
   pool:string ->
   src:Current_git.Commit_id.t list Current.t ->
   Cluster_api.Obuilder_job.Spec.t Current.t ->
-  unit Current.t
+  Artifacts.t option Current.t
 (** [build_obuilder t ~pool ~src spec] builds [spec] in context [src] using pool [pool] within build cluster [t].
     Note: all commits in [src] must be in the same repository. *)
 
@@ -89,7 +90,7 @@ module Raw : sig
     src:Current_git.Commit_id.t list ->
     options:Cluster_api.Docker.Spec.options ->
     [ `Contents of string | `Path of string ] ->
-    unit Current.Primitive.t
+    Artifacts.t option Current.Primitive.t
 
   val build_and_push :
     ?level:Current.Level.t ->
@@ -109,5 +110,5 @@ module Raw : sig
     pool:string ->
     src:Current_git.Commit_id.t list ->
     Cluster_api.Obuilder_job.Spec.t ->
-    unit Current.Primitive.t
+    Artifacts.t option Current.Primitive.t
 end

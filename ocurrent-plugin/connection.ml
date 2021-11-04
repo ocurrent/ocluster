@@ -152,15 +152,63 @@ let submit ~job ~pool ~action ~cache_hint ?src ?secrets ~urgent t ~priority ~swi
   in
   aux (), cancel
 
+
+
+let tail_by_line next acc fn accfn =
+  let (let**) = Lwt_result.bind in
+  let rec aux cur_data acc accfn =
+    let** data, acc = next acc in
+    match data with
+    | "" -> fn cur_data accfn
+    | data ->
+      let lines = cur_data ^ data |> String.split_on_char '\n' in
+      let rec process_lines accfn = function   
+        | [] -> Lwt.return_ok ("", accfn)
+        | [v] -> Lwt.return_ok (v, accfn)
+        | a::rest -> 
+          let** accfn = fn a accfn in 
+          process_lines accfn rest
+      in
+      let** cur_data, accfn = process_lines accfn lines in
+      aux cur_data acc accfn
+  in
+  aux "" acc accfn
+
 let tail ~job build_job =
-  let rec aux start =
-    Cluster_api.Job.log build_job start >>= function
+
+  let write line = Current.Job.write job (line^"\n") in
+
+  let wormhole_key = "Wormhole code is: " in
+  let wormhole_key_len = String.length wormhole_key in
+
+  let filter_wormhole_artifacts line current_artifacts =
+    let (let++) a b = Lwt_result.map b a in
+    let open Current.Syntax in
+    match current_artifacts with 
+    | None -> (match Kmp.search wormhole_key line with 
+      | exception Not_found -> (write line; Lwt.return_ok current_artifacts)
+      | index -> 
+        (let index = wormhole_key_len + index in
+        let code = String.sub line index (String.length line - index) in
+        write (String.sub line 0 index); 
+        Printf.printf "Got code %s\nReceiving..\n%!" code;
+        let++ artifacts = Artifacts.create ~code (Current.Job.id job) in
+        Printf.printf "OK\n%!";
+        Some (code, artifacts)))
+    | Some (code, _) -> (match Kmp.search code line with 
+      | exception Not_found -> (write line; Lwt.return_ok current_artifacts)
+      | index -> (write (String.sub line 0 index); Lwt.return_ok current_artifacts))
+  in
+
+  let get_more_data start = 
+    let open Lwt.Syntax in
+    let* data = Cluster_api.Job.log build_job start in
+    match data with
     | Error (`Capnp e) -> Lwt.return @@ Fmt.error_msg "%a" Capnp_rpc.Error.pp e
-    | Ok ("", _) -> Lwt_result.return ()
-    | Ok (data, next) ->
-      Current.Job.write job data;
-      aux next
-  in aux 0L
+    | Ok v -> Lwt.return_ok v
+  in
+  tail_by_line get_more_data 0L filter_wormhole_artifacts None
+  |> Lwt_result.map (Option.map snd)
 
 let run_job ~job build_job =
   let on_cancel _ =
@@ -170,10 +218,10 @@ let run_job ~job build_job =
   in
   Current.Job.with_handler job ~on_cancel @@ fun () ->
   let result = Cluster_api.Job.result build_job in
-  tail ~job build_job >>!= fun () ->
+  tail ~job build_job >>!= fun artifacts ->
   result >>= function
   | Error (`Capnp e) -> Lwt_result.fail (`Msg (Fmt.to_to_string Capnp_rpc.Error.pp e))
-  | Ok _ as x -> Lwt.return x
+  | Ok res -> Lwt.return (Ok (res, artifacts))
 
 let create ?(max_pipeline=200) sr =
   let rate_limits = Hashtbl.create 10 in

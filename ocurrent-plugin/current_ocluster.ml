@@ -3,6 +3,7 @@ open Capnp_rpc_lwt
 
 module Git = Current_git
 module Connection = Connection
+module Artifacts = Artifacts
 
 type urgency = [ `Auto | `Always | `Never ]
 
@@ -49,7 +50,15 @@ module Op = struct
     let digest t = Yojson.Safe.to_string (to_yojson t)
   end
 
-  module Value = Current.String
+  module Value = struct 
+  
+    type t = string * Artifacts.t option
+  
+    let marshal v = Marshal.to_string v []
+
+    let unmarshal v = Marshal.from_string v 0
+
+  end
 
   (* Convert a list of commits in the same repository to a [(repo, hashes)] pair.
      Raises an exception if there are commits from different repositories. *)
@@ -172,8 +181,8 @@ module Raw = struct
     let t = with_level ~level t in
     Build.get t { Op.Key.action = `Docker { dockerfile; options; push_target = Some push_target }; src; pool }
     |> Current.Primitive.map_result @@ function
-    | Ok "" -> Error (`Msg "No output image (push auth not configured)")
-    | Ok x -> Ok x
+    | Ok ("", _) -> Error (`Msg "No output image (push auth not configured)")
+    | Ok (x, _) -> Ok x
     | Error _ as e -> e
 
   let build ?level ?cache_hint t ~pool ~src ~options dockerfile =
@@ -181,15 +190,15 @@ module Raw = struct
     let t = with_level ~level t in
     Build.get t { Op.Key.action = `Docker {dockerfile; options; push_target = None}; src; pool }
     |> Current.Primitive.map_result (Result.map (function
-        | "" -> ()
-        | x -> Fmt.failwith "BUG: got a RepoID (%S) but we didn't ask to push!" x
+        | ("", artifacts) -> artifacts
+        | (x, _) -> Fmt.failwith "BUG: got a RepoID (%S) but we didn't ask to push!" x
       ))
 
   let build_obuilder ?level ?cache_hint t ~pool ~src spec =
     let t = with_hint ~cache_hint t in
     let t = with_level ~level t in
     Build.get t { Op.Key.action = `Obuilder spec; src; pool }
-    |> Current.Primitive.map_result (Result.map (fun (_ : string) -> ()))
+    |> Current.Primitive.map_result (Result.map (fun (_, artifacts) -> artifacts))
 end
 
 let unwrap = function
