@@ -44,7 +44,7 @@ val with_urgent : urgency -> t -> t
 val build :
   ?level:Current.Level.t ->
   ?label:string ->
-  ?cache_hint:string ->
+  ?cache_hint:string Current.t ->
   t ->
   pool:string ->
   src:Current_git.Commit_id.t list Current.t ->
@@ -72,7 +72,7 @@ val build_and_push :
 val build_obuilder :
   ?level:Current.Level.t ->
   ?label:string ->
-  ?cache_hint:string ->
+  ?cache_hint:string Current.t ->
   t ->
   pool:string ->
   src:Current_git.Commit_id.t list Current.t ->

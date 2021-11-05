@@ -214,11 +214,13 @@ let build_and_push ?level ?label ?cache_hint t ~push_target ~pool ~src ~options 
 let build ?level ?label ?cache_hint t ~pool ~src ~options dockerfile =
   component_label label dockerfile pool |>
   let> dockerfile = unwrap dockerfile
-  and> src = src in
+  and> src = src
+  and> cache_hint = Current.option_seq cache_hint in
   Raw.build ?level ?cache_hint t ~pool ~src ~options dockerfile
 
 let build_obuilder ?level ?label ?cache_hint t ~pool ~src spec =
   Current.component "obuild@,%s%a" pool Fmt.(option (cut ++ string)) label |>
   let> spec = spec
-  and> src = src in
+  and> src = src
+  and> cache_hint = Current.option_seq cache_hint in
   Raw.build_obuilder ?level ?cache_hint t ~pool ~src spec
