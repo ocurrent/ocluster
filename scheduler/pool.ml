@@ -162,7 +162,7 @@ module Dao = struct
     Sqlite3.exec db "CREATE TABLE IF NOT EXISTS workers ( \
                      pool       TEXT NOT NULL, \
                      id         TEXT NOT NULL, \
-                     paused     BOOLEAN DEFAULT FALSE, \
+                     paused     BOOLEAN DEFAULT 0, \
                      PRIMARY KEY (pool, id))" |> Db.or_fail ~cmd:"create workers table";
     let query_cache = Sqlite3.prepare db "SELECT worker FROM cached WHERE pool = ? AND cache_hint = ? ORDER BY worker" in
     let mark_cached = Sqlite3.prepare db "INSERT OR REPLACE INTO cached (pool, cache_hint, worker, created) VALUES (?, ?, ?, date('now'))" in
