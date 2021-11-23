@@ -1,3 +1,4 @@
 (library
  (name cluster_worker)
+ (public_name ocluster-worker)
  (libraries ocluster-api digestif fpath logs capnp-rpc-lwt lwt.unix prometheus-app cohttp-lwt-unix obuilder extunix))

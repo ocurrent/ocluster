@@ -28,6 +28,7 @@
   dune-build-info
   (ocluster-api (= :version))
   (lwt (>= 5.6.1))
+  (ocluster-worker (= :version))
   capnp-rpc-lwt
   capnp-rpc-net
   (capnp-rpc-unix (>= 1.2))
@@ -69,4 +70,19 @@
   fmt
   prometheus
   ppx_deriving_yojson
+  (ocaml (>= 4.12.0))))
+(package
+ (name ocluster-worker)
+ (synopsis "OCluster library for defining workers")
+ (description "OCluster library for defining workers")
+ (depends
+  (ocluster-api (= :version))
+  (digestif (>= 0.8))
+  fpath
+  logs
+  (lwt (>= 5.4.1))
+  (prometheus-app (>= 1.2))
+  capnp-rpc-lwt
+  cohttp-lwt-unix
+  (extunix (>= 0.3.2))
   (ocaml (>= 4.12.0))))

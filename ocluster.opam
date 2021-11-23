@@ -23,6 +23,7 @@ depends: [
   "dune-build-info"
   "ocluster-api" {= version}
   "lwt" {>= "5.6.1"}
+  "ocluster-worker" {= version}
   "capnp-rpc-lwt"
   "capnp-rpc-net"
   "capnp-rpc-unix" {>= "1.2"}
