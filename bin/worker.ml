@@ -130,7 +130,7 @@ module Obuilder_config = struct
       | Some store -> Some (Cluster_worker.Obuilder_config.v sandbox_config store)
     in
     let open Cmdliner.Term in
-    Term.pure make $ Obuilder.Runc_sandbox.cmdliner $ store
+    Term.pure make $ Obuilder.Sandbox.cmdliner $ store
 end
 
 let worker_opts_t =

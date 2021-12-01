@@ -7,7 +7,7 @@ type builder = Builder : (module Obuilder.BUILDER with type t = 'a) * 'a -> buil
 module Config = struct
   type t = {
     store_spec : [ `Btrfs of string | `Rsync of string | `Zfs of string ];
-    sandbox_config : Obuilder.Runc_sandbox.config;
+    sandbox_config : Obuilder.Sandbox.config;
   }
 
   let v sandbox_config store_spec = { store_spec; sandbox_config }
@@ -21,7 +21,7 @@ type t = {
   prune_threshold : float option;
 }
 
-module Sandbox = Obuilder.Runc_sandbox
+module Sandbox = Obuilder.Sandbox
 module Fetcher = Obuilder.Docker
 
 let ( / ) = Filename.concat
