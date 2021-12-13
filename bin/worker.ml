@@ -41,7 +41,7 @@ let update_docker () =
 let update_normal () =
   Lwt.return (fun () -> Lwt.return ())
 
-let main default_level ?formatter registration_path capacity name allow_push prune_threshold state_dir obuilder =
+let main default_level ?formatter registration_path capacity name allow_push prune_threshold docker_max_df_size obuilder_prune_threshold state_dir obuilder =
   setup_log ?formatter default_level;
   let update =
     if Sys.file_exists "/.dockerenv" then update_docker
@@ -50,18 +50,18 @@ let main default_level ?formatter registration_path capacity name allow_push pru
   Lwt_main.run begin
     let vat = Capnp_rpc_unix.client_only_vat () in
     let sr = Capnp_rpc_unix.Cap_file.load vat registration_path |> or_die in
-    Cluster_worker.run ~capacity ~name ~allow_push ?prune_threshold ?obuilder ~state_dir ~update sr
+    Cluster_worker.run ~capacity ~name ~allow_push ?prune_threshold ?docker_max_df_size ?obuilder_prune_threshold ?obuilder ~state_dir ~update sr
   end
 
 (* Command-line parsing *)
 
-let main ~install (default_level, args1) ((registration_path, capacity, name, allow_push, prune_threshold, state_dir, obuilder), args2) =
+let main ~install (default_level, args1) ((registration_path, capacity, name, allow_push, prune_threshold, docker_max_df_size, obuilder_prune_threshold, state_dir, obuilder), args2) =
   let (name', display, text) = ("ocluster-worker", "OCluster Worker", "Run a build worker") in
   if install then
     Ok (Winsvc_wrapper.install name' display text (args1 @ args2))
   else
     Ok (Winsvc_wrapper.run name' state_dir (fun ?formatter () ->
-            main default_level ?formatter registration_path capacity name allow_push prune_threshold state_dir obuilder))
+             main default_level ?formatter registration_path capacity name allow_push prune_threshold docker_max_df_size obuilder_prune_threshold state_dir obuilder))
 
 open Cmdliner
 
@@ -93,9 +93,27 @@ let prune_threshold =
   Arg.value @@
   Arg.opt Arg.(some float) None @@
   Arg.info
-    ~doc:"Run 'docker system prune' when /var/lib/docker's free space falls below this (0-100)"
+    ~doc:"Run 'docker system prune' when /var/lib/docker's free space falls below this (0-100). \
+          If you don't have a partition for /var/lib/docker, then you can use docker-max-df-size."
     ~docv:"PERCENTAGE"
     ["prune-threshold"]
+
+let docker_max_df_size =
+  Arg.value @@
+  Arg.opt Arg.(some float) None @@
+  Arg.info
+    ~doc:"Run `docker system df` to get the amount of memory being taken up by the images and if this is \
+          greater than this we run `docker system prune`."
+    ~docv:"GIGABYTES"
+    ["docker-max-df-size"]
+
+let obuilder_prune_threshold =
+  Arg.value @@
+  Arg.opt Arg.(some float) None @@
+  Arg.info
+    ~doc:"If using OBuilder, this threshold is used to prune the stored builds if the free space falls below this (0-100)"
+    ~docv:"PERCENTAGE"
+    ["obuilder-prune-threshold"]
 
 let allow_push =
   Arg.value @@
@@ -133,11 +151,11 @@ module Obuilder_config = struct
 end
 
 let worker_opts_t =
-  let worker_opts registration_path capacity name allow_push prune_threshold state_dir obuilder =
-    (registration_path, capacity, name, allow_push, prune_threshold, state_dir, obuilder) in
+  let worker_opts registration_path capacity name allow_push prune_threshold docker_max_df_size obuilder_prune_threshold state_dir obuilder =
+    (registration_path, capacity, name, allow_push, prune_threshold, docker_max_df_size, obuilder_prune_threshold, state_dir, obuilder) in
   Term.(with_used_args
     (const worker_opts $ connect_addr $ capacity $ worker_name $ allow_push
-     $ prune_threshold $ state_dir $ Obuilder_config.v))
+     $ prune_threshold $ docker_max_df_size $ obuilder_prune_threshold $ state_dir $ Obuilder_config.v))
 
 let cmd ~install =
   let doc = "Run a build worker" in
