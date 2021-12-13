@@ -26,6 +26,8 @@ val run :
   ?build:build ->
   ?allow_push:string list ->
   ?prune_threshold:float ->
+  ?docker_max_df_size:float ->
+  ?obuilder_prune_threshold:float ->
   ?obuilder:Obuilder_config.t ->
   update:(unit -> (unit -> unit Lwt.t) Lwt.t) ->
   capacity:int ->
@@ -43,7 +45,8 @@ val run :
                   finishes its remaining jobs. The second part is called once all jobs are finished.
                   If the second function returns, the process will exit.
     @param state_dir A persistent directory for Git caches, etc.
-    @param prune_threshold Stop and run "docker system prune -af" if free-space is less than this percentage (0 to 100). *)
+    @param prune_threshold Stop and run "docker system prune -af" if free-space is less than this percentage (0 to 100).
+    @param obuilder_prune_threshold The threshold for OBuilder to prune the store of cached build steps. *)
 
 module Process = Process
 module Log_data = Log_data

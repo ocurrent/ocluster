@@ -79,6 +79,7 @@ type t = {
   context : Context.t;
   build : build;
   prune_threshold : float option;      (* docker-prune when free space is lower than this (percentage) *)
+  docker_max_df_size : float option;   (* docker-prune if [prune_threshold] is [None] and used space greater than this (GBs) *)
   registration_service : Cluster_api.Raw.Client.Registration.t Sturdy_ref.t;
   capacity : int;
   mutable in_use : int;                (* Number of active builds *)
@@ -174,10 +175,25 @@ let build ~switch ~log t descr =
     Log.info (fun f -> f "Job failed: %s" msg);
     Error (`Msg "Build failed"), "fail"
 
+let convert_memory_string s =
+  let length = String.length s in
+  match s.[length - 2], s.[length - 1] with
+   | 'G', 'B' -> float_of_string_opt (String.sub s 0 (length - 2))
+   | 'M', 'B' ->
+    Option.map (fun f -> f /. 1_000.) @@ float_of_string_opt (String.sub s 0 (length - 2))
+   | 'K', 'B' ->
+      Option.map (fun f -> f /. 1_000_000.) @@ float_of_string_opt (String.sub s 0 (length - 2))
+   | c, 'B' -> (
+     match int_of_string_opt (String.make 1 c) with
+       | Some _ -> Option.map (fun f -> f /. 1_000_000_000.) @@ float_of_string_opt (String.sub s 0 (length - 1))
+       | None -> None
+   )
+   | _ -> None
+
 let check_docker_partition t =
-  match t.prune_threshold with
-  | None -> Lwt_result.return ()
-  | Some prune_threshold ->
+  match t.prune_threshold, t.docker_max_df_size with
+  | None, None -> Lwt_result.return ()
+  | Some prune_threshold, _ ->
     Lwt_process.pread_line("", [| "docker"; "info"; "-f"; "{{.DockerRootDir}}" |]) >|= fun line ->
     let trimed_line = String.trim line in
     let free_blocks = Df.free_space_percent trimed_line in
@@ -185,6 +201,17 @@ let check_docker_partition t =
     Log.info (fun f -> f "Docker partition: %.0f%% free blocks, %.0f%% free files" free_blocks free_files);
     if (min free_blocks free_files) < prune_threshold then Error `Disk_space_low
     else Ok ()
+  | _, Some max_df_size ->
+    (* Is the first one always the amount of memory the images take up? *)
+    Lwt_process.pread_line ("", [| "docker"; "system"; "df"; "--format"; "{{.Size}}" |]) >|= fun line ->
+    match convert_memory_string line with
+      | None ->
+          Log.info (fun f -> f "Failed to calculate max df size from %s" line);
+          Ok ()
+      | Some gb ->
+        Log.info (fun f -> f "Docker images take up %.0f%%GB" gb);
+        if max_df_size < gb then Error `Disk_space_low
+        else Ok ()
 
 let rec maybe_prune t queue =
   check_docker_partition t >>= function
@@ -449,15 +476,16 @@ let self_update ~update t =
        Lwt_result.fail (`Msg (Printexc.to_string ex))
     )
 
-let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~update ~capacity ~name ~state_dir registration_service =
-  begin match prune_threshold with
-    | None -> Log.info (fun f -> f "Prune threshold not set. Will not check for low disk-space!")
-    | Some frac when frac < 0.0 || frac > 100.0 -> Fmt.invalid_arg "prune_threshold must be in the range 0 to 100"
-    | Some _ -> ()
+let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?docker_max_df_size ?obuilder_prune_threshold ?obuilder ~update ~capacity ~name ~state_dir registration_service =
+  begin match prune_threshold, docker_max_df_size with
+    | None, None -> Log.info (fun f -> f "Prune threshold not set and docker max df size is not. Will not check for low disk-space!")
+    | None, Some size -> Log.info (fun f -> f "Pruning docker whenever the memory used exceeds %3.2fGB" size)
+    | Some frac, _ when frac < 0.0 || frac > 100.0 -> Fmt.invalid_arg "prune_threshold must be in the range 0 to 100"
+    | Some _, _ -> ()
   end;
   begin match obuilder with
     | None -> Lwt.return_none
-    | Some config -> Obuilder_build.create ?prune_threshold config >|= Option.some
+    | Some config -> Obuilder_build.create ?prune_threshold:obuilder_prune_threshold config >|= Option.some
   end >>= fun obuilder ->
   let build =
     match build with
@@ -468,6 +496,7 @@ let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~update ~capa
     name;
     context = Context.v ~state_dir;
     prune_threshold;
+    docker_max_df_size;
     registration_service;
     build;
     cond = Lwt_condition.create ();
