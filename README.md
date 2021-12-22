@@ -37,6 +37,7 @@ To install the Git version:
 git clone https://github.com/ocurrent/ocluster.git
 cd ocluster
 opam pin add -yn .
+opam update
 opam depext -i ocluster
 ```
 
@@ -51,8 +52,7 @@ ocluster-scheduler \
   --capnp-listen-address=tcp:0.0.0.0:9000 \
   --capnp-public-address=tcp:127.0.0.1:9000 \
   --state-dir=/var/lib/ocluster-scheduler \
-  --pools=linux-arm32,linux-x86_64 \
-  --verbose
+  --pools=linux-arm32,linux-x86_64
 ```
 
 Replace the last line with whatever build pools you want. The names can be anything you like.
@@ -91,9 +91,9 @@ To run the build service locally:
 
 ```
 ocluster-worker \
-  --connect=./capnp-secrets/pool-linux-x86_64.cap \
   --state-dir=/var/lib/ocluster-worker \
   --name=my-host --capacity=1 --prune-threshold=20 \
+  ./capnp-secrets/pool-linux-x86_64.cap
   --verbose
 ```
 
