@@ -1,4 +1,4 @@
-type job_spec = [ 
+type job_spec = [
   | `Docker of [ `Contents of string | `Path of string ] * Cluster_api.Docker.Spec.options
   | `Obuilder of [ `Contents of string ]
 ]
@@ -6,7 +6,7 @@ type job_spec = [
 module Obuilder_config : sig
   type t
 
-  val v : Obuilder.Runc_sandbox.config -> [ `Zfs of string | `Btrfs of string ] -> t
+  val v : Obuilder.Runc_sandbox.config -> [ `Btrfs of string | `Rsync of string | `Zfs of string ] -> t
 end
 
 val run :
