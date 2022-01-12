@@ -3,7 +3,7 @@ type t
 module Config : sig
   type t
 
-  val v : Obuilder.Runc_sandbox.config -> [ `Zfs of string | `Btrfs of string ] -> t
+  val v : Obuilder.Runc_sandbox.config -> [ `Btrfs of string | `Rsync of string | `Zfs of string ] -> t
 end
 
 val create : ?prune_threshold:float -> Config.t -> t Lwt.t

@@ -120,7 +120,7 @@ module Obuilder_config = struct
     Arg.value @@
     Arg.opt Arg.(some store_t) None @@
     Arg.info
-      ~doc:"zfs:pool or btrfs:/path for the OBuilder cache"
+      ~doc:"btrfs:/path or rsync:/path or zfs:pool for the OBuilder cache"
       ~docv:"STORE"
       ["obuilder-store"]
 
