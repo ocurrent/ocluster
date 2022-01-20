@@ -40,8 +40,7 @@ let read_log job =
   in
   aux 0L
 
-let submit service dockerfile =
-  let action = Cluster_api.Submission.docker_build (`Contents dockerfile) in
+let common_submit service action =
   Capability.with_ref (Cluster_api.Submission.submit service ~pool:"pool" ~action ~cache_hint:"1" ?src:None) @@ fun ticket ->
   Capability.with_ref (Cluster_api.Ticket.job ticket) @@ fun job ->
   let result = Cluster_api.Job.result job in
@@ -50,6 +49,14 @@ let submit service dockerfile =
   | Ok "" -> log
   | Ok x -> Fmt.failwith "Unexpected job output: %S" x
   | Error (`Capnp _) -> Fmt.str "%sFAILED@." log
+
+let submit service dockerfile =
+  let action = Cluster_api.Submission.docker_build (`Contents dockerfile) in
+  common_submit service action
+
+let custom_submit service c =
+  let action = Cluster_api.Submission.custom_build c in
+  common_submit service action
 
 let with_sched fn =
   let db = Sqlite3.db_open ":memory:" in
@@ -87,6 +94,32 @@ let simple () =
   result >>= fun result ->
   Logs.app (fun f -> f "Result: %S" result);
   Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example\nJob succeeded\n" result;
+  Lwt.return_unit
+
+let obuilder_spec_to_custom spec =
+  let open Cluster_api.Raw in
+  let custom = Builder.Custom.init_root () in
+  let builder = Builder.Custom.payload_get custom in
+  let obuilder = Builder.OBuilder.init_pointer builder in
+  Builder.OBuilder.spec_set obuilder spec;
+  let r = Reader.Custom.of_builder custom in
+  Reader.Custom.payload_get r
+
+let simple_custom () =
+  with_sched @@ fun ~admin ~registry ->
+  Capability.with_ref (Cluster_api.Admin.add_client admin "client") @@ fun submission_service ->
+  let builder = Mock_builder.create () in
+  Lwt_switch.with_switch @@ fun switch ->
+  Mock_builder.run ~switch builder (Mock_network.sturdy registry);
+  let kind = "obuilder" in
+  let spec = "((from ocaml/opam:latest)\n(run (shell \"ls\")))" in
+  let job = Cluster_api.Custom.v ~kind @@ obuilder_spec_to_custom spec in
+  let result = custom_submit submission_service job in
+  Mock_builder.set builder "obuilder" @@ Ok "";
+  result >>= fun result ->
+  Logs.app (fun f -> f "Result: %S" result);
+  let expect = "Building on worker-1\nBuilding job obuilder\nGot spec " ^ spec ^  "\nJob succeeded\n" in
+  Alcotest.(check string) "Check job worked" expect result;
   Lwt.return_unit
 
 (* A failing build on a single worker. *)
@@ -464,6 +497,7 @@ let () =
   Lwt_main.run @@ Alcotest_lwt.run ~verbose "build-scheduler" [
     "main", [
       test_case "simple" simple;
+      test_case "simple_custom" simple_custom;
       test_case "fails" fails;
       test_case "await_builder" await_builder;
       test_case "already_registered" already_registered ~expected_warnings:1;

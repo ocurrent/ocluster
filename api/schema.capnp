@@ -41,6 +41,14 @@ struct OBuilder {
   # The contents of the OBuilder spec to build.
 }
 
+struct Custom {
+  kind @0 :Text;
+  # A name describing the kind of custom job
+
+  payload @1 :AnyPointer;
+  # A custom job with a dynamic payload
+}
+
 struct Secret {
   id @0 :Text;
   # The secret id.
@@ -53,6 +61,7 @@ struct JobDescr {
   action :union {
     dockerBuild @0 :DockerBuild;
     obuilder    @4 :OBuilder;
+    custom      @6 :Custom;
   }
 
   cacheHint @1 :Text;

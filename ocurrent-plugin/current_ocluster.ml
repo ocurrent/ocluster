@@ -66,6 +66,7 @@ module Op = struct
 
   let default_hint (action : Cluster_api.Submission.action) =
     match action with
+    | Custom_build _ -> "" 
     | Obuilder_build { spec = `Contents spec } ->
       Astring.String.take ~sat:((<>) '\n') spec (* Use the first line *)
     | Docker_build { dockerfile; _ } ->
