@@ -1,3 +1,6 @@
 [submodule "obuilder"]
 	path = obuilder
 	url = https://github.com/ocurrent/obuilder.git
+[submodule "solver-service"]
+	path = solver-service
+	url = https://github.com/patricoferris/solver-service

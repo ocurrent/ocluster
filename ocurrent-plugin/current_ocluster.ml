@@ -25,6 +25,11 @@ type docker_build = {
   push_target : target option;
 } [@@deriving to_yojson]
 
+(* We can't serialise the AnyPointer to a string *)
+type custom = Cluster_api.Custom.t 
+
+let custom_to_yojson c = `String (Cluster_api.Custom.kind c)
+
 let with_push_auth push_auth t = { t with push_auth }
 let with_secrets secrets t = { t with secrets }
 let with_timeout timeout t = { t with timeout }
@@ -40,7 +45,7 @@ module Op = struct
     let commit_id_to_yojson x = `String (Git.Commit_id.hash x)
 
     type t = {
-      action : [`Docker of docker_build | `Obuilder of Cluster_api.Obuilder_job.Spec.t];
+      action : [`Docker of docker_build | `Obuilder of Cluster_api.Obuilder_job.Spec.t | `Custom of custom];
       src : commit_id list;
       pool : string;
     } [@@deriving to_yojson]
@@ -97,6 +102,9 @@ module Op = struct
       | `Obuilder { spec = `Contents spec } ->
         Current.Job.write job (Fmt.str "@.OBuilder spec:@.@.\o033[34m%s\o033[0m@.@." spec);
         Cluster_api.Submission.obuilder_build spec
+      | `Custom c ->
+        Current.Job.write job (Fmt.str "@.Custom job:@.@.\o033[34m%s\o033[0m@.@." (Cluster_api.Custom.kind c));
+        Cluster_api.Submission.custom_build c
     in
     let src = single_repo src in
     let cache_hint =
@@ -133,6 +141,10 @@ module Op = struct
         (Fmt.Dump.list Git.Commit_id.pp) src
     | `Obuilder _ | `Docker { dockerfile = `Contents _; _ } ->
       Fmt.pf f "@[<v2>Build using %s in@,%a@]"
+        pool
+        (Fmt.Dump.list Git.Commit_id.pp) src
+    | `Custom _ -> 
+      Fmt.pf f "@[<v2>Custom job using %s in@,%a@]"
         pool
         (Fmt.Dump.list Git.Commit_id.pp) src
 
@@ -178,6 +190,9 @@ module Raw = struct
     let t = with_hint ~cache_hint t in
     Build.get t { Op.Key.action = `Obuilder spec; src; pool }
     |> Current.Primitive.map_result (Result.map (fun (_ : string) -> ()))
+
+  let custom t ~pool ~src c =
+    Build.get t { Op.Key.action = `Custom c; src; pool }
 end
 
 let unwrap = function
@@ -201,3 +216,9 @@ let build_obuilder ?label ?cache_hint t ~pool ~src spec =
   let> spec = spec
   and> src = src in
   Raw.build_obuilder ?cache_hint t ~pool ~src spec
+
+let custom ?label t ~pool ~src c =
+  Current.component "custom job@,%a" Fmt.(option (cut ++ string)) label |>
+  let> c = c
+  and> src = src in
+  Raw.custom t ~pool ~src c

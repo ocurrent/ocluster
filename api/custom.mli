@@ -1,8 +1,11 @@
 type t
 (** Custom job specifications *)
 
-val v : kind:string -> Raw.Reader.pointer_t -> t
-(** [v ~kind payload] is a custom job specific*)
+type payload = Raw.Reader.pointer_t
+(** Raw, untyped payload *)
+
+val v : kind:string -> payload -> t
+(** [v ~kind payload] is a custom job specification *)
 
 val kind : t -> string
 (** A string describing the kind of custom job *)

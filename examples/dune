@@ -1,11 +1,11 @@
 (executable
-  (name obuilder_pipeline)
+  (name docker_pipeline)
   (libraries
-    obuilder-spec
     current
     current_github
     current_ocluster
     current_web
     capnp-rpc-unix
+    solver-service-api
     logs.fmt
     fmt.tty))

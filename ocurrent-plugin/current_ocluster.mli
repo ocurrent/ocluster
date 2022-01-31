@@ -77,6 +77,15 @@ val build_obuilder :
 (** [build_obuilder t ~pool ~src spec] builds [spec] in context [src] using pool [pool] within build cluster [t].
     Note: all commits in [src] must be in the same repository. *)
 
+val custom :
+  ?label:string ->
+  t ->
+  pool:string ->
+  src:Current_git.Commit_id.t list Current.t ->
+  Cluster_api.Custom.t Current.t ->
+  string Current.t
+(** [custom t ~pool ~src c] runs the the custom job [c] in context [src] using [pool] in the build cluster [t]. *)
+
 module Raw : sig
   val build : 
     ?cache_hint:string ->

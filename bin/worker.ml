@@ -41,6 +41,12 @@ let update_docker () =
 let update_normal () =
   Lwt.return (fun () -> Lwt.return ())
 
+(* We extend the default build function to support solver jobs *)
+let build ~solver ~switch ~log ~src ~secrets = function
+  | `Custom c -> Solver.solve ~solver ~switch ~log c
+  | _ as job_desc ->
+    Cluster_worker.default_build ~switch ~log ~src ~secrets job_desc
+
 let main default_level ?formatter registration_path capacity name allow_push prune_threshold state_dir obuilder =
   setup_log ?formatter default_level;
   let update =
@@ -50,7 +56,8 @@ let main default_level ?formatter registration_path capacity name allow_push pru
   Lwt_main.run begin
     let vat = Capnp_rpc_unix.client_only_vat () in
     let sr = Capnp_rpc_unix.Cap_file.load vat registration_path |> or_die in
-    Cluster_worker.run ~capacity ~name ~allow_push ?prune_threshold ?obuilder ~state_dir ~update sr
+    let solver = Solver.spawn_local ~solver_dir:state_dir () in
+    Cluster_worker.run ~build:(build ~solver) ~capacity ~name ~allow_push ?prune_threshold ?obuilder ~state_dir ~update sr
   end
 
 (* Command-line parsing *)

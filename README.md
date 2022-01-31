@@ -10,6 +10,8 @@ At the moment, two build types are provided: building a Dockerfile, or building 
 In either case, the build may done in the context of some Git commit.
 The scheduler tries to schedule similar builds on the same machine, to benefit from caching.
 
+The scheduler also supports submitting custom jobs. These jobs are defined by the user and require cluster workers that can handle them. The Docker [example](./examples/docker_pipeline.ml) shows how solver jobs can be submitted to the cluster as well as a Docker job (which could also be an OBuilder job).
+
 ## Contents
 
 <!-- vim-markdown-toc GFM -->
@@ -130,7 +132,7 @@ ocluster-admin --connect ./capnp-secrets/admin.cap add-client test-user > submis
 ```
 
 There is a command-line client, and a plugin for use in [OCurrent](https://github.com/ocurrent/ocurrent) pipelines.
-See [obuilder_pipeline.ml](./examples/obuilder_pipeline.ml) for an example pipeline using the plugin.
+See [docker_pipeline.ml](./examples/docker_pipeline.ml) for an example pipeline using the plugin.
 
 You might want to create an alias for the admin and submission clients, e.g.
 
