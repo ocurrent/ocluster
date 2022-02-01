@@ -1,6 +1,8 @@
+type payload = Raw.Reader.pointer_t
+
 type t = {
   kind : string;
-  payload : Raw.Reader.pointer_t
+  payload : payload;
 }
 
 let v ~kind payload = { kind; payload }
