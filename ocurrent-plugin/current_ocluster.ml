@@ -13,6 +13,7 @@ type t = {
   push_auth : (string * string) option; (* Username/password for pushes *)
   secrets : (string * string) list;
   cache_hint : string option;
+  level : Current.Level.t option;
   urgent : urgency;
 }
 
@@ -116,9 +117,12 @@ module Op = struct
     in
     let build_pool = Connection.pool ~job ~pool ~action ~cache_hint ~urgent ?src ~secrets:t.secrets t.connection in
     let level =
-      match action with
-      | Docker_build { push_to = Some _; _ } -> Current.Level.Above_average
-      | _ -> Current.Level.Average
+      match t.level with
+      | Some level -> level 
+      | None ->
+        match action with
+        | Docker_build { push_to = Some _; _ } -> Current.Level.Above_average
+        | _ -> Current.Level.Average
     in
     Current.Job.start_with ~pool:build_pool job ?timeout:t.timeout ~level >>= fun build_job ->
     Capability.with_ref build_job @@ fun build_job ->
@@ -143,7 +147,7 @@ module Build = Current_cache.Make(Op)
 open Current.Syntax
 
 let v ?timeout ?push_auth ?(secrets=[]) ?(urgent=`Auto) connection =
-  { connection; timeout; push_auth; secrets; cache_hint = None; urgent }
+  { connection; timeout; push_auth; secrets; cache_hint = None; level = None; urgent }
 
 let component_label label dockerfile pool =
   let pp_label = Fmt.(option (cut ++ string)) in
@@ -157,24 +161,32 @@ module Raw = struct
     | Some _ -> { t with cache_hint }
     | None -> t
 
-  let build_and_push ?cache_hint t ~push_target ~pool ~src ~options dockerfile =
+  let with_level ~level t =
+    match level with
+    | Some _ -> { t with level }
+    | None -> t
+
+  let build_and_push ?level ?cache_hint t ~push_target ~pool ~src ~options dockerfile =
     let t = with_hint ~cache_hint t in
+    let t = with_level ~level t in
     Build.get t { Op.Key.action = `Docker { dockerfile; options; push_target = Some push_target }; src; pool }
     |> Current.Primitive.map_result @@ function
     | Ok "" -> Error (`Msg "No output image (push auth not configured)")
     | Ok x -> Ok x
     | Error _ as e -> e
 
-  let build ?cache_hint t ~pool ~src ~options dockerfile =
+  let build ?level ?cache_hint t ~pool ~src ~options dockerfile =
     let t = with_hint ~cache_hint t in
+    let t = with_level ~level t in
     Build.get t { Op.Key.action = `Docker {dockerfile; options; push_target = None}; src; pool }
     |> Current.Primitive.map_result (Result.map (function
         | "" -> ()
         | x -> Fmt.failwith "BUG: got a RepoID (%S) but we didn't ask to push!" x
       ))
 
-  let build_obuilder ?cache_hint t ~pool ~src spec =
+  let build_obuilder ?level ?cache_hint t ~pool ~src spec =
     let t = with_hint ~cache_hint t in
+    let t = with_level ~level t in
     Build.get t { Op.Key.action = `Obuilder spec; src; pool }
     |> Current.Primitive.map_result (Result.map (fun (_ : string) -> ()))
 end
@@ -183,20 +195,20 @@ let unwrap = function
   | `Path _ as x -> Current.return x
   | `Contents x -> Current.map (fun x -> `Contents x) x
 
-let build_and_push ?label ?cache_hint t ~push_target ~pool ~src ~options dockerfile =
+let build_and_push ?level ?label ?cache_hint t ~push_target ~pool ~src ~options dockerfile =
   component_label label dockerfile pool |>
   let> dockerfile = unwrap dockerfile
   and> src = src in
-  Raw.build_and_push ?cache_hint t ~push_target ~pool ~src ~options dockerfile
+  Raw.build_and_push ?level ?cache_hint t ~push_target ~pool ~src ~options dockerfile
 
-let build ?label ?cache_hint t ~pool ~src ~options dockerfile =
+let build ?level ?label ?cache_hint t ~pool ~src ~options dockerfile =
   component_label label dockerfile pool |>
   let> dockerfile = unwrap dockerfile
   and> src = src in
-  Raw.build ?cache_hint t ~pool ~src ~options dockerfile
+  Raw.build ?level ?cache_hint t ~pool ~src ~options dockerfile
 
-let build_obuilder ?label ?cache_hint t ~pool ~src spec =
+let build_obuilder ?level ?label ?cache_hint t ~pool ~src spec =
   Current.component "obuild@,%s%a" pool Fmt.(option (cut ++ string)) label |>
   let> spec = spec
   and> src = src in
-  Raw.build_obuilder ?cache_hint t ~pool ~src spec
+  Raw.build_obuilder ?level ?cache_hint t ~pool ~src spec
