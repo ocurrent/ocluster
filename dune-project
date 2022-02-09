@@ -33,6 +33,7 @@
   (capnp-rpc-unix (>= 1.2))
   (extunix (>= 0.3.2))
   (winsvc (and (>= 1.0.1) (= :os "win32")))
+  (cmdliner (>= 1.1.0))
   logs
   fmt
   (conf-libev (<> :os "win32"))

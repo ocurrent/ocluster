@@ -56,7 +56,8 @@ let submission_service =
 
 let cmd =
   let doc = "Run an OBuilder build on a cluster." in
-  Term.(term_result (const main $ Current.Config.cmdliner $ Current_web.cmdliner $ submission_service)),
-  Term.info program_name ~doc
+  let info = Cmd.info program_name ~doc in
+  Cmd.v info
+    Term.(term_result (const main $ Current.Config.cmdliner $ Current_web.cmdliner $ submission_service))
 
-let () = Term.(exit @@ eval cmd)
+let () = exit @@ Cmd.eval cmd

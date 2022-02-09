@@ -1,6 +1,6 @@
-FROM ocaml/opam:debian-11-ocaml-4.13@sha256:0c67662714d7f398ac4a8197d61ef85749effb8681d771837e9ebe36b0d4e20a AS build
+FROM ocaml/opam:debian-11-ocaml-4.13@sha256:facb9f1272610683f75580a8189116dcc4f4fff6958640e81bf568ec8ffc6302 AS build
 RUN sudo apt-get update && sudo apt-get install libev-dev capnproto m4 pkg-config libsqlite3-dev libgmp-dev -y --no-install-recommends
-RUN cd ~/opam-repository && git pull origin -q master && git reset --hard fbc1d981740a86692a63593aa3760a61f7b5072b && opam update
+RUN cd ~/opam-repository && git pull origin -q master && git reset --hard ae6aff50030492f9b7eed0cf952fdca40f4cf125 && opam update
 COPY --chown=opam ocluster-api.opam ocluster.opam /src/
 COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/

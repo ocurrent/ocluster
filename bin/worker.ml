@@ -58,10 +58,10 @@ let main default_level ?formatter registration_path capacity name allow_push pru
 let main ~install (default_level, args1) ((registration_path, capacity, name, allow_push, prune_threshold, state_dir, obuilder), args2) =
   let (name', display, text) = ("ocluster-worker", "OCluster Worker", "Run a build worker") in
   if install then
-    `Ok (Winsvc_wrapper.install name' display text (args1 @ args2))
+    Ok (Winsvc_wrapper.install name' display text (args1 @ args2))
   else
-    `Ok (Winsvc_wrapper.run name' state_dir (fun ?formatter () ->
-             main default_level ?formatter registration_path capacity name allow_push prune_threshold state_dir obuilder))
+    Ok (Winsvc_wrapper.run name' state_dir (fun ?formatter () ->
+            main default_level ?formatter registration_path capacity name allow_push prune_threshold state_dir obuilder))
 
 open Cmdliner
 
@@ -129,8 +129,7 @@ module Obuilder_config = struct
       | None -> None
       | Some store -> Some (Cluster_worker.Obuilder_config.v sandbox_config store)
     in
-    let open Cmdliner.Term in
-    Term.pure make $ Obuilder.Runc_sandbox.cmdliner $ store
+    Term.(const make $ Obuilder.Runc_sandbox.cmdliner $ store)
 end
 
 let worker_opts_t =
@@ -147,13 +146,15 @@ let cmd ~install =
         command-line paramater to install the worker as a Windows \
         service with the specified parameters, and '$(b,remove)' to \
         remove the worker from the services." ] in
-  Term.(ret (const (main ~install) $ with_used_args (Logs_cli.level ()) $ worker_opts_t)),
-  Term.info "ocluster-worker" ~doc ~man ~version:Version.t
+  let info = Cmd.info "ocluster-worker" ~doc ~man ~version:Version.t in
+  Cmd.v info
+    Term.(term_result'
+      (const (main ~install) $ with_used_args (Logs_cli.level ()) $ worker_opts_t))
 
 let () =
   match Array.to_list Sys.argv with
   | hd :: "install" :: argv ->
-    Term.(exit @@ eval ~argv:(Array.of_list (hd :: argv)) (cmd ~install:true))
+    exit (Cmd.eval ~argv:(Array.of_list (hd :: argv)) (cmd ~install:true))
   | _ :: "remove" :: args ->
     if args <> [] then begin
       prerr_endline "'remove' should be used only once, in first position.";
@@ -161,4 +162,4 @@ let () =
     end else
       Winsvc_wrapper.remove "ocluster-worker"
   | _ ->
-    Term.(exit @@ eval (cmd ~install:false))
+    exit (Cmd.eval (cmd ~install:false))

@@ -126,10 +126,10 @@ let main default_level ?formatter capnp secrets_dir pools prometheus_config stat
 let main ~install (default_level, args1) ((capnp, secrets_dir, pools, prometheus_config, state_dir, default_clients), args2) =
   let (name, display, text) = ("ocluster-scheduler", "OCluster Scheduler", "Manage build workers") in
   if install then
-    `Ok (Winsvc_wrapper.install name display text (args1 @args2))
+    Ok (Winsvc_wrapper.install name display text (args1 @args2))
   else
-    `Ok (Winsvc_wrapper.run name state_dir (fun ?formatter () ->
-             main default_level ?formatter capnp secrets_dir pools prometheus_config state_dir default_clients))
+    Ok (Winsvc_wrapper.run name state_dir (fun ?formatter () ->
+            main default_level ?formatter capnp secrets_dir pools prometheus_config state_dir default_clients))
 
 open Cmdliner
 
@@ -195,13 +195,16 @@ let cmd ~install =
         command-line paramater to install the scheduler as a Windows \
         service with the specified parameters, and '$(b,remove)' to \
         remove the scheduler from the services." ] in
-  Term.(ret (const (main ~install) $ with_used_args (Logs_cli.level ()) $ scheduler_opts_t)),
-  Term.info "ocluster-scheduler" ~doc ~man ~version:Version.t
+  let info = Cmd.info "ocluster-scheduler" ~doc ~man ~version:Version.t in
+  Cmd.v info
+    Term.(term_result'
+      (const (main ~install) $ with_used_args (Logs_cli.level ())
+       $ scheduler_opts_t))
 
 let () =
   match Array.to_list Sys.argv with
   | hd :: "install" :: argv ->
-    Term.(exit @@ eval ~argv:(Array.of_list (hd :: argv)) (cmd ~install:true))
+    exit (Cmd.eval ~argv:(Array.of_list (hd :: argv)) (cmd ~install:true))
   | _ :: "remove" :: args ->
     if args <> [] then begin
       prerr_endline "'remove' should be used only once, in first position.";
@@ -209,4 +212,4 @@ let () =
     end else
       Winsvc_wrapper.remove "ocluster-scheduler"
   | _ ->
-    Term.(exit @@ eval (cmd ~install:false))
+    exit (Cmd.eval (cmd ~install:false))

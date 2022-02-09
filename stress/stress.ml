@@ -86,7 +86,7 @@ open Cmdliner
 
 let cmd =
   let doc = "Test the scheduler" in
-  Term.(const main $ Prometheus_unix.opts),
-  Term.info "stress" ~doc
+  let info = Cmd.info "stress" ~doc in
+  Cmd.v info Term.(const main $ Prometheus_unix.opts)
 
-let () = Term.(exit @@ eval cmd)
+let () = exit @@ Cmd.eval cmd
