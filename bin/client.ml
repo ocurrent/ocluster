@@ -121,12 +121,12 @@ let context_dockerfile =
 let dockerfile =
   let make local_dockerfile context_dockerfile =
     match local_dockerfile, context_dockerfile with
-    | None, None -> `Ok (`Context_path "Dockerfile")
-    | Some local, None -> `Ok (`Local_path local)
-    | None, Some context -> `Ok (`Context_path context)
-    | Some _, Some _ -> `Error (false, "Can't use --local-dockerfile and --context-dockerfile together!")
+    | None, None -> Ok (`Context_path "Dockerfile")
+    | Some local, None -> Ok (`Local_path local)
+    | None, Some context -> Ok (`Context_path context)
+    | Some _, Some _ -> Error ("Can't use --local-dockerfile and --context-dockerfile together!")
   in
-  Term.(ret (pure make $ local_dockerfile $ context_dockerfile))
+  Term.(term_result' (const make $ local_dockerfile $ context_dockerfile))
 
 let repo =
   Arg.value @@
@@ -243,48 +243,47 @@ let push_to =
     | _, None, Some _
     | _, Some _, None -> Fmt.failwith "Must use --push-user with --push-password"
   in
-  Term.(pure make $ push_to $ push_user $ push_password_file)
+  Term.(const make $ push_to $ push_user $ push_password_file)
 
 let build_options =
   let make build_args squash buildkit include_git =
     { Cluster_api.Docker.Spec.build_args; squash; buildkit; include_git }
   in
-  Term.(pure make $ build_args $ squash $ buildkit $ include_git)
+  Term.(const make $ build_args $ squash $ buildkit $ include_git)
 
 let submit_options_common =
   let make submission_path pool repository commits cache_hint urgent secrets =
     { submission_path; pool; repository; commits; cache_hint; urgent; secrets }
   in
-  Term.(pure make $ connect_addr $ pool $ repo $ commits $ cache_hint $ urgent $ secrets)
+  Term.(const make $ connect_addr $ pool $ repo $ commits $ cache_hint $ urgent $ secrets)
 
 let submit_docker_options =
   let make dockerfile push_to build_options =
     `Docker (dockerfile, push_to, build_options)
   in
-  Term.(pure make $ dockerfile $ push_to $ build_options)
+  Term.(const make $ dockerfile $ push_to $ build_options)
 
 let submit_docker =
   let doc = "Submit a Docker build to the scheduler" in
-  Term.(const submit $ Logging.term $ submit_options_common $ submit_docker_options),
-  Term.info "submit-docker" ~doc
+  let info = Cmd.info "submit-docker" ~doc in
+  Cmd.v info
+    Term.(const submit $ Logging.term $ submit_options_common $ submit_docker_options)
 
 let submit_obuilder_options =
   let make spec =
     `Obuilder spec
   in
-  Term.(pure make $ local_obuilder)
+  Term.(const make $ local_obuilder)
 
 let submit_obuilder =
   let doc = "Submit an OBuilder build to the scheduler" in
-  Term.(const submit $ Logging.term $ submit_options_common $ submit_obuilder_options),
-  Term.info "submit-obuilder" ~doc
+  let info = Cmd.info "submit-obuilder" ~doc in
+  Cmd.v info
+    Term.(const submit $ Logging.term $ submit_options_common $ submit_obuilder_options)
 
 let cmds = [submit_docker; submit_obuilder]
 
-let default_cmd =
+let () =
   let doc = "a command-line client for the build-scheduler" in
-  let sdocs = Manpage.s_common_options in
-  Term.(ret (const (`Help (`Pager, None)))),
-  Term.info "ocluster-client" ~doc ~sdocs ~version:Version.t
-
-let () = Term.(exit @@ eval_choice ~argv:Options.argv default_cmd cmds)
+  let info = Cmd.info "ocluster-client" ~doc ~version:Version.t in
+  exit (Cmd.eval ~argv:Options.argv @@ Cmd.group info cmds)

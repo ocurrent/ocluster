@@ -240,55 +240,62 @@ let wait =
 
 let add_client =
   let doc = "Create a new client endpoint for submitting jobs" in
-  Term.(const add_client $ Logging.term $ connect_addr $ Arg.required (client_id ~pos:0)),
-  Term.info "add-client" ~doc
+  let info = Cmd.info "add-client" ~doc in
+  Cmd.v info
+    Term.(const add_client $ Logging.term $ connect_addr $ Arg.required (client_id ~pos:0))
 
 let remove_client =
   let doc = "Unregister a client." in
-  Term.(const remove_client $ Logging.term $ connect_addr $ Arg.required (client_id ~pos:0)),
-  Term.info "remove-client" ~doc
+  let info = Cmd.info "remove-client" ~doc in
+  Cmd.v info
+    Term.(const remove_client $ Logging.term $ connect_addr $ Arg.required (client_id ~pos:0))
 
 let list_clients =
   let doc = "List registered clients" in
-  Term.(const list_clients $ Logging.term $ connect_addr),
-  Term.info "list-clients" ~doc
+  let info = Cmd.info "list-clients" ~doc in
+  Cmd.v info
+    Term.(const list_clients $ Logging.term $ connect_addr)
 
 let set_rate =
   let doc = "Set expected number of parallel jobs for a pool/client combination" in
-  Term.(const set_rate $ Logging.term $ connect_addr $ Arg.required pool_pos $ Arg.required (client_id ~pos:1) $ Arg.required (rate ~pos:2)),
-  Term.info "set-rate" ~doc
+  let info = Cmd.info "set-rate" ~doc in
+  Cmd.v info
+    Term.(const set_rate $ Logging.term $ connect_addr $ Arg.required pool_pos $ Arg.required (client_id ~pos:1) $ Arg.required (rate ~pos:2))
 
 let show =
   let doc = "Show information about a service, pool or worker" in
-  Term.(const show $ Logging.term $ connect_addr $ Arg.value pool_pos),
-  Term.info "show" ~doc
+  let info = Cmd.info "show" ~doc in
+  Cmd.v info
+    Term.(const show $ Logging.term $ connect_addr $ Arg.value pool_pos)
 
 let pause =
   let doc = "Set a worker to be unavailable for further jobs" in
-  Term.(const (set_active false) $ Logging.term $ all $ auto_create $ wait $ connect_addr $ Arg.required pool_pos $ worker),
-  Term.info "pause" ~doc
+  let info = Cmd.info "pause" ~doc in
+  Cmd.v info
+    Term.(const (set_active false) $ Logging.term $ all $ auto_create $ wait $ connect_addr $ Arg.required pool_pos $ worker)
 
 let unpause =
   let doc = "Resume a paused worker" in
-  Term.(const (set_active true) $ Logging.term $ all $ auto_create $ const false $ connect_addr $ Arg.required pool_pos $ worker),
-  Term.info "unpause" ~doc
+  let info = Cmd.info "unpause" ~doc in
+  Cmd.v info
+    Term.(const (set_active true) $ Logging.term $ all $ auto_create $ const false $ connect_addr $ Arg.required pool_pos $ worker)
 
 let update =
   let doc = "Drain and then update worker(s)" in
-  Term.(const update $ Logging.term $ connect_addr $ Arg.required pool_pos $ worker),
-  Term.info "update" ~doc
+  let info = Cmd.info "update" ~doc in
+  Cmd.v info
+    Term.(const update $ Logging.term $ connect_addr $ Arg.required pool_pos $ worker)
 
 let forget =
   let doc = "Forget about an old worker" in
-  Term.(const forget $ Logging.term $ connect_addr $ Arg.required pool_pos $ worker),
-  Term.info "forget" ~doc
+  let info = Cmd.info "forget" ~doc in
+  Cmd.v info
+    Term.(const forget $ Logging.term $ connect_addr $ Arg.required pool_pos $ worker)
+
 
 let cmds = [add_client; remove_client; list_clients; set_rate; show; pause; unpause; update; forget]
 
-let default_cmd =
+let () =
   let doc = "a command-line admin client for the build-scheduler" in
-  let sdocs = Manpage.s_common_options in
-  Term.(ret (const (`Help (`Pager, None)))),
-  Term.info "ocluster-admin" ~doc ~sdocs ~version:Version.t
-
-let () = Term.(exit @@ eval_choice ~argv:Options.argv default_cmd cmds)
+  let info = Cmd.info "ocluster-admin" ~doc ~version:Version.t in
+  exit (Cmd.eval ~argv:Options.argv @@ Cmd.group info cmds)
