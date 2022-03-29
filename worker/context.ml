@@ -78,6 +78,7 @@ module Repo = struct
         config "remote.origin.fetch" "+refs/pull/*:refs/remotes/pull/*"
       )
     end >>!= fun () ->
+    Process.check_call ~label:"git-submodule-update" ~switch ~log ["git"; "-C"; local_repo; "submodule"; "update"] >>!= fun () ->
     (* This reset might avoid `fatal: cannot chdir to '../../../ocurrent': No such file or directory` errors *)
     Process.check_call ~label:"git-reset" ~switch ~log ["git"; "-C"; local_repo; "reset"; "--hard"] >>!= fun () ->
     Process.check_call ~label:"git-submodule-sync" ~switch ~log ["git"; "-C"; local_repo; "submodule"; "sync"] >>!= fun () ->
@@ -121,6 +122,7 @@ let build_context t ~log ~tmpdir descr =
           | false -> Repo.fetch ~switch ~log repository
         end >>!= fun () ->
         let clone = Repo.local_copy repository in
+        Process.check_call ~label:"git-submodule-update" ~switch ~log ["git"; "-C"; clone; "submodule"; "update"] >>!= fun () ->
         Process.check_call ~label:"git-reset" ~switch ~log ["git"; "-C"; clone; "reset"; "--hard"; Hash.to_hex c] >>!= fun () ->
         Process.check_call ~label:"git-submodule-sync" ~switch ~log ["git"; "-C"; clone; "submodule"; "sync"] >>!= fun () ->
         Process.check_call ~label:"git-submodule-deinit" ~switch ~log ["git"; "-C"; clone; "submodule"; "deinit"; "--all"; "-f"] >>!= fun () ->
