@@ -37,16 +37,21 @@ let set_rate () cap_path pool_id client_id rate =
   let pool = Cluster_api.Admin.pool admin_service pool_id in
   Cluster_api.Pool_admin.set_rate pool ~client_id rate
 
-let show () cap_path pool =
+let show () cap_path terse pool =
   run cap_path @@ fun admin_service ->
   match pool with
   | None ->
     Cluster_api.Admin.pools admin_service >|= fun pools ->
     List.iter print_endline pools
   | Some pool ->
-    Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
-    Cluster_api.Pool_admin.show pool >|= fun status ->
-    print_endline (String.trim status)
+    if terse then
+      Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
+      Cluster_api.Pool_admin.workers pool >|= fun workers ->
+      List.iter (fun (w:Cluster_api.Pool_admin.worker_info) -> print_endline w.name) workers
+    else
+      Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
+      Cluster_api.Pool_admin.show pool >|= fun status ->
+      print_endline (String.trim status)
 
 let with_progress label =
   Capability.with_ref (Cluster_api.Progress.local (Fmt.pr "%s: %s@." label))
@@ -238,6 +243,13 @@ let wait =
     ~doc:"Wait until no jobs are running"
     ["wait"]
 
+let terse =
+  Arg.value @@
+  Arg.flag @@
+  Arg.info
+    ~doc:"Just list names of the workers"
+    ["terse"]
+
 let add_client =
   let doc = "Create a new client endpoint for submitting jobs" in
   let info = Cmd.info "add-client" ~doc in
@@ -266,7 +278,7 @@ let show =
   let doc = "Show information about a service, pool or worker" in
   let info = Cmd.info "show" ~doc in
   Cmd.v info
-    Term.(const show $ Logging.term $ connect_addr $ Arg.value pool_pos)
+    Term.(const show $ Logging.term $ connect_addr $ terse $ Arg.value pool_pos)
 
 let pause =
   let doc = "Set a worker to be unavailable for further jobs" in
