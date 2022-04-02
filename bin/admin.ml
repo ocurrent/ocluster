@@ -44,14 +44,31 @@ let show () cap_path terse pool =
     Cluster_api.Admin.pools admin_service >|= fun pools ->
     List.iter print_endline pools
   | Some pool ->
+    Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
     if terse then
-      Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
       Cluster_api.Pool_admin.workers pool >|= fun workers ->
       List.iter (fun (w:Cluster_api.Pool_admin.worker_info) -> print_endline w.name) workers
     else
-      Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
       Cluster_api.Pool_admin.show pool >|= fun status ->
       print_endline (String.trim status)
+
+let check_exit_status = function
+  | Unix.WEXITED 0 -> ()
+  | Unix.WEXITED x -> Fmt.failwith "Sub-process failed with exit code %d" x
+  | Unix.WSIGNALED x -> Fmt.failwith "Sub-process failed with signal %d" x
+  | Unix.WSTOPPED x -> Fmt.failwith "Sub-process stopped with signal %d" x
+
+let exec () cap_path pool prog =
+  List.iter print_endline prog;
+  run cap_path @@ fun admin_service ->
+    Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
+    Cluster_api.Pool_admin.workers pool >|= fun workers -> ignore(
+    let jobs = workers |> List.map (fun (w:Cluster_api.Pool_admin.worker_info) ->
+            let ar = Array.of_list prog in
+            let ar2 = Array.map (fun el -> if el = "{}" then w.name else el) ar in
+            Lwt_process.exec ("", ar2 ) >|= check_exit_status
+    ) in
+    Lwt.join jobs)
 
 let with_progress label =
   Capability.with_ref (Cluster_api.Progress.local (Fmt.pr "%s: %s@." label))
@@ -250,6 +267,14 @@ let terse =
     ~doc:"Just list names of the workers"
     ["terse"]
 
+let prog_pos =
+  Arg.value @@
+  Arg.pos_right 0 Arg.string [] @@
+  Arg.info
+    ~doc:"cmd to run"
+    ~docv:"PROG"
+    []
+
 let add_client =
   let doc = "Create a new client endpoint for submitting jobs" in
   let info = Cmd.info "add-client" ~doc in
@@ -273,6 +298,12 @@ let set_rate =
   let info = Cmd.info "set-rate" ~doc in
   Cmd.v info
     Term.(const set_rate $ Logging.term $ connect_addr $ Arg.required pool_pos $ Arg.required (client_id ~pos:1) $ Arg.required (rate ~pos:2))
+
+let exec =
+  let doc = "Execute a command for each worker in a pool" in
+  let info = Cmd.info "exec" ~doc in
+  Cmd.v info
+    Term.(const exec $ Logging.term $ connect_addr $ Arg.required pool_pos $ prog_pos)
 
 let show =
   let doc = "Show information about a service, pool or worker" in
@@ -305,7 +336,7 @@ let forget =
     Term.(const forget $ Logging.term $ connect_addr $ Arg.required pool_pos $ worker)
 
 
-let cmds = [add_client; remove_client; list_clients; set_rate; show; pause; unpause; update; forget]
+let cmds = [add_client; remove_client; list_clients; set_rate; show; exec; pause; unpause; update; forget]
 
 let () =
   let doc = "a command-line admin client for the build-scheduler" in
