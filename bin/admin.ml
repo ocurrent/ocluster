@@ -56,12 +56,12 @@ let exec () cap_path pool prog =
   List.iter print_endline prog;
   run cap_path @@ fun admin_service ->
     Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
-    Cluster_api.Pool_admin.workers pool >|= fun workers -> ignore(
-    List.map (fun (w:Cluster_api.Pool_admin.worker_info) ->
+    Cluster_api.Pool_admin.workers pool >|= fun workers -> 
+            List.iter (fun (w:Cluster_api.Pool_admin.worker_info) ->
             let ar = Array.of_list prog in
             let ar2 = Array.map (fun el -> if el = "{}" then w.name else el) ar in
-            Lwt_process.exec ("", ar2 )
-    ) workers )
+            ignore( Lwt_process.exec ("", ar2 ) )
+    ) workers
 
 let with_progress label =
   Capability.with_ref (Cluster_api.Progress.local (Fmt.pr "%s: %s@." label))
