@@ -52,23 +52,16 @@ let show () cap_path terse pool =
       Cluster_api.Pool_admin.show pool >|= fun status ->
       print_endline (String.trim status)
 
-let check_exit_status = function
-  | Unix.WEXITED 0 -> ()
-  | Unix.WEXITED x -> Fmt.failwith "Sub-process failed with exit code %d" x
-  | Unix.WSIGNALED x -> Fmt.failwith "Sub-process failed with signal %d" x
-  | Unix.WSTOPPED x -> Fmt.failwith "Sub-process stopped with signal %d" x
-
 let exec () cap_path pool prog =
   List.iter print_endline prog;
   run cap_path @@ fun admin_service ->
     Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
     Cluster_api.Pool_admin.workers pool >|= fun workers -> ignore(
-    let jobs = workers |> List.map (fun (w:Cluster_api.Pool_admin.worker_info) ->
+    List.map (fun (w:Cluster_api.Pool_admin.worker_info) ->
             let ar = Array.of_list prog in
             let ar2 = Array.map (fun el -> if el = "{}" then w.name else el) ar in
-            Lwt_process.exec ("", ar2 ) >|= check_exit_status
-    ) in
-    Lwt.join jobs)
+            Lwt_process.exec ("", ar2 )
+    ) workers )
 
 let with_progress label =
   Capability.with_ref (Cluster_api.Progress.local (Fmt.pr "%s: %s@." label))
