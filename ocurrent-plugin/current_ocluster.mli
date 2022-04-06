@@ -87,7 +87,7 @@ val custom :
   cache_hint:string ->
   pool:string ->
   src:Current_git.Commit_id.t list Current.t ->
-  Cluster_api.Custom.t Current.t ->
+  Cluster_api.Custom.send Current.t ->
   string Current.t
   (** [custom t ~cache_hint ~pool ~src c] runs the custom job [c] in context [src] using [pool] in the build cluster [t].
       Because it is a custom job, a [cache_hint] must be provided. *)

@@ -1,7 +1,7 @@
 type job_spec = [
   | `Docker of [ `Contents of string | `Path of string ] * Cluster_api.Docker.Spec.options
   | `Obuilder of [ `Contents of string ]
-  | `Custom of Cluster_api.Custom.t
+  | `Custom of Cluster_api.Custom.recv
 ]
 
 module Obuilder_config : sig

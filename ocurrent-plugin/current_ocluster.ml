@@ -26,7 +26,7 @@ type docker_build = {
   push_target : target option;
 } [@@deriving to_yojson]
 
-type custom = Cluster_api.Custom.t
+type custom = Cluster_api.Custom.send
 
 let custom_to_yojson c = `String (Cluster_api.Custom.kind c)
 
@@ -69,7 +69,7 @@ module Op = struct
       in
       Some (repo, List.map hash commits)
 
-  let default_hint (action : Cluster_api.Submission.action) =
+  let default_hint (action : Cluster_api.Submission.send_action) =
     match action with
     | Custom_build _ -> "" 
     | Obuilder_build { spec = `Contents spec } ->

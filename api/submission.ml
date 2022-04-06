@@ -23,10 +23,12 @@ module X = Raw.Client.Submission
 
 type t = X.t Capability.t
 
-type action =
+type 'a action =
   | Docker_build of Docker.Spec.t
   | Obuilder_build of Obuilder_job.Spec.t
-  | Custom_build of Custom.t
+  | Custom_build of 'a Custom.t
+
+type send_action = (Raw.Builder.pointer_t -> unit) action
 
 let docker_build ?push_to ?(options=Docker.Spec.defaults) dockerfile =
   Docker_build { Docker.Spec.dockerfile; options; push_to }

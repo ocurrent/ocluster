@@ -63,7 +63,7 @@ let min_reconnect_time = 10.0   (* Don't try to connect more than once per 10 se
 type job_spec = [
   | `Docker of [ `Contents of string | `Path of string ] * Cluster_api.Docker.Spec.options
   | `Obuilder of [ `Contents of string ]
-  | `Custom of Cluster_api.Custom.t
+  | `Custom of Cluster_api.Custom.recv
 ]
 
 type build = 

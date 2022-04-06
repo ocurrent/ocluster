@@ -1,9 +1,12 @@
 type payload = Raw.Reader.pointer_t
 
-type t = {
+type 'a t = {
   kind : string;
-  payload : payload;
+  payload : 'a;
 }
+
+type send = (Raw.Builder.pointer_t -> unit) t
+type recv = Raw.Reader.pointer_t t
 
 let v ~kind payload = { kind; payload }
 
@@ -17,5 +20,4 @@ let read (action : Raw.Reader.Custom.t) =
 
 let init b { kind; payload } =
   Raw.Builder.Custom.kind_set b kind;
-  let _ : Raw.Builder.pointer_t = Raw.Builder.Custom.payload_set_reader b payload in
-  ()
+  payload (Raw.Builder.Custom.payload_get b)

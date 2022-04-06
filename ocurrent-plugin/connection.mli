@@ -18,7 +18,7 @@ val create :
 val pool :
   job:Current.Job.t ->
   pool:string ->
-  action:Cluster_api.Submission.action ->
+  action:Cluster_api.Submission.send_action ->
   cache_hint:string ->
   ?src:string * string list ->
   ?secrets:(string * string) list ->
