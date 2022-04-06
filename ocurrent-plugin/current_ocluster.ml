@@ -202,8 +202,8 @@ module Raw = struct
     Build.get t { Op.Key.action = `Obuilder spec; src; pool }
     |> Current.Primitive.map_result (Result.map (fun (_ : string) -> ()))
 
-  let custom ?level ?cache_hint t ~pool ~src c =
-    let t = with_hint ~cache_hint t in
+  let custom ?level t ~cache_hint ~pool ~src c =
+    let t = with_hint ~cache_hint:(Some cache_hint) t in
     let t = with_level ~level t in
     Build.get t { Op.Key.action = `Custom c; src; pool }
 end
@@ -230,8 +230,8 @@ let build_obuilder ?level ?label ?cache_hint t ~pool ~src spec =
   and> src = src in
   Raw.build_obuilder ?level ?cache_hint t ~pool ~src spec
 
-let custom ?level ?label ?cache_hint t ~pool ~src c =
+let custom ?level ?label t ~cache_hint ~pool ~src c =
   Current.component "custom job@,%a" Fmt.(option (cut ++ string)) label |>
   let> c = c
   and> src = src in
-  Raw.custom ?level ?cache_hint t ~pool ~src c
+  Raw.custom ?level t ~cache_hint ~pool ~src c

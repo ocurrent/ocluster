@@ -1,7 +1,7 @@
 (test
   (name test)
   (package ocluster)
-  (modules test mock_builder mock_network test_plugin)
+  (modules test custom_spec mock_builder mock_network test_plugin)
   (libraries
     alcotest-lwt
     capnp-rpc-net

@@ -96,15 +96,6 @@ let simple () =
   Alcotest.(check string) "Check job worked" "Building on worker-1\nBuilding example\nJob succeeded\n" result;
   Lwt.return_unit
 
-let obuilder_spec_to_custom spec =
-  let open Cluster_api.Raw in
-  let custom = Builder.Custom.init_root () in
-  let builder = Builder.Custom.payload_get custom in
-  let obuilder = Builder.OBuilder.init_pointer builder in
-  Builder.OBuilder.spec_set obuilder spec;
-  let r = Reader.Custom.of_builder custom in
-  Reader.Custom.payload_get r
-
 let simple_custom () =
   with_sched @@ fun ~admin ~registry ->
   Capability.with_ref (Cluster_api.Admin.add_client admin "client") @@ fun submission_service ->
@@ -113,7 +104,7 @@ let simple_custom () =
   Mock_builder.run ~switch builder (Mock_network.sturdy registry);
   let kind = "obuilder" in
   let spec = "((from ocaml/opam:latest)\n(run (shell \"ls\")))" in
-  let job = Cluster_api.Custom.v ~kind @@ obuilder_spec_to_custom spec in
+  let job = Cluster_api.Custom.v ~kind @@ Custom_spec.obuilder_spec_to_custom spec in
   let result = custom_submit submission_service job in
   Mock_builder.set builder "obuilder" @@ Ok "";
   result >>= fun result ->

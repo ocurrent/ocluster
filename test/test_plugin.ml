@@ -93,6 +93,27 @@ let simple () =
   Alcotest.(check (result pass reject)) "Pipeline successful" (Ok ()) x;
   Lwt.return_unit
 
+(* The simple custom test is mostly identical to the simple test except the Dockerfile is serialised
+   using the Custom API. The mock builder uses the kind argument to deserialise the Dockerfile. After
+   that, the logic is the same as doing a normal build. *)
+let simple_custom () =
+  let kind = "dockerfile" in
+  let spec = "example1" in
+  let custom = Current.return @@ Cluster_api.Custom.v ~kind @@ Custom_spec.obuilder_spec_to_custom spec in
+  let pipeline t =
+    Current.ignore_value @@
+    Current_ocluster.custom t ~cache_hint:"custom" ~pool:"pool" ~src:(Current.return []) custom
+  in
+  setup ~pipeline @@ fun ~registry ~await_result ~break:_ ->
+  let builder = Mock_builder.create () in
+  Lwt_switch.with_switch @@ fun switch ->
+  Mock_builder.run_remote builder ~network_switch:switch ~builder_switch:switch registry;
+  Mock_builder.await builder "example1" >>= fun _ ->
+  Mock_builder.set builder "example1" @@ Ok "hash";
+  await_result () >>= fun x ->
+  Alcotest.(check (result pass reject)) "Pipeline successful" (Ok ()) x;
+  Lwt.return_unit
+
 let disconnect_while_queued () =
   let spec = `Contents (Current.return "example2") in
   let pipeline t = Current_ocluster.build t spec ~pool:"pool" ~src:(Current.return []) ~options in
@@ -225,6 +246,7 @@ let test_case name fn =
 
 let suite = [
   test_case "simple" simple;
+  test_case "simple_custom" simple_custom;
   test_case "disconnect_while_queued" disconnect_while_queued;
   test_case "two_jobs" two_jobs;
   test_case "cancel_rate_limit" cancel_rate_limit;

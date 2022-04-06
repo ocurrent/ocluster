@@ -83,13 +83,14 @@ val build_obuilder :
 val custom :
   ?level:Current.Level.t ->
   ?label:string ->
-  ?cache_hint:string ->
   t ->
+  cache_hint:string ->
   pool:string ->
   src:Current_git.Commit_id.t list Current.t ->
   Cluster_api.Custom.t Current.t ->
   string Current.t
-  (** [custom t ~pool ~src c] runs the custom job [c] in context [src] using [pool] in the build cluster [t]. *)
+  (** [custom t ~cache_hint ~pool ~src c] runs the custom job [c] in context [src] using [pool] in the build cluster [t].
+      Because it is a custom job, a [cache_hint] must be provided. *)
 
 module Raw : sig
   val build : 
