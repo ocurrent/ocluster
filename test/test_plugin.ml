@@ -47,9 +47,10 @@ let engine_cond = Lwt_condition.create ()       (* Fires after each update *)
 let setup ~pipeline fn =
   with_sched @@ fun ~submission_service ~registry ->
   let submission_service, break = Mock_network.remote_breakable submission_service in
-  let t = Current_ocluster.v (Current_ocluster.Connection.create submission_service) in
+  let conn = Current_ocluster.Connection.create submission_service in
+  let t = Current_ocluster.v conn in
   let state = ref (Error (`Msg "(init)")) in
-  SVar.set selected (Ok (fun () -> pipeline t));
+  SVar.set selected (Ok (fun () -> pipeline (t, conn)));
   let trace ~next:_ (results : Current.Engine.results) =
     state := results.value;
     Lwt_condition.broadcast engine_cond ();
@@ -82,7 +83,7 @@ let options = Cluster_api.Docker.Spec.defaults
 
 let simple () =
   let spec = `Contents (Current.return "example1") in
-  let pipeline t = Current_ocluster.build t spec ~pool:"pool" ~src:(Current.return []) ~options in
+  let pipeline (t, _conn) = Current_ocluster.build t spec ~pool:"pool" ~src:(Current.return []) ~options in
   setup ~pipeline @@ fun ~registry ~await_result ~break:_ ->
   let builder = Mock_builder.create () in
   Lwt_switch.with_switch @@ fun switch ->
@@ -95,14 +96,13 @@ let simple () =
 
 (* The simple custom test is mostly identical to the simple test except the Dockerfile is serialised
    using the Custom API. The mock builder uses the kind argument to deserialise the Dockerfile. After
-   that, the logic is the same as doing a normal build. *)
+   that, the logic is the same as doing a normal build. It does use the Connection API and the Custom.Build
+   module. *)
 let simple_custom () =
-  let kind = "dockerfile" in
   let spec = "example1" in
-  let custom = Current.return @@ Cluster_api.Custom.v ~kind @@ Custom_spec.obuilder_spec_to_custom spec in
-  let pipeline t =
+  let pipeline (_t, conn) =
     Current.ignore_value @@
-    Current_ocluster.custom t ~cache_hint:"custom" ~pool:"pool" ~src:(Current.return []) custom
+    Custom.Build.build_dockerfile conn "pool" spec
   in
   setup ~pipeline @@ fun ~registry ~await_result ~break:_ ->
   let builder = Mock_builder.create () in
@@ -116,7 +116,7 @@ let simple_custom () =
 
 let disconnect_while_queued () =
   let spec = `Contents (Current.return "example2") in
-  let pipeline t = Current_ocluster.build t spec ~pool:"pool" ~src:(Current.return []) ~options in
+  let pipeline (t, _conn) = Current_ocluster.build t spec ~pool:"pool" ~src:(Current.return []) ~options in
   setup ~pipeline @@ fun ~registry ~await_result ~break ->
   Lwt.pause () >>= fun () ->
   Lwt.pause () >>= fun () ->
@@ -135,7 +135,7 @@ let disconnect_while_queued () =
 let two_jobs () =
   let spec1 = `Contents (Current.return "spec1") in
   let spec2 = `Contents (Current.return "spec2") in
-  let pipeline t =
+  let pipeline (t, _conn) =
     let open Current.Syntax in
     let* b1 = Current.state (Current_ocluster.build t spec1 ~pool:"pool" ~src:(Current.return []) ~options)
     and* b2 = Current.state (Current_ocluster.build t spec2 ~pool:"pool" ~src:(Current.return []) ~options) in

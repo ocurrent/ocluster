@@ -104,7 +104,7 @@ let simple_custom () =
   Mock_builder.run ~switch builder (Mock_network.sturdy registry);
   let kind = "obuilder" in
   let spec = "((from ocaml/opam:latest)\n(run (shell \"ls\")))" in
-  let job = Cluster_api.Custom.v ~kind @@ Custom_spec.obuilder_spec_to_custom spec in
+  let job = Cluster_api.Custom.v ~kind @@ Custom.Spec.obuilder_spec_to_custom spec in
   let result = custom_submit submission_service job in
   Mock_builder.set builder "obuilder" @@ Ok "";
   result >>= fun result ->
