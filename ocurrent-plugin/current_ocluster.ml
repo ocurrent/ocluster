@@ -26,10 +26,6 @@ type docker_build = {
   push_target : target option;
 } [@@deriving to_yojson]
 
-type custom = Cluster_api.Custom.send
-
-let custom_to_yojson c = `String (Cluster_api.Custom.kind c)
-
 let with_push_auth push_auth t = { t with push_auth }
 let with_secrets secrets t = { t with secrets }
 let with_timeout timeout t = { t with timeout }
@@ -45,7 +41,7 @@ module Op = struct
     let commit_id_to_yojson x = `String (Git.Commit_id.hash x)
 
     type t = {
-      action : [`Docker of docker_build | `Obuilder of Cluster_api.Obuilder_job.Spec.t | `Custom of custom];
+      action : [`Docker of docker_build | `Obuilder of Cluster_api.Obuilder_job.Spec.t];
       src : commit_id list;
       pool : string;
     } [@@deriving to_yojson]
@@ -102,9 +98,6 @@ module Op = struct
       | `Obuilder { spec = `Contents spec } ->
         Current.Job.write job (Fmt.str "@.OBuilder spec:@.@.\o033[34m%s\o033[0m@.@." spec);
         Cluster_api.Submission.obuilder_build spec
-      | `Custom c ->
-        Current.Job.write job (Fmt.str "@.Custom job:@.@.\o033[34m%s\o033[0m@.@." (Cluster_api.Custom.kind c));
-        Cluster_api.Submission.custom_build c
     in
     let src = single_repo src in
     let cache_hint =
@@ -144,10 +137,6 @@ module Op = struct
         (Fmt.Dump.list Git.Commit_id.pp) src
     | `Obuilder _ | `Docker { dockerfile = `Contents _; _ } ->
       Fmt.pf f "@[<v2>Build using %s in@,%a@]"
-        pool
-        (Fmt.Dump.list Git.Commit_id.pp) src
-    | `Custom _ ->
-      Fmt.pf f "@[<v2>Custom job using %s in@,%a@]"
         pool
         (Fmt.Dump.list Git.Commit_id.pp) src
 
