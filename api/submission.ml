@@ -23,9 +23,12 @@ module X = Raw.Client.Submission
 
 type t = X.t Capability.t
 
-type action =
+type 'a action =
   | Docker_build of Docker.Spec.t
   | Obuilder_build of Obuilder_job.Spec.t
+  | Custom_build of 'a Custom.t
+
+type send_action = (Raw.Builder.pointer_t -> unit) action
 
 let docker_build ?push_to ?(options=Docker.Spec.defaults) dockerfile =
   Docker_build { Docker.Spec.dockerfile; options; push_to }
@@ -33,11 +36,14 @@ let docker_build ?push_to ?(options=Docker.Spec.defaults) dockerfile =
 let obuilder_build spec =
   Obuilder_build { Obuilder_job.Spec.spec = `Contents spec }
 
+let custom_build c = Custom_build c
+
 let get_action descr =
   let module JD = Raw.Reader.JobDescr in
   match JD.action_get descr |> JD.Action.get with
   | DockerBuild action -> Docker_build (Docker.Spec.read action)
   | Obuilder action -> Obuilder_build (Obuilder_job.Spec.read action)
+  | Custom action -> Custom_build (Custom.read action)
   | Undefined x -> Fmt.failwith "Unknown action type %d" x
 
 let submit ?src ?(urgent=false) ?(secrets=[]) t ~pool ~action ~cache_hint =
@@ -55,6 +61,9 @@ let submit ?src ?(urgent=false) ?(secrets=[]) t ~pool ~action ~cache_hint =
     | Obuilder_build action ->
       let b = JD.Action.obuilder_init act in
       Obuilder_job.Spec.init b action
+    | Custom_build action ->
+      let b = JD.Action.custom_init act in
+      Custom.init b action
   end;
   JD.cache_hint_set b cache_hint;
   src |> Option.iter (fun (repo, commits) ->

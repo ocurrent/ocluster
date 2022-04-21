@@ -107,6 +107,7 @@ let include_git descr =
   match Cluster_api.Submission.get_action descr with
   | Docker_build db -> db.options.include_git
   | Obuilder_build _ -> false
+  | Custom_build _ -> false
 
 let build_context t ~log ~tmpdir descr =
   match Cluster_api.Raw.Reader.JobDescr.commits_get_list descr |> List.map Hash.of_hex with

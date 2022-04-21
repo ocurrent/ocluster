@@ -65,8 +65,9 @@ module Op = struct
       in
       Some (repo, List.map hash commits)
 
-  let default_hint (action : Cluster_api.Submission.action) =
+  let default_hint (action : Cluster_api.Submission.send_action) =
     match action with
+    | Custom_build _ -> "" 
     | Obuilder_build { spec = `Contents spec } ->
       Astring.String.take ~sat:((<>) '\n') spec (* Use the first line *)
     | Docker_build { dockerfile; _ } ->

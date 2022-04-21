@@ -34,9 +34,8 @@ let rec await t id =
     Lwt_condition.wait t.cond >>= fun () ->
     await t id
 
-let docker_build t ~switch ~log ~src:_ ~secrets:_ = function
-  | `Obuilder _ -> assert false
-  | `Docker (dockerfile, _options) ->
+let build t ~switch ~log ~src:_ ~secrets:_ v =
+  let docker_build dockerfile =
     match dockerfile with
     | `Path _ -> assert false
     | `Contents dockerfile ->
@@ -51,20 +50,54 @@ let docker_build t ~switch ~log ~src:_ ~secrets:_ = function
       reply >|= fun reply ->
       Hashtbl.remove t.replies dockerfile;
       reply
+  in
+  match v with
+  | `Obuilder _ -> assert false
+  | `Docker (v, _) -> docker_build v
+  | `Custom c ->
+    let open Cluster_api in
+    match Custom.kind c with
+    | "dockerfile" ->
+      let module Db = Raw.Reader.DockerBuild in
+      let payload = Custom.payload c in
+      let r = Raw.Reader.of_pointer payload in
+      let contents =
+        match Db.Dockerfile.get (Db.dockerfile_get r) with
+        | Contents c -> `Contents c
+        | Path p -> `Path p
+        | Undefined _ -> Fmt.failwith "Unknown Dockerfile file"
+      in
+      docker_build contents
+    | "obuilder" as kind ->
+      let payload = Custom.payload c in
+      let obuilder_spec = Raw.Reader.OBuilder.spec_get @@ Raw.Reader.of_pointer payload in
+      Logs.info (fun f -> f "Got mock custom build %S" kind);
+      Cluster_worker.Log_data.write log (Fmt.str "Building job %s@." kind);
+      Cluster_worker.Log_data.write log (Fmt.str "Got spec %s@." obuilder_spec);
+      let reply = get t kind in
+      Lwt_switch.add_hook_or_exec (Some switch) (fun () ->
+          if Lwt.state reply = Lwt.Sleep then
+            set t kind @@ Error `Cancelled;
+          Lwt.return_unit
+        ) >>= fun () ->
+      reply >|= fun reply ->
+      Hashtbl.remove t.replies kind;
+      reply
+    | v -> invalid_arg ("Unsupported kind of custom build: " ^ v)
 
 let update () =
   Logs.info (fun f -> f "Mock download updates...");
   Lwt.return (fun () -> failwith "Mock restart")
 
 let run ?(capacity=1) ?(name="worker-1") ~switch t registration_service =
-  let thread = Cluster_worker.run ~switch ~capacity ~name ~build:(docker_build t) ~update ~state_dir registration_service in
+  let thread = Cluster_worker.run ~switch ~capacity ~name ~build:(build t) ~update ~state_dir registration_service in
   Lwt.on_failure thread
     (fun ex -> if Lwt_switch.is_on switch then raise ex)
 
 let run_remote ~builder_switch ~network_switch ?(capacity=1) ?(name="worker-1") t registration_service =
   let thread =
     let registration_service = Mock_network.remote ~switch:network_switch registration_service in
-    Cluster_worker.run ~switch:builder_switch ~capacity ~name ~build:(docker_build t) ~update ~state_dir registration_service
+    Cluster_worker.run ~switch:builder_switch ~capacity ~name ~build:(build t) ~update ~state_dir registration_service
   in
   Lwt.on_failure thread
     (fun ex ->

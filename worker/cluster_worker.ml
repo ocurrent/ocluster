@@ -63,18 +63,21 @@ let min_reconnect_time = 10.0   (* Don't try to connect more than once per 10 se
 type job_spec = [
   | `Docker of [ `Contents of string | `Path of string ] * Cluster_api.Docker.Spec.options
   | `Obuilder of [ `Contents of string ]
+  | `Custom of Cluster_api.Custom.recv
 ]
+
+type build = 
+  switch:Lwt_switch.t ->
+  log:Log_data.t ->
+  src:string ->
+  secrets:(string * string) list ->
+  job_spec ->
+  (string, [`Cancelled | `Msg of string]) Lwt_result.t
 
 type t = {
   name : string;
   context : Context.t;
-  build :
-    switch:Lwt_switch.t ->
-    log:Log_data.t ->
-    src:string ->
-    secrets:(string * string) list ->
-    job_spec ->
-    (string, [`Cancelled | `Msg of string]) Lwt_result.t;
+  build : build;
   prune_threshold : float option;      (* docker-prune when free space is lower than this (percentage) *)
   registration_service : Cluster_api.Raw.Client.Registration.t Sturdy_ref.t;
   capacity : int;
@@ -152,6 +155,10 @@ let build ~switch ~log t descr =
         );
       Context.with_build_context t.context ~log descr @@ fun src ->
       t.build ~switch ~log ~src ~secrets (`Obuilder (`Contents spec))
+    | Custom_build c ->
+        Log.info (fun f -> f "Got request to build a job of kind \"%s\"" (Cluster_api.Custom.kind c));
+        Context.with_build_context t.context ~log descr @@ fun src ->
+        t.build ~switch ~log ~src ~secrets (`Custom c)
   end
   >|= function
   | Error `Cancelled ->
@@ -381,11 +388,15 @@ let default_build ?obuilder ~switch ~log ~src ~secrets = function
       (fun () -> try_unlink iid_file >>= fun () ->
         secret_files |> List.map snd |> Lwt_list.iter_p try_unlink
       )
-  | `Obuilder (`Contents spec) ->
+  | `Obuilder (`Contents spec) -> begin
     let spec = Obuilder.Spec.t_of_sexp (Sexplib.Sexp.of_string spec) in
     match obuilder with
     | None -> Fmt.failwith "This worker is not configured for use with OBuilder!"
     | Some builder -> Obuilder_build.build builder ~switch ~log ~spec ~src_dir:src ~secrets
+  end
+  | `Custom c ->
+    Log.warn (fun f -> f "The default cluster_worker build does not support any custom jobs (kind: %s)" (Cluster_api.Custom.kind c));
+    Lwt.return @@ Error (`Msg "Unsupported custom job")
 
 let metrics = function
   | `Agent ->
