@@ -37,7 +37,7 @@ let set_rate () cap_path pool_id client_id rate =
   let pool = Cluster_api.Admin.pool admin_service pool_id in
   Cluster_api.Pool_admin.set_rate pool ~client_id rate
 
-let show () cap_path pool =
+let show () cap_path terse pool =
   run cap_path @@ fun admin_service ->
   match pool with
   | None ->
@@ -45,8 +45,29 @@ let show () cap_path pool =
     List.iter print_endline pools
   | Some pool ->
     Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
-    Cluster_api.Pool_admin.show pool >|= fun status ->
-    print_endline (String.trim status)
+    if terse then
+      Cluster_api.Pool_admin.workers pool >|= fun workers ->
+      List.iter (fun (w:Cluster_api.Pool_admin.worker_info) -> print_endline w.name) workers
+    else
+      Cluster_api.Pool_admin.show pool >|= fun status ->
+      print_endline (String.trim status)
+
+let check_exit_status = function
+  | Unix.WEXITED 0 -> ()
+  | Unix.WEXITED x -> Fmt.failwith "Sub-process failed with exit code %d" x
+  | Unix.WSIGNALED x -> Fmt.failwith "Sub-process failed with signal %d" x
+  | Unix.WSTOPPED x -> Fmt.failwith "Sub-process stopped with signal %d" x
+
+let exec () cap_path pool command =
+  run cap_path @@ fun admin_service ->
+  Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
+  Cluster_api.Pool_admin.workers pool >>= fun workers ->
+  let jobs = workers |> List.map (fun (w:Cluster_api.Pool_admin.worker_info) ->
+      let args = Array.of_list command in
+      let args2 = Array.map (fun el -> if el = "{}" then w.name else el) args in
+      Lwt_process.exec ("", args2 ) >|= check_exit_status
+    ) in
+  Lwt.join jobs
 
 let with_progress label =
   Capability.with_ref (Cluster_api.Progress.local (Fmt.pr "%s: %s@." label))
@@ -238,6 +259,21 @@ let wait =
     ~doc:"Wait until no jobs are running"
     ["wait"]
 
+let terse =
+  Arg.value @@
+  Arg.flag @@
+  Arg.info
+    ~doc:"Just list names of the workers"
+    ["terse"]
+
+let command_pos =
+  Arg.non_empty @@
+  Arg.pos_right 0 Arg.string [] @@
+  Arg.info
+    ~doc:"Execute command for each worker in the pool.  All following arguments are arguments to the command.  The string {} is replaced by the worker name everywhere it appears in the arguments.  For example, exec -- ssh {} uptime"
+    ~docv:"CMD"
+    []
+
 let add_client =
   let doc = "Create a new client endpoint for submitting jobs" in
   let info = Cmd.info "add-client" ~doc in
@@ -262,11 +298,17 @@ let set_rate =
   Cmd.v info
     Term.(const set_rate $ Logging.term $ connect_addr $ Arg.required pool_pos $ Arg.required (client_id ~pos:1) $ Arg.required (rate ~pos:2))
 
+let exec =
+  let doc = "Execute a command for each worker in a pool" in
+  let info = Cmd.info "exec" ~doc in
+  Cmd.v info
+    Term.(const exec $ Logging.term $ connect_addr $ Arg.required pool_pos $ command_pos)
+
 let show =
   let doc = "Show information about a service, pool or worker" in
   let info = Cmd.info "show" ~doc in
   Cmd.v info
-    Term.(const show $ Logging.term $ connect_addr $ Arg.value pool_pos)
+    Term.(const show $ Logging.term $ connect_addr $ terse $ Arg.value pool_pos)
 
 let pause =
   let doc = "Set a worker to be unavailable for further jobs" in
@@ -293,7 +335,7 @@ let forget =
     Term.(const forget $ Logging.term $ connect_addr $ Arg.required pool_pos $ worker)
 
 
-let cmds = [add_client; remove_client; list_clients; set_rate; show; pause; unpause; update; forget]
+let cmds = [add_client; remove_client; list_clients; set_rate; show; exec; pause; unpause; update; forget]
 
 let () =
   let doc = "a command-line admin client for the build-scheduler" in
