@@ -22,7 +22,7 @@ depends: [
   "ppx_sexp_conv"
   "dune-build-info"
   "ocluster-api" {= version}
-  "lwt" {>= "5.4.1"}
+  "lwt" {>= "5.5.0"}
   "capnp-rpc-lwt"
   "capnp-rpc-net"
   "capnp-rpc-unix" {>= "1.2"}
