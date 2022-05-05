@@ -11,7 +11,7 @@ depends: [
   "dune" {>= "2.8"}
   "ppx_deriving"
   "ocluster-api" {= version}
-  "lwt" {>= "5.4.1"}
+  "lwt" {>= "5.5.0"}
   "current" {>= "0.3"}
   "current_git" {>= "0.3"}
   "current_web" {>= "0.3" & with-test}
