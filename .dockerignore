@@ -1,5 +1,4 @@
 _build
-.*
 Dockerfile*
 var
 capnp-secrets
