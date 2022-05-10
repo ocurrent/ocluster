@@ -7,9 +7,7 @@ RUN opam pin -yn /src/obuilder/
 WORKDIR /src
 RUN opam install -y --deps-only .
 ADD --chown=opam . .
-RUN \
-  VERSION=$(git rev-parse --short HEAD) && \
-  sed -i '/^(version .*)/{h;s/ .*)/ '${VERSION}')/};${x;/^$/{s//(version '${VERSION}')/;H};x}' ./dune-project
+RUN opam exec -- dune subst
 RUN opam config exec -- dune build ./_build/install/default/bin/ocluster-worker
 
 FROM debian:11
