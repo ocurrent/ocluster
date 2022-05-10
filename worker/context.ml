@@ -75,7 +75,10 @@ module Repo = struct
         let config k v = Process.check_call ~label:"git-config" ~switch ~log ["git"; "-C"; local_repo; "config"; "--add"; k; v] in
         config "remote.origin.url" (Uri.to_string t.url) >>!= fun () ->
         config "remote.origin.fetch" "+refs/heads/*:refs/remotes/origin/*" >>!= fun () ->
-        config "remote.origin.fetch" "+refs/pull/*:refs/remotes/pull/*"
+        config "remote.origin.fetch"
+          (match Uri.host t.url with
+           | Some "gitlab.com" -> "+refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*"
+           | Some "github.com" | _ -> "+refs/pull/*:refs/remotes/pull/*")
       )
     end >>!= fun () ->
     Process.check_call ~label:"git-submodule-update" ~switch ~log ["git"; "-C"; local_repo; "submodule"; "update"] >>!= fun () ->
