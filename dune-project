@@ -11,7 +11,7 @@
  (description "OCaml bindings for the OCluster Cap'n Proto API.")
  (depends
   ppx_deriving
-  (lwt (>= 5.4.1))
+  (lwt (>= 5.5.0))
   (capnp-rpc-lwt (>= 1.2))
   fmt
   ppx_deriving_yojson
@@ -27,7 +27,7 @@
   ppx_sexp_conv
   dune-build-info
   (ocluster-api (= :version))
-  (lwt (>= 5.4.1))
+  (lwt (>= 5.5.0))
   capnp-rpc-lwt
   capnp-rpc-net
   (capnp-rpc-unix (>= 1.2))
@@ -58,7 +58,7 @@
  (depends
   ppx_deriving
   (ocluster-api (= :version))
-  (lwt (>= 5.4.1))
+  (lwt (>= 5.5.0))
   (current (>= 0.3))
   (current_git (>= 0.3))
   (current_web (and (>= 0.3) :with-test))
