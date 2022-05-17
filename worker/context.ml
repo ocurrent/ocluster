@@ -77,8 +77,10 @@ module Repo = struct
         config "remote.origin.fetch" "+refs/heads/*:refs/remotes/origin/*" >>!= fun () ->
         config "remote.origin.fetch"
           (match Uri.host t.url with
-           | Some "gitlab.com" -> "+refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*"
-           | Some "github.com" | _ -> "+refs/pull/*:refs/remotes/pull/*")
+           | Some "github.com" -> "+refs/pull/*:refs/remotes/pull/*"
+           | Some "gitlab.com"
+           (* Default to GitLab merge requests refspec for self-hosted instances *)
+           | _ -> "+refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*")
       )
     end >>!= fun () ->
     Process.check_call ~label:"git-submodule-update" ~switch ~log ["git"; "-C"; local_repo; "submodule"; "update"] >>!= fun () ->
