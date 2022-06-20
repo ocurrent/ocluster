@@ -40,7 +40,7 @@
   (digestif (>= 0.8))
   fpath
   lwt-dllist
-  (prometheus-app (>= 1.1))
+  (prometheus-app (>= 1.2))
   cohttp-lwt-unix
   sqlite3
   obuilder
