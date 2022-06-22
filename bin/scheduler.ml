@@ -55,7 +55,7 @@ module Web = struct
     let uri = Request.uri req in
     match Request.meth req, Astring.String.cuts ~empty:false ~sep:"/" (Uri.path uri) with
     | `GET, ["metrics"] ->
-      let data = Prometheus.CollectorRegistry.(collect default) in
+      Prometheus.CollectorRegistry.(collect default) >>= fun data ->
       let body = Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data in
       let headers = Header.init_with "Content-Type" "text/plain; version=0.0.4" in
       Server.respond_string ~status:`OK ~headers ~body ()

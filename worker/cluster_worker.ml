@@ -400,7 +400,7 @@ let default_build ?obuilder ~switch ~log ~src ~secrets = function
 
 let metrics = function
   | `Agent ->
-    let data = Prometheus.CollectorRegistry.(collect default) in
+    Prometheus.CollectorRegistry.(collect default) >>= fun data ->
     let content_type = "text/plain; version=0.0.4; charset=utf-8" in
     Lwt_result.return (content_type, Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data)
   | `Host ->
