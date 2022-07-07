@@ -1,6 +1,6 @@
-FROM ocaml/opam:debian-11-ocaml-4.14@sha256:b83fcce3b715fe10ee2d3060763379e1ad9be76832d67203652f2c0abd6ae50d AS build
+FROM ocaml/opam:ubuntu-22.04-ocaml-4.14@sha256:818965140518f8daba604309618e0d7f0522ea228001527c083e8c865b37dd94 AS build
 RUN sudo apt-get update && sudo apt-get install libev-dev capnproto m4 pkg-config libsqlite3-dev libgmp-dev -y --no-install-recommends
-RUN cd ~/opam-repository && git pull origin -q master && git reset --hard 11e634fd946c90fdb26c14ae5f7759e644c898f0 && opam update
+RUN cd ~/opam-repository && git pull origin -q master && git reset --hard 97da9a1b68b824a65a09e5f7d071fcf2da35bd1b && opam update
 COPY --chown=opam ocluster-api.opam ocluster.opam /src/
 COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/
@@ -10,7 +10,7 @@ ADD --chown=opam . .
 RUN opam exec -- dune subst
 RUN opam config exec -- dune build ./_build/install/default/bin/ocluster-worker
 
-FROM debian:11
+FROM ubuntu:22.04
 RUN apt-get update && apt-get install docker.io libev4 curl gnupg2 git libsqlite3-dev ca-certificates netbase -y --no-install-recommends
 WORKDIR /var/lib/ocluster-worker
 ENTRYPOINT ["/usr/local/bin/ocluster-worker"]
