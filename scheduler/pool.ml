@@ -298,7 +298,7 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
     mutable workers : worker Worker_map.t;  (* Connected workers *)
     mutable clients : client_info Client_map.t;
     mutable cluster_capacity : float;
-    mutable pending_cached : (Item.cache_hint, int) Hashtbl.t;
+    pending_cached : (Item.cache_hint, int) Hashtbl.t;
   } and worker = {
     parent : t;
     name : string;
