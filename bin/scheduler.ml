@@ -141,14 +141,6 @@ let pools =
     ~docv:"POOLS"
     ["pools"]
 
-let capnp_address =
-  Arg.value @@
-  Arg.opt (Arg.some Capnp_rpc_unix.Network.Location.cmdliner_conv) None @@
-  Arg.info
-    ~doc:"Public address (SCHEME:HOST:PORT) for Cap'n Proto RPC (default: no RPC)"
-    ~docv:"ADDR"
-    ["capnp-address"]
-
 let secrets_dir =
   Arg.required @@
   Arg.(opt (some dir)) (Some "./capnp-secrets") @@

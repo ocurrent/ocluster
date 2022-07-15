@@ -37,7 +37,7 @@ let job_state x =
   | Sleep -> Error "pending"
 
 let pp_result = Fmt.(result ~ok:string ~error:string)
-let pp_cancel = Fmt.(result ~ok:(const string "cancelled") ~error:(const string "error"))
+let pp_cancel ppf = Fmt.(result ~ok:(const string "cancelled") ~error:(const string "error")) ppf
 
 let println fmt = Fmt.pr (fmt ^^ "@.")
 let print_result = Fmt.pr "%a@." pp_result

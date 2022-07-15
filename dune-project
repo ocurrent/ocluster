@@ -1,4 +1,4 @@
-(lang dune 2.8)
+(lang dune 3.3)
 (name ocluster)
 (formatting disabled)
 (generate_opam_files true)
