@@ -25,7 +25,7 @@ module Inactive_reasons : sig
   val pp : t Fmt.t
 end
 
-module Make (Item : S.ITEM) (Time : S.TIME) : sig
+module Make (Item : S.ITEM) (_ : S.TIME) : sig
   type t
   (** A pool of workers and queued jobs. *)
 
@@ -115,7 +115,7 @@ module Make (Item : S.ITEM) (Time : S.TIME) : sig
 
   val with_worker : t -> string -> (worker -> 'a) -> 'a
   (** [with_worker t name f] is [f worker] if [worker] is in [connected_workers].
-      If not, it temporarily registers it, runs [f], and then releases it. *) 
+      If not, it temporarily registers it, runs [f], and then releases it. *)
 
   val worker_known : t -> string -> bool
   (** [worker_known t name] is [true] when worker [name] has previously registered with this pool,
