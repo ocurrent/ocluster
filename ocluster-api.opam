@@ -7,7 +7,7 @@ authors: ["talex5@gmail.com"]
 homepage: "https://github.com/ocurrent/ocluster"
 bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [
-  "dune" {>= "2.8"}
+  "dune" {>= "3.3"}
   "ppx_deriving"
   "lwt" {>= "5.6.1"}
   "capnp-rpc-lwt" {>= "1.2"}
