@@ -40,7 +40,7 @@ let log_to log_data tag msg =
 
 let create ?prune_threshold config =
   let { Config.store_spec; sandbox_config } = config in
-  Obuilder.Store_spec.to_store store_spec >>= fun (Store ((module Store), store)) ->
+  Obuilder.Store_spec.to_store Obuilder.Rsync_store.Hardlink_unsafe store_spec >>= fun (Store ((module Store), store)) ->
   let module Builder = Obuilder.Builder(Store)(Sandbox)(Fetcher) in
   Sandbox.create ~state_dir:(Store.state_dir store / "runc") sandbox_config >>= fun sandbox ->
   let builder = Builder.v ~store ~sandbox in
