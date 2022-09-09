@@ -4,13 +4,9 @@ type job_spec = [
   | `Custom of Cluster_api.Custom.recv
 ]
 
-module Obuilder_config : sig
-  type t
+module Obuilder_config = Obuilder_build.Config
 
-  val v : Obuilder.Runc_sandbox.config -> [ `Btrfs of string | `Rsync of string | `Zfs of string ] -> t
-end
-
-type build = 
+type build =
   switch:Lwt_switch.t ->
   log:Log_data.t ->
   src:string ->

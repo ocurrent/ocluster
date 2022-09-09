@@ -6,7 +6,7 @@ type builder = Builder : (module Obuilder.BUILDER with type t = 'a) * 'a -> buil
 
 module Config = struct
   type t = {
-    store_spec : [ `Btrfs of string | `Rsync of string | `Zfs of string ];
+    store_spec : Obuilder.Store_spec.store Lwt.t;
     sandbox_config : Obuilder.Runc_sandbox.config;
   }
 
@@ -15,7 +15,7 @@ end
 
 type t = {
   builder : builder;
-  config : Config.t;
+  root : string;
   mutable pruning : bool;
   cond : unit Lwt_condition.t;          (* Fires when we finish pruning *)
   prune_threshold : float option;
@@ -40,7 +40,7 @@ let log_to log_data tag msg =
 
 let create ?prune_threshold config =
   let { Config.store_spec; sandbox_config } = config in
-  Obuilder.Store_spec.to_store Obuilder.Rsync_store.Hardlink_unsafe store_spec >>= fun (Store ((module Store), store)) ->
+  store_spec >>= fun (Store ((module Store), store)) ->
   let module Builder = Obuilder.Builder(Store)(Sandbox)(Fetcher) in
   Sandbox.create ~state_dir:(Store.state_dir store / "runc") sandbox_config >>= fun sandbox ->
   let builder = Builder.v ~store ~sandbox in
@@ -51,9 +51,9 @@ let create ?prune_threshold config =
     Log.info (fun f -> f "OBuilder self-test passed");
     {
       builder = Builder ((module Builder), builder);
+      root = Store.root store ;
       pruning = false;
       prune_threshold;
-      config;
       cond = Lwt_condition.create ();
     }
 
@@ -77,12 +77,6 @@ let do_prune ~path ~prune_threshold t =
   in
   aux ()
 
-let store_path t =
-  match t.config.store_spec with
-  | `Btrfs path -> path
-  | `Rsync path -> path
-  | `Zfs pool -> "/" ^ pool
-
 (* Check the free space in [t]'s store.
    If less than [t.prune_threshold], spawn a prune operation (if not already running).
    If less than half that is remaining, also wait for it to finish.
@@ -91,7 +85,7 @@ let check_free_space t =
   match t.prune_threshold with
   | None -> Lwt.return_unit
   | Some prune_threshold ->
-    let path = store_path t in
+    let path = t.root in
     let rec aux () =
       let free = Df.free_space_percent path in
       Log.info (fun f -> f "OBuilder partition: %.0f%% free" free);

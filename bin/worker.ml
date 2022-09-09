@@ -114,22 +114,12 @@ let state_dir =
     ["state-dir"]
 
 module Obuilder_config = struct
-  let store_t = Arg.conv Obuilder.Store_spec.(of_string, pp)
-
-  let store =
-    Arg.value @@
-    Arg.opt Arg.(some store_t) None @@
-    Arg.info
-      ~doc:"btrfs:/path or rsync:/path or zfs:pool for the OBuilder cache"
-      ~docv:"STORE"
-      ["obuilder-store"]
-
   let v =
     let make sandbox_config = function
       | None -> None
-      | Some store -> Some (Cluster_worker.Obuilder_config.v sandbox_config store)
+      | Some store_spec -> Some (Cluster_worker.Obuilder_config.v sandbox_config store_spec)
     in
-    Term.(const make $ Obuilder.Runc_sandbox.cmdliner $ store)
+    Term.(const make $ Obuilder.Runc_sandbox.cmdliner $ Obuilder.Store_spec.cmdliner')
 end
 
 let worker_opts_t =

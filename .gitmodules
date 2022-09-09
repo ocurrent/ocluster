@@ -1,4 +1,4 @@
 [submodule "obuilder"]
 	path = obuilder
-	url = https://github.com/ocurrent/obuilder.git
-	branch = master
+	url = https://github.com/MisterDA/obuilder.git
+	branch = non-req-cmdliner
