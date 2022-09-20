@@ -179,9 +179,11 @@ let check_docker_partition t =
   | None -> Lwt_result.return ()
   | Some prune_threshold ->
     Lwt_process.pread_line("", [| "docker"; "info"; "-f"; "{{.DockerRootDir}}" |]) >|= fun line ->
-    let free = Df.free_space_percent (String.trim line) in
-    Log.info (fun f -> f "Docker partition: %.0f%% free" free);
-    if free < prune_threshold then Error `Disk_space_low
+    let trimed_line = String.trim line in
+    let free_blocks = Df.free_space_percent trimed_line in
+    let free_files = Df.free_files_percent trimed_line in
+    Log.info (fun f -> f "Docker partition: %.0f%% free blocks, %.0f%% free files" free_blocks free_files);
+    if (min free_blocks free_files) < prune_threshold then Error `Disk_space_low
     else Ok ()
 
 let rec maybe_prune t queue =
