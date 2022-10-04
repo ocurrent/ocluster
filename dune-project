@@ -44,7 +44,6 @@
   (prometheus-app (>= 1.2))
   cohttp-lwt-unix
   sqlite3
-  obuilder
   psq
   (mirage-crypto (>= 0.8.5))
   (ocaml (>= 4.12.0))
@@ -77,6 +76,7 @@
  (description "OCluster library for defining workers")
  (depends
   (ocluster-api (= :version))
+  (obuilder (= "dev"))
   (digestif (>= 0.8))
   fpath
   logs

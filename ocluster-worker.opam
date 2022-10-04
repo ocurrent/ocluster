@@ -7,8 +7,9 @@ authors: ["talex5@gmail.com"]
 homepage: "https://github.com/ocurrent/ocluster"
 bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [
-  "dune" {>= "2.8"}
+  "dune" {>= "3.3"}
   "ocluster-api" {= version}
+  "obuilder" {= "dev"}
   "digestif" {>= "0.8"}
   "fpath"
   "logs"
@@ -35,3 +36,7 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/ocurrent/ocluster.git"
+pin-depends: [
+  [ "obuilder.dev"      "git+https://github.com/ocurrent/obuilder.git#671a2400528f29736dc446813f0699055d8e631b" ]
+  [ "obuilder-spec.dev" "git+https://github.com/ocurrent/obuilder.git#671a2400528f29736dc446813f0699055d8e631b" ]
+]
