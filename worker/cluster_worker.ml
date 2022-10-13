@@ -30,6 +30,10 @@ module Metrics = struct
     let help = "Number of jobs currently running" in
     Gauge.v ~help ~namespace ~subsystem "running_jobs"
 
+  let capacity =
+    let help = "Maximum number of jobs" in
+    Gauge.v ~help ~namespace ~subsystem "capacity"
+
   let healthcheck_time =
     let help = "Time to perform last healthcheck" in
     Gauge.v ~help ~namespace ~subsystem "healthcheck_time_seconds"
@@ -282,6 +286,7 @@ let loop ~switch ?obuilder t queue =
         pop >>= fun request ->
         t.in_use <- t.in_use + 1;
         Prometheus.Gauge.set Metrics.running_jobs (float_of_int t.in_use);
+        Prometheus.Gauge.set Metrics.capacity (float_of_int t.capacity);
         Prometheus.Counter.inc_one Metrics.jobs_accepted;
         Lwt.async (fun () ->
             Lwt.finalize
