@@ -286,7 +286,6 @@ let loop ~switch ?obuilder t queue =
         pop >>= fun request ->
         t.in_use <- t.in_use + 1;
         Prometheus.Gauge.set Metrics.running_jobs (float_of_int t.in_use);
-        Prometheus.Gauge.set Metrics.capacity (float_of_int t.capacity);
         Prometheus.Counter.inc_one Metrics.jobs_accepted;
         Lwt.async (fun () ->
             Lwt.finalize
@@ -455,6 +454,7 @@ let self_update ~update t =
     )
 
 let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?obuilder ~update ~capacity ~name ~state_dir registration_service =
+  Prometheus.Gauge.set Metrics.capacity (float_of_int capacity);
   begin match prune_threshold with
     | None -> Log.info (fun f -> f "Prune threshold not set. Will not check for low disk-space!")
     | Some frac when frac < 0.0 || frac > 100.0 -> Fmt.invalid_arg "prune_threshold must be in the range 0 to 100"
