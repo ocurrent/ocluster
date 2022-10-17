@@ -1,6 +1,6 @@
-FROM ocaml/opam:ubuntu-22.04-ocaml-4.14@sha256:1d783d4caa30a9e2913d05aa0e80f803af02f04e3124d38a148c92a3f9ac1bbc AS build
+FROM ocaml/opam:ubuntu-22.04-ocaml-4.14@sha256:3d379b4a575d050ea02b1146f03d7ab28ccf15e6fecdada5595b0b04a8a307d0 AS build
 RUN sudo apt-get update && sudo apt-get install libev-dev capnproto m4 pkg-config libsqlite3-dev libgmp-dev -y --no-install-recommends
-RUN cd ~/opam-repository && git pull origin -q master && git reset --hard 97da9a1b68b824a65a09e5f7d071fcf2da35bd1b && opam update
+RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 57f1b681ce75766a17f15588c2088174edbb89c9 && opam update
 COPY --chown=opam ocluster-api.opam ocluster.opam /src/
 COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/
