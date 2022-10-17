@@ -69,7 +69,7 @@ let worker_name =
   Arg.required @@
   Arg.opt Arg.(some string) None @@
   Arg.info
-    ~doc:"Unique builder name"
+    ~doc:"Unique builder name."
     ~docv:"ID"
     ["name"]
 
@@ -77,7 +77,7 @@ let connect_addr =
   Arg.required @@
   Arg.opt Arg.(some file) None @@
   Arg.info
-    ~doc:"Path of register.cap from build-scheduler"
+    ~doc:"Path of register.cap from build-scheduler."
     ~docv:"ADDR"
     ["c"; "connect"]
 
@@ -85,7 +85,7 @@ let capacity =
   Arg.value @@
   Arg.opt Arg.int 10 @@
   Arg.info
-    ~doc:"The number of builds that can run in parallel"
+    ~doc:"The number of builds that can run in parallel."
     ~docv:"N"
     ["capacity"]
 
@@ -94,7 +94,7 @@ let prune_threshold =
   Arg.opt Arg.(some float) None @@
   Arg.info
     ~doc:"Run 'docker system prune' when /var/lib/docker's free space falls below this (0-100). \
-          If you don't have a partition for /var/lib/docker, then you can use docker-max-df-size."
+          If you don't have a partition for /var/lib/docker, then you can use $(b,--docker-max-df-size)."
     ~docv:"PERCENTAGE"
     ["prune-threshold"]
 
@@ -111,7 +111,7 @@ let obuilder_prune_threshold =
   Arg.value @@
   Arg.opt Arg.(some float) None @@
   Arg.info
-    ~doc:"If using OBuilder, this threshold is used to prune the stored builds if the free space falls below this (0-100)"
+    ~doc:"If using OBuilder, this threshold is used to prune the stored builds if the free space falls below this (0-100)."
     ~docv:"PERCENTAGE"
     ["obuilder-prune-threshold"]
 
@@ -119,7 +119,7 @@ let allow_push =
   Arg.value @@
   Arg.opt Arg.(list string) [] @@
   Arg.info
-    ~doc:"Docker repositories to which users can push"
+    ~doc:"Docker repositories to which users can push."
     ~docv:"REPO"
     ["allow-push"]
 
@@ -127,7 +127,7 @@ let state_dir =
   Arg.required @@
   Arg.opt Arg.(some string) None @@
   Arg.info
-    ~doc:"Directory for caches, etc (e.g. /var/lib/ocluster-worker)"
+    ~doc:"Directory for caches, etc (e.g. /var/lib/ocluster-worker)."
     ~docv:"PATH"
     ["state-dir"]
 
@@ -138,7 +138,7 @@ module Obuilder_config = struct
     Arg.value @@
     Arg.opt Arg.(some store_t) None @@
     Arg.info
-      ~doc:"btrfs:/path or rsync:/path or zfs:pool for the OBuilder cache"
+      ~doc:"btrfs:/path or rsync:/path or zfs:pool for the OBuilder cache."
       ~docv:"STORE"
       ["obuilder-store"]
 
