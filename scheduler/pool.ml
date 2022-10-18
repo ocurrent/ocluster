@@ -22,6 +22,10 @@ module Metrics = struct
     let help = "Number of connected workers" in
     Gauge.v_label ~label_name:"pool" ~help ~namespace ~subsystem "workers_connected"
 
+  let workers_capacity =
+    let help = "Aggregate capacity of connected workers" in
+    Gauge.v_label ~label_name:"pool" ~help ~namespace ~subsystem "workers_capacity"
+
   let incoming_queue = "incoming"
 
   let queue_length =
@@ -484,6 +488,7 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
       t.workers <- Worker_map.add name q t.workers;
       t.cluster_capacity <- t.cluster_capacity +. float capacity;
       Prometheus.Gauge.inc_one (Metrics.workers_connected t.pool);
+      Prometheus.Gauge.inc (Metrics.workers_capacity t.pool) (float capacity);
       Prometheus.Gauge.inc_one (Metrics.workers_paused t.pool);
       Ok q
     )
@@ -591,6 +596,7 @@ module Make (Item : S.ITEM)(Time : S.TIME) = struct
       t.workers <- Worker_map.remove w.name t.workers;
       t.cluster_capacity <- t.cluster_capacity -. float w.capacity;
       Prometheus.Gauge.dec_one (Metrics.workers_connected t.pool);
+      Prometheus.Gauge.dec (Metrics.workers_capacity t.pool) (float w.capacity);
       Prometheus.Gauge.dec_one (Metrics.workers_paused t.pool);
       Lwt.wakeup set_ready ()
     | _ -> assert false
