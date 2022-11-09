@@ -1,4 +1,4 @@
-### unreleased
+### v0.2
 
 - Update OBuilder to pull in Windows prereqs (@MisterDA #196, reviewed by @tmcgilchrist)
 - Worker pool capacity metric (@mtelvers #195, reviewed by @talex5)
