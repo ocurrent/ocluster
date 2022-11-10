@@ -6,7 +6,7 @@ type builder = Builder : (module Obuilder.BUILDER with type t = 'a) * 'a -> buil
 
 module Config = struct
   type t = {
-    store_spec : [ `Btrfs of string | `Rsync of string | `Zfs of string ];
+    store_spec : Obuilder.Store_spec.t;
     sandbox_config : Obuilder.Sandbox.config;
   }
 
@@ -40,7 +40,7 @@ let log_to log_data tag msg =
 
 let create ?prune_threshold config =
   let { Config.store_spec; sandbox_config } = config in
-  Obuilder.Store_spec.to_store Obuilder.Rsync_store.Hardlink_unsafe store_spec >>= fun (Store ((module Store), store)) ->
+  Obuilder.Store_spec.to_store store_spec >>= fun (Store ((module Store), store)) ->
   let module Builder = Obuilder.Builder(Store)(Sandbox)(Fetcher) in
   Sandbox.create ~state_dir:(Store.state_dir store / "runc") sandbox_config >>= fun sandbox ->
   let builder = Builder.v ~store ~sandbox in
@@ -80,7 +80,7 @@ let do_prune ~path ~prune_threshold t =
 let store_path t =
   match t.config.store_spec with
   | `Btrfs path -> path
-  | `Rsync path -> path
+  | `Rsync (path, _) -> path
   | `Zfs pool -> "/" ^ pool
 
 (* Check the free space in [t]'s store.
