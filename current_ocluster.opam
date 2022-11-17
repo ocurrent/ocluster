@@ -5,6 +5,7 @@ description:
   "Creates a stage in an OCurrent pipeline for submitting jobs to OCluster."
 maintainer: ["talex5@gmail.com"]
 authors: ["talex5@gmail.com"]
+license: "Apache-2.0"
 homepage: "https://github.com/ocurrent/ocluster"
 bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [

@@ -5,6 +5,7 @@
 (source (github ocurrent/ocluster))
 (authors "talex5@gmail.com")
 (maintainers "talex5@gmail.com")
+(license "Apache-2.0")
 (package
  (name ocluster-api)
  (synopsis "Cap'n Proto API for OCluster")

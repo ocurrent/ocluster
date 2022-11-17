@@ -13,6 +13,7 @@ In either case, the build may done in the context of some Git commit.
 The scheduler tries to schedule similar builds on the same machine, to benefit from caching."""
 maintainer: ["talex5@gmail.com"]
 authors: ["talex5@gmail.com"]
+license: "Apache-2.0"
 homepage: "https://github.com/ocurrent/ocluster"
 bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [

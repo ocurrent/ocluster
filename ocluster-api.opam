@@ -4,6 +4,7 @@ synopsis: "Cap'n Proto API for OCluster"
 description: "OCaml bindings for the OCluster Cap'n Proto API."
 maintainer: ["talex5@gmail.com"]
 authors: ["talex5@gmail.com"]
+license: "Apache-2.0"
 homepage: "https://github.com/ocurrent/ocluster"
 bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [
