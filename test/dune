@@ -16,7 +16,6 @@
 
 (library
   (name ocluster_expect_tests)
-  (package ocluster)
   (modules test_scheduling)
   (inline_tests)
   (preprocess (pps ppx_expect))
