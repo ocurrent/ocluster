@@ -6,23 +6,25 @@
 (authors "talex5@gmail.com")
 (maintainers "talex5@gmail.com")
 (license "Apache-2.0")
+
 (package
  (name ocluster-api)
  (synopsis "Cap'n Proto API for OCluster")
  (description "OCaml bindings for the OCluster Cap'n Proto API.")
  (depends
+  (ocaml (>= 4.12.0))
   ppx_deriving
   (lwt (>= 5.6.1))
   (capnp-rpc-lwt (>= 1.2))
   fmt
-  ppx_deriving_yojson
-  (ocaml (>= 4.12.0))))
+  ppx_deriving_yojson))
+  
 (package
  (name ocluster)
  (synopsis "Distribute build jobs to workers")
- (description
-  "OCluster manages a pool of build workers.\nA build scheduler service accepts build jobs from clients and distributes them to worker machines using Cap'n Proto.\nWorkers register themselves by connecting to the scheduler (and workers do not need to be able to accept incoming network connections).\n\nThe scheduler can manage multiple pools (e.g. `linux-x86_64` and `linux-arm32`).\nClients say which pool should handle their requests.\nAt the moment, two build types are provided: building a Dockerfile, or building an OBuilder spec.\nIn either case, the build may done in the context of some Git commit.\nThe scheduler tries to schedule similar builds on the same machine, to benefit from caching.")
+ (description "OCluster manages a pool of build workers.\nA build scheduler service accepts build jobs from clients and distributes them to worker machines using Cap'n Proto.\nWorkers register themselves by connecting to the scheduler (and workers do not need to be able to accept incoming network connections).\n\nThe scheduler can manage multiple pools (e.g. `linux-x86_64` and `linux-arm32`).\nClients say which pool should handle their requests.\nAt the moment, two build types are provided: building a Dockerfile, or building an OBuilder spec.\nIn either case, the build may done in the context of some Git commit.\nThe scheduler tries to schedule similar builds on the same machine, to benefit from caching.")
  (depends
+  (ocaml (>= 4.12.0))
   (ppx_expect (>= v0.14.1))
   prometheus
   ppx_sexp_conv
@@ -45,29 +47,29 @@
   cohttp-lwt-unix
   sqlite3
   (obuilder (>= 0.5))
-  psq
+  (psq (>= 0.2.1))
   (mirage-crypto (>= 0.8.5))
-  (ocaml (>= 4.12.0))
   (current_ocluster (and (= :version) :with-test))
   (alcotest (and (>= 1.0.0) :with-test))
   (alcotest-lwt (and (>= 1.0.1) :with-test))))
+
 (package
  (name current_ocluster)
  (synopsis "OCurrent plugin for OCluster builds")
  (description
   "Creates a stage in an OCurrent pipeline for submitting jobs to OCluster.")
  (depends
+  (ocaml (>= 4.12.0))
   ppx_deriving
   (ocluster-api (= :version))
   (lwt (>= 5.6.1))
-  (current (>= 0.3))
-  (current_git (>= 0.3))
-  (current_web (and (>= 0.3) :with-test))
-  (current_github (and (>= 0.3) :with-test))
+  (current (>= 0.6))
+  (current_git (>= 0.6))
+  (current_web (and (>= 0.6) :with-test))
+  (current_github (and (>= 0.6) :with-test))
   (capnp-rpc-unix (>= 1.2))
   duration
   logs
   fmt
-  prometheus
-  ppx_deriving_yojson
-  (ocaml (>= 4.12.0))))
+  (prometheus (>= 1.2))
+  ppx_deriving_yojson))

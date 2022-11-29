@@ -10,20 +10,20 @@ homepage: "https://github.com/ocurrent/ocluster"
 bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [
   "dune" {>= "3.3"}
+  "ocaml" {>= "4.12.0"}
   "ppx_deriving"
   "ocluster-api" {= version}
   "lwt" {>= "5.6.1"}
-  "current" {>= "0.3"}
-  "current_git" {>= "0.3"}
-  "current_web" {>= "0.3" & with-test}
-  "current_github" {>= "0.3" & with-test}
+  "current" {>= "0.6"}
+  "current_git" {>= "0.6"}
+  "current_web" {>= "0.6" & with-test}
+  "current_github" {>= "0.6" & with-test}
   "capnp-rpc-unix" {>= "1.2"}
   "duration"
   "logs"
   "fmt"
-  "prometheus"
+  "prometheus" {>= "1.2"}
   "ppx_deriving_yojson"
-  "ocaml" {>= "4.12.0"}
   "odoc" {with-doc}
 ]
 build: [
