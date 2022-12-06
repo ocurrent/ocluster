@@ -73,7 +73,7 @@ let with_progress label =
   Capability.with_ref (Cluster_api.Progress.local (Fmt.pr "%s: %s@." label))
 
 let drain pool workers =
-  Fmt.pr "Waiting for jobs to finish...@.";
+  Fmt.pr "Waiting for jobs to finish…@.";
   let jobs = workers |> List.map (fun w ->
       with_progress w @@ fun progress ->
       Cluster_api.Pool_admin.drain ~progress pool w
@@ -107,7 +107,7 @@ let set_active active () all auto_create wait cap_path pool worker =
         Fmt.pr "Nothing to do.@.";
         Lwt.return_unit
       ) else (
-        Fmt.pr "Updating %a...@." Fmt.(list ~sep:comma string) workers;
+        Fmt.pr "Updating %a…@." Fmt.(list ~sep:comma string) workers;
         let set worker =
           Cluster_api.Pool_admin.set_active pool worker active
         in

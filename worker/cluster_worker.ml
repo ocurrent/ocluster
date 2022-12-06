@@ -118,7 +118,7 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; auth } =
            We don't want to return a multi-arch image here, because "docker manifest" would reject that. *)
         match List.find_opt (String.is_prefix ~affix:(repo ^ "@")) (String.cuts ~sep:" " ids) with
         | Some repo_id -> Lwt_result.return repo_id
-        | None -> Lwt_result.fail (`Msg (Fmt.str "Can't find target repository '%s@...' in list %S!" repo ids)) in
+        | None -> Lwt_result.fail (`Msg (Fmt.str "Can't find target repository '%s@…' in list %S!" repo ids)) in
     match auth with
     | None -> tag_and_push ()
     | Some (user, password) ->
@@ -224,7 +224,7 @@ let rec maybe_prune t queue =
       else Lwt_condition.wait t.cond >>= drain
     in
     drain () >>= fun () ->
-    Log.info (fun f -> f "All jobs finished. Pruning...");
+    Log.info (fun f -> f "All jobs finished. Pruning…");
     Prometheus.Summary.time Metrics.docker_prune_time Unix.gettimeofday
       (fun () ->
          Lwt_process.exec ("", [| "docker"; "system"; "prune"; "-af" |]) >>= function
@@ -237,7 +237,7 @@ let rec maybe_prune t queue =
       begin
         check_docker_partition t >>= function
         | Ok () ->
-          Log.info (fun f -> f "Prune complete. Re-activating queue...");
+          Log.info (fun f -> f "Prune complete. Re-activating queue…");
           Cluster_api.Queue.set_active queue true
         | Error `Disk_space_low ->
           Log.warn (fun f -> f "Disk-space still low after pruning! Will retry in one hour.");
@@ -292,14 +292,14 @@ let loop ~switch ?obuilder t queue =
       Lwt.return `Cancelled
     | _ ->
       if t.in_use >= t.capacity then (
-        Log.info (fun f -> f "At capacity. Waiting for a build to finish before requesting more...");
+        Log.info (fun f -> f "At capacity. Waiting for a build to finish before requesting more…");
         Lwt_condition.wait t.cond >>= loop
       ) else (
         maybe_prune t queue >>= fun () ->
         check_health ~last_healthcheck ~queue obuilder >>= fun () ->
         let outcome, set_outcome = Lwt.wait () in
         let log = Log_data.create () in
-        Log.info (fun f -> f "Requesting a new job...");
+        Log.info (fun f -> f "Requesting a new job…");
         let switch = Lwt_switch.create () in
         let pop =
           Capability.with_ref (Cluster_api.Job.local ~switch ~outcome ~stream_log_data:(Log_data.stream log)) @@ fun job ->
@@ -465,7 +465,7 @@ let self_update ~update t =
          else Lwt_condition.wait t.cond >>= drain
        in
        drain () >>= fun () ->
-       Log.info (fun f -> f "All jobs finished. Updating...");
+       Log.info (fun f -> f "All jobs finished. Updating…");
        Lwt_unix.sleep 1.0 >>= fun () -> (* Helps with people tailing the logs *)
        finish () >>= fun () ->
        Lwt_unix.sleep 1.0 >>= fun () ->
@@ -540,7 +540,7 @@ let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?docker_max_df_size ?ob
       )
       (fun ex ->
          let delay = max 0.0 (connect_time +. min_reconnect_time -. Unix.gettimeofday ()) in
-         Log.info (fun f -> f "Lost connection to scheduler (%a). Will retry in %.1fs..." Fmt.exn ex delay);
+         Log.info (fun f -> f "Lost connection to scheduler (%a). Will retry in %.1fs…" Fmt.exn ex delay);
          Lwt_unix.sleep delay >>= reconnect
       )
   in

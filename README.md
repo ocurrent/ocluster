@@ -68,7 +68,7 @@ You should see output something like this:
 
 ```
 2020-11-05 16:28.30      capnp-rpc [INFO] Generating new secret key to store in "./capnp-secrets/key.pem"
-2020-11-05 16:28.30      capnp-rpc [INFO] Generating new private key...
+2020-11-05 16:28.30      capnp-rpc [INFO] Generating new private key…
 2020-11-05 16:28.30      capnp-rpc [INFO] Generated key with hash sha-256@0_tVPHQ3gz5vKNVwc_t0llFS7YkVuKmqfG7fO9S-gEg
 2020-11-05 16:28.30      capnp-rpc [INFO] Waiting for (encrypted) connections on tcp:0.0.0.0:9000
 2020-11-05 16:28.30    application  Wrote capability reference to "./capnp-secrets/admin.cap"
@@ -105,7 +105,7 @@ will prune things (e.g. with `docker system prune -af`).
 If not given, then the worker will not monitor free space.
 
 The builder connects to the scheduler and waits for jobs.
-You should see `worker [INFO] Requesting a new job...` in the worker log,
+You should see `worker [INFO] Requesting a new job…` in the worker log,
 and `Registered new worker "my-host"` in the scheduler log.
 
 The service builds Docker jobs using `docker build` and so needs access to the local Docker.
@@ -183,7 +183,7 @@ This is useful for e.g. testing a pull request merged with the master branch's h
 You can ask the builder to push the resulting image somewhere. The client provides three options for this:
 
 ```
-ocluster-client ... \
+ocluster-client … \
   --push-to org/staging:build-1 \
   --push-user=builder \
   --push-password ~/.builder-password
@@ -215,7 +215,7 @@ ocluster-client -c submission.cap \
   --cache-hint tutorial
 ```
 
-You will need to start the worker with `--obuilder-store=...` to enable this.
+You will need to start the worker with `--obuilder-store=…` to enable this.
 
 ## Admin
 
@@ -305,7 +305,7 @@ For example:
 You can see these values in the `ocluster-admin show` output. For example:
 
 ```
-...
+…
 queue: (backlog) [bob:job9@9m bob:job8@8m bob:job7@7m bob:job6@6m bob:job5@5m
                   bob:job4@4m bob:job3@3m alice:job1@30s alice:job0@0s]
 clients: alice(2)+1m bob(1)+10m
@@ -360,9 +360,9 @@ There is no attempt at DoS protection from malicious clients or services.
 You can run the scheduler with `--listen-prometheus=PORT` to expose Prometheus metrics on the given port.
 The endpoints available are:
 
-- `http://...:PORT/metrics` provides the metrics for the scheduler itself,
-- `http://...:PORT/pool/{pool}/worker/{worker}/metrics` provides the metrics for the given worker
-- `http://...:PORT/pool/{pool}/worker/{worker}/host-metrics` gets the worker's prometheus-node-exporter metrics
+- `http://…:PORT/metrics` provides the metrics for the scheduler itself,
+- `http://…:PORT/pool/{pool}/worker/{worker}/metrics` provides the metrics for the given worker
+- `http://…:PORT/pool/{pool}/worker/{worker}/host-metrics` gets the worker's prometheus-node-exporter metrics
 
 The worker agent and worker host metrics are fetched over the worker's Cap'n Proto connection, so there is no need
 to allow incoming network connections to the workers for this.

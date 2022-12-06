@@ -27,7 +27,7 @@ let exec ~label ~log ~switch ?env ?(stdin="") ?(stderr=`FD_copy Unix.stdout) ?(i
   let proc = Lwt_process.open_process ?env ~stderr cmd in
   Lwt_switch.add_hook_or_exec (Some switch) (fun () ->
       if Lwt.state proc#status = Lwt.Sleep then (
-        Log.info (fun f -> f "Cancelling %s job..." label);
+        Log.info (fun f -> f "Cancelling %s job…" label);
         proc#terminate;
       );
       Lwt.return_unit

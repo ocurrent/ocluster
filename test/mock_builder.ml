@@ -86,7 +86,7 @@ let build t ~switch ~log ~src:_ ~secrets:_ v =
     | v -> invalid_arg ("Unsupported kind of custom build: " ^ v)
 
 let update () =
-  Logs.info (fun f -> f "Mock download updates...");
+  Logs.info (fun f -> f "Mock download updates…");
   Lwt.return (fun () -> failwith "Mock restart")
 
 let run ?(capacity=1) ?(name="worker-1") ~switch t registration_service =

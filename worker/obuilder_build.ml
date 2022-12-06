@@ -44,7 +44,7 @@ let create ?prune_threshold config =
   let module Builder = Obuilder.Builder(Store)(Sandbox)(Fetcher) in
   Sandbox.create ~state_dir:(Store.state_dir store / "runc") sandbox_config >>= fun sandbox ->
   let builder = Builder.v ~store ~sandbox in
-  Log.info (fun f -> f "Performing OBuilder self-test...");
+  Log.info (fun f -> f "Performing OBuilder self-test…");
   Builder.healthcheck builder >|= function
   | Error (`Msg m) -> Fmt.failwith "Initial OBuilder healthcheck failed: %s" m
   | Ok () ->
@@ -110,7 +110,7 @@ let check_free_space t =
       );
       if free < prune_threshold /. 2.0 then (
         assert (t.pruning);
-        Log.info (fun f -> f "OBuilder space very low. Waiting for prune to finish...");
+        Log.info (fun f -> f "OBuilder space very low. Waiting for prune to finish…");
         Lwt_condition.wait t.cond >>= aux
       ) else (
         Lwt.return_unit
