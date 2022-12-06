@@ -36,10 +36,10 @@ let sched ~job t =
   match Lwt.state conn.sched with
   | Lwt.Return cap when Capability.problem cap = None -> Lwt.return cap
   | Lwt.Sleep ->
-    Current.Job.log job "Connecting to build cluster...";
+    Current.Job.log job "Connecting to build cluster…";
     conn.sched      (* Already connecting; join that effort *)
   | _ ->
-    Current.Job.log job "Connecting to build cluster...";
+    Current.Job.log job "Connecting to build cluster…";
     let rec aux () =
       Lwt.catch
         (fun () ->
@@ -115,7 +115,7 @@ let submit ~job ~pool ~action ~cache_hint ?src ?secrets ~urgent t ~priority ~swi
                   let build_job = Cluster_api.Ticket.job ticket in
                   stage := `Get_ticket ticket;       (* Allow the user to cancel it now. *)
                   with_state Metrics.queue_get_ticket (fun () -> Capability.await_settled ticket) >>!= fun () ->
-                  Current.Job.log job "Waiting for worker...";
+                  Current.Job.log job "Waiting for worker…";
                   with_state Metrics.queue_get_worker (fun () -> Capability.await_settled build_job) >>!= fun () ->
                   Capability.dec_ref ticket;
                   stage := `Got_worker;

@@ -36,11 +36,11 @@ let thread ~name ~capacity pool =
   let t = { name; capacity; in_use = 0; cond = Lwt_condition.create (); cached = Hint_set.empty } in
   let rec loop () =
     if t.in_use >= t.capacity then (
-      Log.info (fun f -> f "At capacity. Waiting for a build to finish before requesting more...");
+      Log.info (fun f -> f "At capacity. Waiting for a build to finish before requesting more…");
       Lwt_condition.wait t.cond >>= loop
     ) else (
       let outcome, set_outcome = Lwt.wait () in
-      Log.info (fun f -> f "Requesting a new job...");
+      Log.info (fun f -> f "Requesting a new job…");
       let switch = Lwt_switch.create () in
       let pop =
         let stream_log_data ~start:_ = 
