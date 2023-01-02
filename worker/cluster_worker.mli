@@ -7,7 +7,7 @@ type job_spec = [
 module Obuilder_config : sig
   type t
 
-  val v : Obuilder.Sandbox.config -> [ `Btrfs of string | `Rsync of string | `Zfs of string ] -> t
+  val v : Obuilder.Sandbox.config -> Obuilder.Store_spec.t -> t
 end
 
 type build = 
