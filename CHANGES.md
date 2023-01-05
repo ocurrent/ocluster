@@ -1,3 +1,7 @@
+### dev
+
+- Support OBuilder Docker backend on Windows and Linux (@MisterDA #143)
+
 ### v0.2.1 (2023-03-03)
 
 - Expose the ocluster-worker library in the ocluster-worker package
