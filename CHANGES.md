@@ -1,3 +1,9 @@
+### unreleased
+
+- Make rsync-mode mandatory when using rsync store (@tmcgilchrist #202, reviewed by @MisterDA)
+- Windows service bugfixes (@MisterDA #200, reviewed by @tmcgilchrist)
+- Fix build and opam metadata (@MisterDA @tmcgilchrist #199 #203)
+
 ### v0.2
 
 - Update OBuilder to pull in Windows prereqs (@MisterDA #196, reviewed by @tmcgilchrist)
