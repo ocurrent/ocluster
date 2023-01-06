@@ -1,0 +1,47 @@
+name: Main workflow
+
+on:
+  pull_request:
+  schedule:
+    # Prime the caches every Monday
+    - cron: 0 1 * * MON
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+        ocaml-compiler:
+          - 4.14.x
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Use OCaml ${{ matrix.ocaml-compiler }}
+        uses: ocaml/setup-ocaml@v2
+        with:
+          ocaml-compiler: ${{ matrix.ocaml-compiler }}
+
+      - name: Manually install depexts (graphviz)
+        run: opam exec -- cygwin-dl.exe --quiet-mode --root D:\cygwin --site https://cygwin.mirror.constant.com --symlink-type=sys --packages graphviz
+
+      - name: Install Cap'n Proto
+        shell: bash
+        env:
+          CAPNP_VERSION: 0.10.3
+        run: |
+          curl -LO https://capnproto.org/capnproto-c++-win32-$CAPNP_VERSION.zip && \
+          unzip -j capnproto-c++-win32-$CAPNP_VERSION.zip capnproto-tools-win32-$CAPNP_VERSION/capnp.exe -d /usr/bin
+
+      - run: opam install . --deps-only --with-test
+
+      - run: opam exec -- dune build
+
+      - run: opam exec -- dune runtest
