@@ -267,7 +267,7 @@ let submit_docker =
   let doc = "Submit a Docker build to the scheduler" in
   let info = Cmd.info "submit-docker" ~doc in
   Cmd.v info
-    Term.(const submit $ Logging.term $ submit_options_common $ submit_docker_options)
+    Term.(const submit $ Logging.cmdliner $ submit_options_common $ submit_docker_options)
 
 let submit_obuilder_options =
   let make spec =
@@ -279,7 +279,7 @@ let submit_obuilder =
   let doc = "Submit an OBuilder build to the scheduler" in
   let info = Cmd.info "submit-obuilder" ~doc in
   Cmd.v info
-    Term.(const submit $ Logging.term $ submit_options_common $ submit_obuilder_options)
+    Term.(const submit $ Logging.cmdliner $ submit_options_common $ submit_obuilder_options)
 
 let cmds = [submit_docker; submit_obuilder]
 

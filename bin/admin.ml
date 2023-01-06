@@ -278,61 +278,61 @@ let add_client =
   let doc = "Create a new client endpoint for submitting jobs" in
   let info = Cmd.info "add-client" ~doc in
   Cmd.v info
-    Term.(const add_client $ Logging.term $ connect_addr $ Arg.required (client_id ~pos:0))
+    Term.(const add_client $ Logging.cmdliner $ connect_addr $ Arg.required (client_id ~pos:0))
 
 let remove_client =
   let doc = "Unregister a client." in
   let info = Cmd.info "remove-client" ~doc in
   Cmd.v info
-    Term.(const remove_client $ Logging.term $ connect_addr $ Arg.required (client_id ~pos:0))
+    Term.(const remove_client $ Logging.cmdliner $ connect_addr $ Arg.required (client_id ~pos:0))
 
 let list_clients =
   let doc = "List registered clients" in
   let info = Cmd.info "list-clients" ~doc in
   Cmd.v info
-    Term.(const list_clients $ Logging.term $ connect_addr)
+    Term.(const list_clients $ Logging.cmdliner $ connect_addr)
 
 let set_rate =
   let doc = "Set expected number of parallel jobs for a pool/client combination" in
   let info = Cmd.info "set-rate" ~doc in
   Cmd.v info
-    Term.(const set_rate $ Logging.term $ connect_addr $ Arg.required pool_pos $ Arg.required (client_id ~pos:1) $ Arg.required (rate ~pos:2))
+    Term.(const set_rate $ Logging.cmdliner $ connect_addr $ Arg.required pool_pos $ Arg.required (client_id ~pos:1) $ Arg.required (rate ~pos:2))
 
 let exec =
   let doc = "Execute a command for each worker in a pool" in
   let info = Cmd.info "exec" ~doc in
   Cmd.v info
-    Term.(const exec $ Logging.term $ connect_addr $ Arg.required pool_pos $ command_pos)
+    Term.(const exec $ Logging.cmdliner $ connect_addr $ Arg.required pool_pos $ command_pos)
 
 let show =
   let doc = "Show information about a service, pool or worker" in
   let info = Cmd.info "show" ~doc in
   Cmd.v info
-    Term.(const show $ Logging.term $ connect_addr $ terse $ Arg.value pool_pos)
+    Term.(const show $ Logging.cmdliner $ connect_addr $ terse $ Arg.value pool_pos)
 
 let pause =
   let doc = "Set a worker to be unavailable for further jobs" in
   let info = Cmd.info "pause" ~doc in
   Cmd.v info
-    Term.(const (set_active false) $ Logging.term $ all $ auto_create $ wait $ connect_addr $ Arg.required pool_pos $ worker)
+    Term.(const (set_active false) $ Logging.cmdliner $ all $ auto_create $ wait $ connect_addr $ Arg.required pool_pos $ worker)
 
 let unpause =
   let doc = "Resume a paused worker" in
   let info = Cmd.info "unpause" ~doc in
   Cmd.v info
-    Term.(const (set_active true) $ Logging.term $ all $ auto_create $ const false $ connect_addr $ Arg.required pool_pos $ worker)
+    Term.(const (set_active true) $ Logging.cmdliner $ all $ auto_create $ const false $ connect_addr $ Arg.required pool_pos $ worker)
 
 let update =
   let doc = "Drain and then update worker(s)" in
   let info = Cmd.info "update" ~doc in
   Cmd.v info
-    Term.(const update $ Logging.term $ connect_addr $ Arg.required pool_pos $ worker)
+    Term.(const update $ Logging.cmdliner $ connect_addr $ Arg.required pool_pos $ worker)
 
 let forget =
   let doc = "Forget about an old worker" in
   let info = Cmd.info "forget" ~doc in
   Cmd.v info
-    Term.(const forget $ Logging.term $ connect_addr $ Arg.required pool_pos $ worker)
+    Term.(const forget $ Logging.cmdliner $ connect_addr $ Arg.required pool_pos $ worker)
 
 
 let cmds = [add_client; remove_client; list_clients; set_rate; show; exec; pause; unpause; update; forget]

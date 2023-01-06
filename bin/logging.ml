@@ -22,7 +22,7 @@ let init style_renderer level =
   (* Logs.Src.set_level Capnp_rpc.Debug.src (Some Debug); *)
   Logs.set_reporter reporter
 
-let term =
+let cmdliner =
   let open Cmdliner in
   let docs = Manpage.s_common_options in
   Term.(const init $ Fmt_cli.style_renderer ~docs () $ Logs_cli.level ~docs ())
