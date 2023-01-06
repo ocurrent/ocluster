@@ -7,7 +7,7 @@ let dir_exists d =
 let ensure_dir path =
   if not (dir_exists path) then Unix.mkdir path 0o700
 
-let run name state_dir (main:?formatter:Format.formatter -> unit -> unit) =
+let run name state_dir ?style_renderer (main:?formatter:Format.formatter -> unit -> unit) =
   let stop_notification = Lwt_unix.make_notification ~once:true (fun () -> exit 0) in
   let module Svc = Winsvc.Make
     (struct
@@ -19,13 +19,17 @@ let run name state_dir (main:?formatter:Format.formatter -> unit -> unit) =
     end)
   in
   Random.self_init ();
+  let name =
+    Printf.sprintf "%s-%d.log" (Sys.executable_name |> Filename.basename |> Filename.remove_extension) (Random.bits ())
+    |> Filename.concat state_dir
+  in
   try
-    let name = Printf.sprintf "%s-%d.log" (Sys.executable_name |> Filename.basename |> Filename.remove_extension) (Random.bits ()) in
-    let f = Filename.concat state_dir name in
     ensure_dir state_dir;
-    let formatter = Format.formatter_of_out_channel (open_out_bin f) in
+    let formatter = Fmt_tty.setup ?style_renderer (open_out_bin name) in
     Svc.run (main ~formatter)
-  with Failure _ -> main ()
+  with Failure _ ->
+    begin try Sys.remove name with Sys_error _ -> () end;
+    main ()
 
 let install name display text arguments =
   let module Svc = Winsvc.Make
