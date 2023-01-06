@@ -1,7 +1,8 @@
 open Lwt.Infix
 
-let setup_log ?(formatter=Format.err_formatter) default_level =
-  Prometheus_unix.Logging.init ~formatter ?default_level ();
+let setup_log ?style_renderer ?formatter default_level =
+  Prometheus_unix.Logging.init ?formatter ?default_level ();
+  Fmt_tty.setup_std_outputs ?style_renderer ();
   ()
 
 let or_die = function
@@ -41,8 +42,8 @@ let update_docker () =
 let update_normal () =
   Lwt.return (fun () -> Lwt.return ())
 
-let main default_level ?formatter registration_path capacity name allow_push prune_threshold docker_max_df_size obuilder_prune_threshold state_dir obuilder =
-  setup_log ?formatter default_level;
+let main ?style_renderer level ?formatter registration_path capacity name allow_push prune_threshold docker_max_df_size obuilder_prune_threshold state_dir obuilder =
+  setup_log ?style_renderer ?formatter level;
   let update =
     if Sys.file_exists "/.dockerenv" then update_docker
     else update_normal
@@ -54,12 +55,12 @@ let main default_level ?formatter registration_path capacity name allow_push pru
   end
 
 (* Command-line parsing *)
-let main ~install (default_level, args1) ((registration_path, capacity, name, allow_push, prune_threshold, docker_max_df_size, obuilder_prune_threshold, state_dir, obuilder), args2) =
+let main ~install (style_renderer, args1) (level, args2) ((registration_path, capacity, name, allow_push, prune_threshold, docker_max_df_size, obuilder_prune_threshold, state_dir, obuilder), args3) =
   if install then
-    Ok (Winsvc_wrapper.install name "OCluster Worker" "Run a build worker" (args1 @ args2))
+    Ok (Winsvc_wrapper.install name "OCluster Worker" "Run a build worker" (args1 @ args2 @ args3))
   else
     Ok (Winsvc_wrapper.run name state_dir (fun ?formatter () ->
-             main default_level ?formatter registration_path capacity name allow_push prune_threshold docker_max_df_size obuilder_prune_threshold state_dir obuilder))
+             main ?style_renderer level ?formatter registration_path capacity name allow_push prune_threshold docker_max_df_size obuilder_prune_threshold state_dir obuilder))
 
 open Cmdliner
 
@@ -130,7 +131,7 @@ let state_dir =
     ["state-dir"]
 
 module Obuilder_config = struct
-  let v = 
+  let v =
     let make sandbox_config store = Some (Cluster_worker.Obuilder_config.v sandbox_config store) in
     Term.(const make $ Obuilder.Sandbox.cmdliner $ Obuilder.Store_spec.v)
 end
@@ -150,9 +151,13 @@ let cmd ~install =
         service with the specified parameters, and '$(b,remove) \
         $(i,name)' to remove the worker $(i,name) from the services." ] in
   let info = Cmd.info "ocluster-worker" ~doc ~man ~version:Version.t in
+  let docs = Manpage.s_common_options in
   Cmd.v info
     Term.(term_result'
-      (const (main ~install) $ with_used_args (Logs_cli.level ()) $ worker_opts_t))
+      (const (main ~install)
+       $ with_used_args (Fmt_cli.style_renderer ~docs ())
+       $ with_used_args (Logs_cli.level ~docs ())
+       $ worker_opts_t))
 
 let () =
   let remove name args =

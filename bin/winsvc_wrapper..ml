@@ -1,4 +1,6 @@
-let run _name _state_dir (main:?formatter:Format.formatter -> unit -> unit) = main ()
+let run _name _state_dir ?style_renderer (main:?formatter:Format.formatter -> unit -> unit) =
+  ignore style_renderer;
+  main ()
 
 let install _name _display _text _arguments = failwith "Cannot install a service on non-Windows systems."
 

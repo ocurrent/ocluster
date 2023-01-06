@@ -4,8 +4,9 @@ module Restorer = Capnp_rpc_net.Restorer
 
 let ( / ) = Filename.concat
 
-let setup_log ?(formatter=Format.err_formatter) default_level =
-  Prometheus_unix.Logging.init ~formatter ?default_level ();
+let setup_log ?style_renderer ?formatter default_level =
+  Prometheus_unix.Logging.init ?formatter ?default_level ();
+  Fmt_tty.setup_std_outputs ?style_renderer ();
   ()
 
 let or_die = function
@@ -85,8 +86,8 @@ let provision_client ~admin ~secrets_dir id =
     Logs.app (fun f -> f "Wrote capability reference to %S" path)
   )
 
-let main default_level ?formatter capnp secrets_dir pools prometheus_config state_dir default_clients =
-  setup_log ?formatter default_level;
+let main ?style_renderer default_level ?formatter capnp secrets_dir pools prometheus_config state_dir default_clients =
+  setup_log ?style_renderer ?formatter default_level;
   if not (dir_exists state_dir) then Unix.mkdir state_dir 0o755;
   let db = Sqlite3.db_open (state_dir / "scheduler.db") in
   Sqlite3.busy_timeout db 1000;
@@ -123,13 +124,13 @@ let main default_level ?formatter capnp secrets_dir pools prometheus_config stat
 
 (* Command-line parsing *)
 
-let main ~install (default_level, args1) ((capnp, secrets_dir, pools, prometheus_config, state_dir, default_clients), args2) =
+let main ~install (style_renderer, args1) (level, args2) ((capnp, secrets_dir, pools, prometheus_config, state_dir, default_clients), args3) =
   let (name, display, text) = ("ocluster-scheduler", "OCluster Scheduler", "Manage build workers") in
   if install then
-    Ok (Winsvc_wrapper.install name display text (args1 @args2))
+    Ok (Winsvc_wrapper.install name display text (args1 @ args2 @ args3))
   else
-    Ok (Winsvc_wrapper.run name state_dir (fun ?formatter () ->
-            main default_level ?formatter capnp secrets_dir pools prometheus_config state_dir default_clients))
+    Ok (Winsvc_wrapper.run name state_dir ?style_renderer (fun ?formatter () ->
+            main ?style_renderer level ?formatter capnp secrets_dir pools prometheus_config state_dir default_clients))
 
 open Cmdliner
 
@@ -188,9 +189,12 @@ let cmd ~install =
         service with the specified parameters, and '$(b,remove)' to \
         remove the scheduler from the services." ] in
   let info = Cmd.info "ocluster-scheduler" ~doc ~man ~version:Version.t in
+  let docs = Manpage.s_common_options in
   Cmd.v info
     Term.(term_result'
-      (const (main ~install) $ with_used_args (Logs_cli.level ())
+      (const (main ~install)
+       $ with_used_args (Fmt_cli.style_renderer ~docs ())
+       $ with_used_args (Logs_cli.level ~docs ())
        $ scheduler_opts_t))
 
 let () =
