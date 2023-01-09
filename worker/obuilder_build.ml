@@ -22,7 +22,6 @@ type t = {
 }
 
 module Sandbox = Obuilder.Sandbox
-module Fetcher = Obuilder.Docker
 
 let ( / ) = Filename.concat
 
