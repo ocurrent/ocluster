@@ -30,7 +30,7 @@ let thread ~name ~capacity pool =
   let worker =
     let metrics _ = failwith "fake metrics" in
     let self_update _ = failwith "fake self_update" in
-    Api.Worker.local ~metrics ~self_update
+    Api.Worker.local ~metrics ~self_update ()
   in
   Capability.with_ref (Api.Registration.register pool ~name ~capacity worker) @@ fun queue ->
   let t = { name; capacity; in_use = 0; cond = Lwt_condition.create (); cached = Hint_set.empty } in
@@ -43,7 +43,7 @@ let thread ~name ~capacity pool =
       Log.info (fun f -> f "Requesting a new job…");
       let switch = Lwt_switch.create () in
       let pop =
-        let stream_log_data ~start:_ = 
+        let stream_log_data ~start:_ =
           outcome >>= fun _ ->
           Lwt.return ("", 0L)
         in

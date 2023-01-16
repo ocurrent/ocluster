@@ -76,7 +76,7 @@ struct JobDescr {
   # If there are multiple items, they will be merged.
 
   secrets @5 :List(Secret);
-  # Secret id-value pairs provided to the job. 
+  # Secret id-value pairs provided to the job.
 }
 
 interface Job {
@@ -108,6 +108,18 @@ interface Queue {
   # prune or upgrade), but still wants to provide metrics.
 }
 
+struct Metric {
+  contentType @0 :Text;
+  data        @1 :Text;
+}
+
+struct AdditionalMetric {
+  union {
+    metric @0 :Metric;
+    notReported @1 :Void;
+  }
+}
+
 interface Worker {
   enum MetricsSource {
     agent @0;   # Report the agent's own metrics
@@ -116,6 +128,9 @@ interface Worker {
 
   metrics    @0 (source :MetricsSource) -> (contentType :Text, data :Text);
   # Get Prometheus metrics.
+
+  additionalMetric @2 (source :Text) -> (metric: AdditionalMetric);
+  # Additional prometheus metrics reported by the worker
 
   selfUpdate @1 () -> ();
   # Finish any running jobs and then restart, running the latest version.

@@ -43,13 +43,25 @@ module Web = struct
       | None -> Server.respond_error ~status:`Bad_request ~body:"Worker not connected" ()
       | Some worker_api ->
         Capability.with_ref worker_api @@ fun worker_api ->
-        Cluster_api.Worker.metrics worker_api ~source >>= function
-        | Error (`Capnp e) ->
-          Logs.warn (fun f -> f "Error getting metrics for %S/%S: %a" pool worker Capnp_rpc.Error.pp e);
-          Server.respond_error ~status:`Internal_server_error ~body:"Worker metrics collection failed" ()
-        | Ok (content_type, data) ->
-          let headers = Cohttp.Header.init_with "Content-Type" content_type in
-          Server.respond_string ~status:`OK ~headers ~body:data ()
+        match source with
+        | `Extra extra -> (
+          Cluster_api.Worker.additional_metrics ~extra worker_api >>= function
+          | Error (`Capnp e) ->
+            Logs.warn (fun f -> f "Error getting metrics for %S/%S: %a" pool worker Capnp_rpc.Error.pp e);
+            Server.respond_error ~status:`Internal_server_error ~body:"Worker metrics collection failed" ()
+          | Ok (Some { content_type; data }) ->
+            let headers = Cohttp.Header.init_with "Content-Type" content_type in
+            Server.respond_string ~status:`OK ~headers ~body:data ()
+          | Ok None -> Server.respond_not_found ()
+        )
+        | `Host | `Agent as source ->
+          Cluster_api.Worker.metrics worker_api ~source >>= function
+          | Error (`Capnp e) ->
+            Logs.warn (fun f -> f "Error getting metrics for %S/%S: %a" pool worker Capnp_rpc.Error.pp e);
+            Server.respond_error ~status:`Internal_server_error ~body:"Worker metrics collection failed" ()
+          | Ok (content_type, data) ->
+            let headers = Cohttp.Header.init_with "Content-Type" content_type in
+            Server.respond_string ~status:`OK ~headers ~body:data ()
 
   let callback sched _conn req _body =
     let open Cohttp in
@@ -62,6 +74,7 @@ module Web = struct
       Server.respond_string ~status:`OK ~headers ~body ()
     | `GET, ["pool"; pool; "worker"; worker; "metrics"] -> get_metrics ~sched ~pool ~worker ~source:`Agent
     | `GET, ["pool"; pool; "worker"; worker; "host-metrics"] -> get_metrics ~sched ~pool ~worker ~source:`Host
+    | `GET, ["pool"; pool; "worker"; worker; extra] -> get_metrics ~sched ~pool ~worker ~source:(`Extra extra)
     | _ -> Server.respond_error ~status:`Bad_request ~body:"Bad request" ()
 
   let serve ~sched = function
