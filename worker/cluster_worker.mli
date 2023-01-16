@@ -10,7 +10,7 @@ module Obuilder_config : sig
   val v : Obuilder.Sandbox.config -> Obuilder.Store_spec.t -> t
 end
 
-type build = 
+type build =
   switch:Lwt_switch.t ->
   log:Log_data.t ->
   src:string ->
@@ -30,6 +30,7 @@ val run :
   ?docker_max_df_size:float ->
   ?obuilder_prune_threshold:float ->
   ?obuilder:Obuilder_config.t ->
+  ?additional_metrics:(string * Uri.t) list ->
   update:(unit -> (unit -> unit Lwt.t) Lwt.t) ->
   capacity:int ->
   name:string ->
@@ -47,7 +48,8 @@ val run :
                   If the second function returns, the process will exit.
     @param state_dir A persistent directory for Git caches, etc.
     @param prune_threshold Stop and run "docker system prune -af" if free-space is less than this percentage (0 to 100).
-    @param obuilder_prune_threshold The threshold for OBuilder to prune the store of cached build steps. *)
+    @param obuilder_prune_threshold The threshold for OBuilder to prune the store of cached build steps.
+    @param additional_metrics A list of additional prometheus endpoints with a descriptive name to collect. *)
 
 module Process = Process
 module Log_data = Log_data

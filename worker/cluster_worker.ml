@@ -64,7 +64,7 @@ type job_spec = [
   | `Custom of Cluster_api.Custom.recv
 ]
 
-type build = 
+type build =
   switch:Lwt_switch.t ->
   log:Log_data.t ->
   src:string ->
@@ -426,15 +426,10 @@ let default_build ?obuilder ~switch ~log ~src ~secrets = function
     Log.warn (fun f -> f "The default cluster_worker build does not support any custom jobs (kind: %s)" (Cluster_api.Custom.kind c));
     Lwt.return @@ Error (`Msg "Unsupported custom job")
 
-let metrics = function
-  | `Agent ->
-    Prometheus.CollectorRegistry.(collect default) >>= fun data ->
-    let content_type = "text/plain; version=0.0.4; charset=utf-8" in
-    Lwt_result.return (content_type, Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data)
-  | `Host ->
-    Lwt.catch
+let collect_external_metric uri =
+  Lwt.catch
       (fun () ->
-         Cohttp_lwt_unix.Client.get (Uri.of_string "http://127.0.0.1:9100/metrics") >>= fun (resp, body) ->
+         Cohttp_lwt_unix.Client.get uri >>= fun (resp, body) ->
          match Cohttp.Response.status resp with
          | `OK ->
            begin match Cohttp.Header.get (Cohttp.Response.headers resp) "content-type" with
@@ -452,6 +447,22 @@ let metrics = function
          Log.warn (fun f -> f "Failed to connect to prometheus-node-exporter: %a" Fmt.exn ex);
          Lwt.return @@ Fmt.error_msg "Failed to connect to prometheus-node-exporter"
       )
+
+let metrics = function
+  | `Agent ->
+    Prometheus.CollectorRegistry.(collect default) >>= fun data ->
+    let content_type = "text/plain; version=0.0.4; charset=utf-8" in
+    Lwt_result.return (content_type, Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data)
+  | `Host ->
+    collect_external_metric (Uri.of_string "http://127.0.0.1:9100/metrics")
+
+let collect_additional_metrics metrics s =
+  match List.assoc_opt s metrics with
+  | None -> Lwt.return (Ok None)
+  | Some uri ->
+    collect_external_metric uri >>= function Ok (content_type, data) ->
+    Lwt.return @@ Ok (Some (content_type, data))
+  | Error _ as e -> Lwt.return e
 
 let self_update ~update t =
   Lwt.catch
@@ -475,7 +486,7 @@ let self_update ~update t =
        Lwt_result.fail (`Msg (Printexc.to_string ex))
     )
 
-let run ?switch ?build ?(allow_push=[]) ~healthcheck_period ?prune_threshold ?docker_max_df_size ?obuilder_prune_threshold ?obuilder ~update ~capacity ~name ~state_dir registration_service =
+let run ?switch ?build ?(allow_push=[]) ~healthcheck_period ?prune_threshold ?docker_max_df_size ?obuilder_prune_threshold ?obuilder ?(additional_metrics=[]) ~update ~capacity ~name ~state_dir registration_service =
   begin match prune_threshold, docker_max_df_size with
     | None, None -> Log.info (fun f -> f "Prune threshold not set and docker max df size is not. Will not check for low disk-space!")
     | None, Some size -> Log.info (fun f -> f "Pruning docker whenever the memory used exceeds %3.2fGB" size)
@@ -519,7 +530,8 @@ let run ?switch ?build ?(allow_push=[]) ~healthcheck_period ?prune_threshold ?do
          Sturdy_ref.connect_exn t.registration_service >>= fun reg ->
          Capability.with_ref reg @@ fun reg ->
          let queue =
-           let api = Cluster_api.Worker.local ~metrics ~self_update:(fun () -> self_update ~update t) in
+           let additional_metric s = collect_additional_metrics additional_metrics s in
+           let api = Cluster_api.Worker.local ~additional_metric ~metrics ~self_update:(fun () -> self_update ~update t) () in
            let queue = Cluster_api.Registration.register reg ~name ~capacity api in
            Capability.dec_ref api;
            queue

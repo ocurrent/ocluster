@@ -144,7 +144,7 @@ let await_builder () =
 (* Two workers register with the same name. *)
 let already_registered () =
   with_sched @@ fun ~admin:_ ~registry ->
-  let api = Cluster_api.Worker.local ~metrics:(fun _ -> assert false) ~self_update:(fun () -> assert false) in
+  let api = Cluster_api.Worker.local ~metrics:(fun _ -> assert false) ~self_update:(fun () -> assert false) () in
   let q1 = Cluster_api.Registration.register registry ~name:"worker-1" ~capacity:1 api in
   Capability.await_settled q1 >>= fun (_ : _ result) ->
   let q2 = Cluster_api.Registration.register registry ~name:"worker-1" ~capacity:1 api in
