@@ -1,7 +1,10 @@
 open Lwt.Infix
 
 let setup_log ?style_renderer ?formatter default_level =
-  Prometheus_unix.Logging.init ?formatter ?default_level ();
+  (* Smother Cap'n Proto and TLS logging sources *)
+  let levels = ["capnp-rpc"; "tls.config"; "tls.tracing"; "endpoint"]
+               |> List.map (fun src -> src, Logs.Warning) in
+  Prometheus_unix.Logging.init ?formatter ?default_level ~levels ();
   Fmt_tty.setup_std_outputs ?style_renderer ();
   ()
 
