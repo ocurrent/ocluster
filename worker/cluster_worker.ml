@@ -39,8 +39,6 @@ module Metrics = struct
     Gauge.v ~help ~namespace ~subsystem "unhealthy"
 end
 
-let healthcheck_period = 600.0  (* Check health every 10 minutes *)
-
 let buildkit_env =
   let orig = Unix.environment () |> Array.to_list in
   "DOCKER_BUILDKIT=1" :: orig |> Array.of_list
@@ -78,6 +76,7 @@ type t = {
   name : string;
   context : Context.t;
   build : build;
+  healthcheck_period : float;          (* Number of second between obuilder health checks *)
   prune_threshold : float option;      (* docker-prune when free space is lower than this (percentage) *)
   docker_max_df_size : float option;   (* docker-prune if [prune_threshold] is [None] and used space greater than this (GBs) *)
   registration_service : Cluster_api.Raw.Client.Registration.t Sturdy_ref.t;
@@ -257,10 +256,10 @@ let healthcheck obuilder =
   Prometheus.Gauge.set Metrics.unhealthy (if Result.is_ok r then 0.0 else 1.0);
   r
 
-let check_health ~last_healthcheck ~queue = function
+let check_health t ~last_healthcheck ~queue = function
   | None -> Lwt.return_unit     (* Not using OBuilder *)
   | Some obuilder ->
-    if !last_healthcheck +. healthcheck_period > Unix.gettimeofday () then Lwt.return_unit
+    if t.healthcheck_period = 0.0 || !last_healthcheck +. t.healthcheck_period > Unix.gettimeofday () then Lwt.return_unit
     else (
       (* A healthcheck is now due *)
       let rec aux ~active =
@@ -296,7 +295,7 @@ let loop ~switch ?obuilder t queue =
         Lwt_condition.wait t.cond >>= loop
       ) else (
         maybe_prune t queue >>= fun () ->
-        check_health ~last_healthcheck ~queue obuilder >>= fun () ->
+        check_health t ~last_healthcheck ~queue obuilder >>= fun () ->
         let outcome, set_outcome = Lwt.wait () in
         let log = Log_data.create () in
         Log.info (fun f -> f "Requesting a new job…");
@@ -476,7 +475,7 @@ let self_update ~update t =
        Lwt_result.fail (`Msg (Printexc.to_string ex))
     )
 
-let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?docker_max_df_size ?obuilder_prune_threshold ?obuilder ~update ~capacity ~name ~state_dir registration_service =
+let run ?switch ?build ?(allow_push=[]) ~healthcheck_period ?prune_threshold ?docker_max_df_size ?obuilder_prune_threshold ?obuilder ~update ~capacity ~name ~state_dir registration_service =
   begin match prune_threshold, docker_max_df_size with
     | None, None -> Log.info (fun f -> f "Prune threshold not set and docker max df size is not. Will not check for low disk-space!")
     | None, Some size -> Log.info (fun f -> f "Pruning docker whenever the memory used exceeds %3.2fGB" size)
@@ -495,6 +494,7 @@ let run ?switch ?build ?(allow_push=[]) ?prune_threshold ?docker_max_df_size ?ob
   let t = {
     name;
     context = Context.v ~state_dir;
+    healthcheck_period;
     prune_threshold;
     docker_max_df_size;
     registration_service;
