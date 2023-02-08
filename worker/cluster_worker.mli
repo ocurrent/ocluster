@@ -25,6 +25,7 @@ val run :
   ?switch:Lwt_switch.t ->
   ?build:build ->
   ?allow_push:string list ->
+  healthcheck_period:float ->
   ?prune_threshold:float ->
   ?docker_max_df_size:float ->
   ?obuilder_prune_threshold:float ->
