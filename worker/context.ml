@@ -92,6 +92,55 @@ module Repo = struct
       ["git"; "-C"; local_repo; "fetch"; "-q"; "--update-head-ok"; "--recurse-submodules=no"; "origin"]
 end
 
+(* BEGIN Code taken from ocurrent/lib/process.ml *)
+let win32_unlink fn =
+  Lwt.catch
+    (fun () -> Lwt_unix.unlink fn)
+    (function
+     | Unix.Unix_error (Unix.EACCES, _, _) as exn ->
+        (* Try removing the read-only attribute before retrying unlink. We catch
+          any exception here and ignore it in favour of the original [exn]. *)
+        Lwt.catch
+          (fun () ->
+            Lwt_unix.lstat fn >>= fun {st_perm; _} ->
+            Lwt_unix.chmod fn 0o666 >>= fun () ->
+            Lwt.catch
+              (fun () -> Lwt_unix.unlink fn)
+              (function _ ->
+                 (* If everything succeeded but the final removal still failed,
+                   restore original permissions *)
+                 Lwt_unix.chmod fn st_perm >>= fun () ->
+                 Lwt.fail exn)
+          )
+          (fun _ -> Lwt.fail exn)
+     | exn -> Lwt.fail exn)
+
+let unlink =
+  if Sys.win32 then
+    win32_unlink
+  else
+    Lwt_unix.unlink
+
+let rm_f_tree root =
+  let rec rmtree path =
+    Lwt_unix.lstat path >>= fun info ->
+    match info.Unix.st_kind with
+    | Unix.S_REG | Unix.S_LNK | Unix.S_BLK | Unix.S_CHR | Unix.S_SOCK
+    | Unix.S_FIFO ->
+      unlink path
+    | Unix.S_DIR ->
+      Lwt_unix.chmod path 0o700 >>= fun () ->
+      Lwt_unix.files_of_directory path
+      |> Lwt_stream.iter_s (function
+          | "." | ".." -> Lwt.return_unit
+          | leaf -> rmtree (Filename.concat path leaf)
+        )
+      >>= fun () ->
+      Lwt_unix.rmdir path
+  in
+  rmtree root
+(* END Code taken from ocurrent/lib/process.ml *)
+
 let repos = Hashtbl.create 1000
 
 let repo t url =
@@ -121,13 +170,18 @@ let build_context t ~log ~tmpdir descr =
   | (c :: cs) as commits ->
     let repository = repo t (Cluster_api.Raw.Reader.JobDescr.repository_get descr) in
     Lwt_mutex.with_lock repository.lock (fun () ->
+        let clone = Repo.local_copy repository in
+        begin
+          if Sys.file_exists (clone / ".git" / "index.lock")
+          then rm_f_tree clone
+          else Lwt.return_unit
+        end >>= fun () ->
         Lwt_switch.with_switch @@ fun switch -> (* Don't let the user cancel these operations. *)
         begin
           Repo.has_commits repository commits >>!= function
           | true -> Log_data.info log "All commits already cached"; Lwt_result.return ()
           | false -> Repo.fetch ~switch ~log repository
         end >>!= fun () ->
-        let clone = Repo.local_copy repository in
         Process.check_call ~label:"git-submodule-update" ~switch ~log ["git"; "-C"; clone; "submodule"; "update"] >>!= fun () ->
         Process.check_call ~label:"git-reset" ~switch ~log ["git"; "-C"; clone; "reset"; "--hard"; Hash.to_hex c] >>!= fun () ->
         Process.check_call ~label:"git-submodule-sync" ~switch ~log ["git"; "-C"; clone; "submodule"; "sync"] >>!= fun () ->
