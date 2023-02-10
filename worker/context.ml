@@ -173,7 +173,7 @@ let build_context t ~log ~tmpdir descr =
         let clone = Repo.local_copy repository in
         begin
           if Sys.file_exists (clone / ".git" / "index.lock")
-          then rm_f_tree clone
+          then (Log_data.info log "Removing corrupted repository %S" clone; rm_f_tree clone)
           else Lwt.return_unit
         end >>= fun () ->
         Lwt_switch.with_switch @@ fun switch -> (* Don't let the user cancel these operations. *)
