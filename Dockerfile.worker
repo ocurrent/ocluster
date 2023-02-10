@@ -12,7 +12,7 @@ ADD --chown=opam . .
 RUN opam exec -- dune subst
 RUN opam exec -- dune build ./_build/install/default/bin/ocluster-worker
 
-FROM ubuntu:22.04
+FROM ubuntu:jammy-20221130
 RUN apt-get update && apt-get install docker.io libev4 curl gnupg2 git libsqlite3-dev ca-certificates netbase -y --no-install-recommends
 WORKDIR /var/lib/ocluster-worker
 ENTRYPOINT ["/usr/local/bin/ocluster-worker"]
