@@ -46,7 +46,7 @@
   (prometheus-app (>= 1.2))
   cohttp-lwt-unix
   sqlite3
-  (obuilder (>= 0.5))
+  (obuilder (>= 0.5.1))
   (psq (>= 0.2.1))
   (mirage-crypto (>= 0.8.5))
   (current_ocluster (and (= :version) :with-test))
