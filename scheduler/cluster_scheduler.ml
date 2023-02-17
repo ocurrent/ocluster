@@ -189,7 +189,7 @@ module Pool_api = struct
         Pool.shutdown w;        (* Prevent any new items being assigned to it. *)
         Capability.with_ref cap @@ fun worker ->
         let rec aux prev =
-          if prev = 0 then Lwt.return ()
+          if prev = 0 then Lwt.return_unit
           else (
             report_progress ?progress "Running jobs: %d" prev >>= fun () ->
             Pool.running_jobs w ~prev >>= aux
