@@ -1,2 +1,2 @@
-let src = Logs.Src.create "worker" ~doc:"build-scheduler worker agent"
+let src = Logs.Src.create "worker" ~doc:"ocluster-scheduler worker agent"
 include (val Logs.src_log src : Logs.LOG)

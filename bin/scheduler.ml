@@ -151,7 +151,7 @@ let pools =
   Arg.non_empty @@
   Arg.opt Arg.(list string) [] @@
   Arg.info
-    ~doc:"Names of pools to create (e.g. linux-arm32,linux-ppc64)"
+    ~doc:"Names of pools to create (e.g. linux-arm32,linux-ppc64)."
     ~docv:"POOLS"
     ["pools"]
 
@@ -167,7 +167,7 @@ let state_dir =
   Arg.required @@
   Arg.(opt (some string)) None @@
   Arg.info
-    ~doc:"Directory in which to store the service's state"
+    ~doc:"Directory in which to store the service's state."
     ~docv:"DIR"
     ["state-dir"]
 
@@ -183,7 +183,7 @@ let default_clients =
   Arg.value @@
   Arg.(opt (list string)) [] @@
   Arg.info
-    ~doc:"Clients to provision automatically"
+    ~doc:"Clients to provision automatically."
     ~docv:"NAME"
     ["default-clients"]
 
@@ -198,7 +198,7 @@ let cmd ~install =
   let doc = "Manage build workers" in
   let man = [
     `P "On $(b,Windows), specify '$(b,install)' as the first \
-        command-line paramater to install the scheduler as a Windows \
+        command-line parameter to install the scheduler as a Windows \
         service with the specified parameters, and '$(b,remove)' to \
         remove the scheduler from the services." ] in
   let info = Cmd.info "ocluster-scheduler" ~doc ~man ~version:Version.t in

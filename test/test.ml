@@ -485,7 +485,7 @@ let test_case ?(expected_warnings=0) name fn =
   Alcotest.(check int) "Check log for warnings" expected_warnings (problems' - problems)
 
 let () =
-  Lwt_main.run @@ Alcotest_lwt.run ~verbose "build-scheduler" [
+  Lwt_main.run @@ Alcotest_lwt.run ~verbose "ocluster-scheduler" [
     "main", [
       test_case "simple" simple;
       test_case "simple_custom" simple_custom;

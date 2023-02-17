@@ -83,7 +83,7 @@ let connect_addr =
   Arg.required @@
   Arg.opt Arg.(some file) None @@
   Arg.info
-    ~doc:"Path of register.cap from build-scheduler."
+    ~doc:"Path of register.cap from ocluster-scheduler."
     ~docv:"ADDR"
     ["c"; "connect"]
 
@@ -179,7 +179,7 @@ let cmd ~install =
   let doc = "Run a build worker" in
   let man = [
     `P "On $(b,Windows), specify '$(b,install)' as the first \
-        command-line paramater to install the worker as a Windows \
+        command-line parameter to install the worker as a Windows \
         service with the specified parameters, and '$(b,remove) \
         $(i,name)' to remove the worker $(i,name) from the services." ] in
   let info = Cmd.info "ocluster-worker" ~doc ~man ~version:Version.t in
