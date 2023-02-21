@@ -1,5 +1,6 @@
 ### unreleased
 
+- Release ocluster-worker and associated library as a standalone package (@MisterDA #217)
 - Make rsync-mode mandatory when using rsync store (@tmcgilchrist #202, reviewed by @MisterDA)
 - Windows service bugfixes (@MisterDA #200, reviewed by @tmcgilchrist)
 - Fix build and opam metadata (@MisterDA @tmcgilchrist #199 #203)

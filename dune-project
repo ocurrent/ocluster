@@ -18,12 +18,30 @@
   (capnp-rpc-lwt (>= 1.2))
   fmt
   ppx_deriving_yojson))
-  
+
+(package
+ (name ocluster-worker)
+ (synopsis "OCluster worker and library for defining workers")
+ (description "OCluster worker and library for defining workers")
+ (depends
+  (ocluster-api (= :version))
+  (ocaml (>= 4.12.0))
+  (obuilder (>= 0.5))
+  (digestif (>= 0.8))
+  fpath
+  logs
+  (lwt (>= 5.6.1))
+  (prometheus-app (>= 1.2))
+  capnp-rpc-lwt
+  cohttp-lwt-unix
+  (extunix (>= 0.3.2))))
+
 (package
  (name ocluster)
  (synopsis "Distribute build jobs to workers")
  (description "OCluster manages a pool of build workers.\nA build scheduler service accepts build jobs from clients and distributes them to worker machines using Cap'n Proto.\nWorkers register themselves by connecting to the scheduler (and workers do not need to be able to accept incoming network connections).\n\nThe scheduler can manage multiple pools (e.g. `linux-x86_64` and `linux-arm32`).\nClients say which pool should handle their requests.\nAt the moment, two build types are provided: building a Dockerfile, or building an OBuilder spec.\nIn either case, the build may done in the context of some Git commit.\nThe scheduler tries to schedule similar builds on the same machine, to benefit from caching.")
  (depends
+  (ocluster-worker (= :version)) ; ocluster as a meta-package for the worker
   (ocaml (>= 4.12.0))
   (ppx_expect (>= v0.14.1))
   prometheus
@@ -34,7 +52,6 @@
   capnp-rpc-lwt
   capnp-rpc-net
   (capnp-rpc-unix (>= 1.2))
-  (extunix (>= 0.3.2))
   (winsvc (and (>= 1.0.1) (= :os "win32")))
   (cmdliner (>= 1.1.0))
   logs
