@@ -43,7 +43,7 @@ let update_docker () =
 (* Respond to update requests by doing nothing, on the assumption that the
    admin has updated the local package version. *)
 let update_normal () =
-  Lwt.return (fun () -> Lwt.return ())
+  Lwt.return (fun () -> Lwt.return_unit)
 
 let main ?style_renderer level ?formatter registration_path capacity name allow_push healthcheck_period prune_threshold docker_max_df_size obuilder_prune_threshold state_dir obuilder additional_metrics =
   setup_log ?style_renderer ?formatter level;
@@ -83,7 +83,7 @@ let connect_addr =
   Arg.required @@
   Arg.opt Arg.(some file) None @@
   Arg.info
-    ~doc:"Path of register.cap from build-scheduler."
+    ~doc:"Path of register.cap from ocluster-scheduler."
     ~docv:"ADDR"
     ["c"; "connect"]
 
@@ -179,7 +179,7 @@ let cmd ~install =
   let doc = "Run a build worker" in
   let man = [
     `P "On $(b,Windows), specify '$(b,install)' as the first \
-        command-line paramater to install the worker as a Windows \
+        command-line parameter to install the worker as a Windows \
         service with the specified parameters, and '$(b,remove) \
         $(i,name)' to remove the worker $(i,name) from the services." ] in
   let info = Cmd.info "ocluster-worker" ~doc ~man ~version:Version.t in

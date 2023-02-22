@@ -90,7 +90,7 @@ let connect_addr =
   Arg.required @@
   Arg.opt Arg.(some file) None @@
   Arg.info
-    ~doc:"Path of submission.cap file from build-scheduler"
+    ~doc:"Path of submission.cap file from ocluster-scheduler."
     ~docv:"ADDR"
     ["c"; "connect"]
 
@@ -98,7 +98,7 @@ let local_obuilder =
   Arg.required @@
   Arg.opt Arg.(some file) None @@
   Arg.info
-    ~doc:"Path of the local OBuilder spec to submit"
+    ~doc:"Path of the local OBuilder spec to submit."
     ~docv:"PATH"
     ["local-file"]
 
@@ -106,7 +106,7 @@ let local_dockerfile =
   Arg.value @@
   Arg.opt Arg.(some file) None @@
   Arg.info
-    ~doc:"Path of the local Dockerfile to submit"
+    ~doc:"Path of the local Dockerfile to submit."
     ~docv:"PATH"
     ["local-dockerfile"]
 
@@ -114,7 +114,7 @@ let context_dockerfile =
   Arg.value @@
   Arg.opt Arg.(some string) None @@
   Arg.info
-    ~doc:"Path of the Dockerfile within the commit"
+    ~doc:"Path of the Dockerfile within the commit."
     ~docv:"PATH"
     ["context-dockerfile"]
 
@@ -132,7 +132,7 @@ let repo =
   Arg.value @@
   Arg.pos 0 Arg.(some string) None @@
   Arg.info
-    ~doc:"URL of the source Git repository"
+    ~doc:"URL of the source Git repository."
     ~docv:"URL"
     []
 
@@ -140,7 +140,7 @@ let commits =
   Arg.value @@
   Arg.(pos_right 0 string) [] @@
   Arg.info
-    ~doc:"Git commit to use as context (full commit hash)"
+    ~doc:"Git commit to use as context (full commit hash)."
     ~docv:"HASH"
     []
 
@@ -148,7 +148,7 @@ let pool =
   Arg.required @@
   Arg.(opt (some string)) None @@
   Arg.info
-    ~doc:"Pool to use"
+    ~doc:"Pool to use."
     ~docv:"ID"
     ["pool"]
 
@@ -156,7 +156,7 @@ let cache_hint =
   Arg.value @@
   Arg.(opt string) "" @@
   Arg.info
-    ~doc:"Hint used to group similar builds to improve caching"
+    ~doc:"Hint used to group similar builds to improve caching."
     ~docv:"STRING"
     ["cache-hint"]
 
@@ -164,7 +164,7 @@ let urgent =
   Arg.value @@
   Arg.flag @@
   Arg.info
-    ~doc:"Add job to the urgent queue"
+    ~doc:"Add job to the urgent queue."
     ["urgent"]
 
 let push_to =
@@ -172,7 +172,7 @@ let push_to =
   Arg.value @@
   Arg.(opt (some target_conv)) None @@
   Arg.info
-    ~doc:"Where to docker-push the result"
+    ~doc:"Where to docker-push the result."
     ~docv:"REPO:TAG"
     ["push-to"]
 
@@ -180,7 +180,7 @@ let push_user =
   Arg.value @@
   Arg.(opt (some string)) None @@
   Arg.info
-    ~doc:"Docker registry user account to use when pushing"
+    ~doc:"Docker registry user account to use when pushing."
     ~docv:"USER"
     ["push-user"]
 
@@ -188,7 +188,7 @@ let push_password_file =
   Arg.value @@
   Arg.(opt (some file)) None @@
   Arg.info
-    ~doc:"File containing Docker registry password"
+    ~doc:"File containing Docker registry password."
     ~docv:"PATH"
     ["push-password"]
 
@@ -196,7 +196,7 @@ let build_args =
   Arg.value @@
   Arg.(opt_all string) [] @@
   Arg.info
-    ~doc:"Docker build argument"
+    ~doc:"Docker build argument."
     ~docv:"ARG"
     ["build-arg"]
 
@@ -204,7 +204,7 @@ let secrets =
   (Arg.value @@
    Arg.(opt_all (pair ~sep:':' string file)) [] @@
    Arg.info
-     ~doc:"Provide a secret under the form id:file"
+     ~doc:"Provide a secret under the form id:file."
      ~docv:"SECRET"
      ["secret"])
 
@@ -212,21 +212,21 @@ let squash =
   Arg.value @@
   Arg.flag @@
   Arg.info
-    ~doc:"Whether to squash the layers"
+    ~doc:"Whether to squash the layers."
     ["squash"]
 
 let buildkit =
   Arg.value @@
   Arg.flag @@
   Arg.info
-    ~doc:"Whether to use BuildKit to build"
+    ~doc:"Whether to use BuildKit to build."
     ["buildkit"]
 
 let include_git =
   Arg.value @@
   Arg.flag @@
   Arg.info
-    ~doc:"Include the .git clone in the build context"
+    ~doc:"Include the .git clone in the build context."
     ["include-git"]
 
 let push_to =
@@ -264,7 +264,7 @@ let submit_docker_options =
   Term.(const make $ dockerfile $ push_to $ build_options)
 
 let submit_docker =
-  let doc = "Submit a Docker build to the scheduler" in
+  let doc = "Submit a Docker build to the scheduler." in
   let info = Cmd.info "submit-docker" ~doc in
   Cmd.v info
     Term.(const submit $ Logging.cmdliner $ submit_options_common $ submit_docker_options)
@@ -276,7 +276,7 @@ let submit_obuilder_options =
   Term.(const make $ local_obuilder)
 
 let submit_obuilder =
-  let doc = "Submit an OBuilder build to the scheduler" in
+  let doc = "Submit an OBuilder build to the scheduler." in
   let info = Cmd.info "submit-obuilder" ~doc in
   Cmd.v info
     Term.(const submit $ Logging.cmdliner $ submit_options_common $ submit_obuilder_options)
@@ -284,6 +284,6 @@ let submit_obuilder =
 let cmds = [submit_docker; submit_obuilder]
 
 let () =
-  let doc = "a command-line client for the build-scheduler" in
+  let doc = "a command-line client for the ocluster-scheduler" in
   let info = Cmd.info "ocluster-client" ~doc ~version:Version.t in
   exit (Cmd.eval ~argv:Options.argv @@ Cmd.group info cmds)

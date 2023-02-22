@@ -1,5 +1,10 @@
 ### unreleased
 
+- Remove corrupted repositories from the cache (@kit-ty-kate #216, reviewed by @talex5)
+- Allow workers to report additional prometheus metrics (@patricoferris #210, reviewed by @tmcgilchrist, @MisterDA)
+- Smother Cap'n Proto and TLS debug logs (@MisterDA #213, reviewed by @talex5)
+- Added command line option to set obuilder health check period (@mtelvers #214, reviewed by @tmcgilchrist)
+- Conditionally compile macos user_temp fetcher (@tmcgilchrist #209, reviewed by @MisterDA, @mtelvers)
 - Make rsync-mode mandatory when using rsync store (@tmcgilchrist #202, reviewed by @MisterDA)
 - Windows service bugfixes (@MisterDA #200, reviewed by @tmcgilchrist)
 - Fix build and opam metadata (@MisterDA @tmcgilchrist #199 #203)
