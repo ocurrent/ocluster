@@ -1,5 +1,7 @@
 ### unreleased
 
+- Expose the ocluster-worker library in the ocluster-worker package
+  (@MisterDA @art-w, #219 #217 #151, reviewed by @tmcgilchrist)
 - Remove corrupted repositories from the cache (@kit-ty-kate #216, reviewed by @talex5)
 - Allow workers to report additional prometheus metrics (@patricoferris #210, reviewed by @tmcgilchrist, @MisterDA)
 - Smother Cap'n Proto and TLS debug logs (@MisterDA #213, reviewed by @talex5)
