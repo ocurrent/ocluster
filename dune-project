@@ -13,7 +13,7 @@
  (description "OCaml bindings for the OCluster Cap'n Proto API.")
  (depends
   (ocaml (>= 4.12.0))
-  (capnp-rpc-lwt (>= 1.2))
+  (capnp-rpc-lwt (>= 1.2.3))
   fmt
   (lwt (>= 5.6.1))
   ppx_deriving
@@ -26,7 +26,7 @@
  (depends
   (ocluster-api (= :version))
   (ocaml (>= 4.12.0))
-  (capnp-rpc-lwt (>= 1.2))
+  (capnp-rpc-lwt (>= 1.2.3))
   (cohttp-lwt-unix (>= 4.0))
   (digestif (>= 0.8))
   (extunix (>= 0.4.1))
@@ -44,9 +44,9 @@
   (ocluster-api (= :version))
   (ocluster-worker (= :version))
   (ocaml (>= 4.12.0))
-  capnp-rpc-lwt
-  capnp-rpc-net
-  (capnp-rpc-unix (>= 1.2))
+  (capnp-rpc-lwt (>= 1.2.3))
+  (capnp-rpc-net (>= 1.2.3))
+  (capnp-rpc-unix (>= 1.2.3))
   (cmdliner (>= 1.1.0))
   (conf-libev (<> :os "win32"))
   (digestif (>= 0.8))
@@ -79,7 +79,7 @@
  (depends
   (ocluster-api (= :version))
   (ocaml (>= 4.12.0))
-  (capnp-rpc-unix (>= 1.2))
+  (capnp-rpc-unix (>= 1.2.3))
   (current (>= 0.6))
   (current_git (>= 0.6))
   duration
