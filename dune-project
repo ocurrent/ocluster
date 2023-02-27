@@ -67,7 +67,9 @@
   (winsvc (and (>= 1.0.1) (= :os "win32")))
   (current_ocluster (and (= :version) :with-test))
   (alcotest (and (>= 1.0.0) :with-test))
-  (alcotest-lwt (and (>= 1.0.1) :with-test))))
+  (alcotest-lwt (and (>= 1.0.1) :with-test))
+  (mirage-crypto-rng (and (>= 0.11.0) :with-test))
+  (mirage-crypto-rng-lwt (and (>= 0.11.0) :with-test))))
 
 (package
  (name current_ocluster)

@@ -45,6 +45,8 @@ depends: [
   "current_ocluster" {= version & with-test}
   "alcotest" {>= "1.0.0" & with-test}
   "alcotest-lwt" {>= "1.0.1" & with-test}
+  "mirage-crypto-rng" {>= "0.11.0" & with-test}
+  "mirage-crypto-rng-lwt" {>= "0.11.0" & with-test}
   "odoc" {with-doc}
 ]
 build: [
