@@ -80,8 +80,8 @@
   (ocluster-api (= :version))
   (ocaml (>= 4.12.0))
   (capnp-rpc-unix (>= 1.2.3))
-  (current (>= 0.6))
-  (current_git (>= 0.6))
+  (current (>= 0.6.4))
+  (current_git (>= 0.6.4))
   duration
   fmt
   logs
@@ -89,5 +89,5 @@
   ppx_deriving
   ppx_deriving_yojson
   (prometheus (>= 1.2))
-  (current_github (and (>= 0.6) :with-test))
-  (current_web (and (>= 0.6) :with-test))))
+  (current_github (and (>= 0.6.4) :with-test))
+  (current_web (and (>= 0.6.4) :with-test))))
