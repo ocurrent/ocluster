@@ -42,7 +42,7 @@ let main prometheus_config =
       ~public_address:socket
   in
   Lwt_main.run begin
-    Mirage_crypto_rng_lwt.initialize ();
+    Mirage_crypto_rng_lwt.initialize (module Mirage_crypto_rng.Fortuna);
     let db = Sqlite3.db_open ":memory:" in
     Lwt.finalize (fun () ->
         let sched = Cluster_scheduler.create ~db ["linux-x86_64"] in
