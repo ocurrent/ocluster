@@ -15,6 +15,7 @@ maintainer: ["talex5@gmail.com"]
 authors: ["talex5@gmail.com"]
 license: "Apache-2.0"
 homepage: "https://github.com/ocurrent/ocluster"
+doc: "https://ocurrent.github.io/ocluster/"
 bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [
   "dune" {>= "3.3"}

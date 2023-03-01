@@ -2,7 +2,9 @@
 (name ocluster)
 (formatting disabled)
 (generate_opam_files true)
+
 (source (github ocurrent/ocluster))
+(documentation "https://ocurrent.github.io/ocluster/")
 (authors "talex5@gmail.com")
 (maintainers "talex5@gmail.com")
 (license "Apache-2.0")
