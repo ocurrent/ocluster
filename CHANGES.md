@@ -1,4 +1,4 @@
-### unreleased
+### v0.2.1 (2023-03-03)
 
 - Expose the ocluster-worker library in the ocluster-worker package
   (@MisterDA @art-w, #219 #217 #151, reviewed by @tmcgilchrist)
