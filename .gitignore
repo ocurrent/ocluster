@@ -1,4 +1,5 @@
-**/.merlin
-_build
+_build/
+_opam/
+*.install
 capnp-secrets
 var
