@@ -5,6 +5,7 @@
   (libraries
     alcotest-lwt
     capnp-rpc-net
+    capnp-rpc-unix
     cluster_scheduler
     cluster_worker
     current_ocluster

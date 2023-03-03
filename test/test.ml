@@ -485,26 +485,29 @@ let test_case ?(expected_warnings=0) name fn =
   Alcotest.(check int) "Check log for warnings" expected_warnings (problems' - problems)
 
 let () =
-  Lwt_main.run @@ Alcotest_lwt.run ~verbose "ocluster-scheduler" [
-    "main", [
-      test_case "simple" simple;
-      test_case "simple_custom" simple_custom;
-      test_case "fails" fails;
-      test_case "await_builder" await_builder;
-      test_case "already_registered" already_registered ~expected_warnings:1;
-      test_case "builder_capacity" builder_capacity;
-      test_case "network" network;
-      test_case "worker_disconnects" worker_disconnects;
-      test_case "client_disconnects" client_disconnects;
-      test_case "cancel" cancel;
-      test_case "cancel_ticket" cancel_ticket;
-      test_case "cancel_ticket_late" cancel_ticket_late;
-      test_case "release_ticket" release_ticket;
-      test_case "release_ticket_late" release_ticket_late;
-      test_case "drain" drain;
-      test_case "drain_crash" drain_crash;
-      test_case "admin" admin;
-      test_case "clients" clients;
-    ];
-    "plugin", Test_plugin.suite;
-  ]
+  Lwt_main.run begin
+    Mirage_crypto_rng_lwt.initialize (module Mirage_crypto_rng.Fortuna);
+    Alcotest_lwt.run ~verbose "ocluster-scheduler" [
+      "main", [
+        test_case "simple" simple;
+        test_case "simple_custom" simple_custom;
+        test_case "fails" fails;
+        test_case "await_builder" await_builder;
+        test_case "already_registered" already_registered ~expected_warnings:1;
+        test_case "builder_capacity" builder_capacity;
+        test_case "network" network;
+        test_case "worker_disconnects" worker_disconnects;
+        test_case "client_disconnects" client_disconnects;
+        test_case "cancel" cancel;
+        test_case "cancel_ticket" cancel_ticket;
+        test_case "cancel_ticket_late" cancel_ticket_late;
+        test_case "release_ticket" release_ticket;
+        test_case "release_ticket_late" release_ticket_late;
+        test_case "drain" drain;
+        test_case "drain_crash" drain_crash;
+        test_case "admin" admin;
+        test_case "clients" clients;
+      ];
+      "plugin", Test_plugin.suite;
+    ]
+  end
