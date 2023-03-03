@@ -1,3 +1,4 @@
 (library
   (name db)
+  (package ocluster)
   (libraries sqlite3 fmt))
