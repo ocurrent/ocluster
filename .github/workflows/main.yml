@@ -49,3 +49,18 @@ jobs:
       - run: opam exec -- dune build
 
       - run: opam exec -- dune runtest
+
+      - name: Install the package
+        run: |
+          mkdir install && `
+          & opam exec -- dune build @install --profile=debug && `
+          & opam exec -- dune install --relocatable --prefix=install
+
+      - name: Extract executables and DLLs
+        run: |
+          & "$($env:CYGWIN_ROOT_BIN)\bash.exe" --login -c 'cd $(cygpath -u "$GITHUB_WORKSPACE") && ./.github/workflows/extract.sh'
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ocluster-windows
+          path: ocluster-windows/
