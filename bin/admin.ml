@@ -37,20 +37,30 @@ let set_rate () cap_path pool_id client_id rate =
   let pool = Cluster_api.Admin.pool admin_service pool_id in
   Cluster_api.Pool_admin.set_rate pool ~client_id rate
 
-let show () cap_path terse pool =
+let show () cap_path terse pool worker =
   run cap_path @@ fun admin_service ->
   match pool with
   | None ->
     Cluster_api.Admin.pools admin_service >|= fun pools ->
     List.iter print_endline pools
   | Some pool ->
-    Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
-    if terse then
+    match worker with
+    | None ->
+      Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
+      if terse then
+        Cluster_api.Pool_admin.workers pool >|= fun workers ->
+        List.iter (fun (w:Cluster_api.Pool_admin.worker_info) -> print_endline w.name) workers
+      else
+        Cluster_api.Pool_admin.show pool >|= fun status ->
+        print_endline (String.trim status)
+    | Some worker ->
+      Capability.with_ref (Cluster_api.Admin.pool admin_service pool) @@ fun pool ->
       Cluster_api.Pool_admin.workers pool >|= fun workers ->
-      List.iter (fun (w:Cluster_api.Pool_admin.worker_info) -> print_endline w.name) workers
-    else
-      Cluster_api.Pool_admin.show pool >|= fun status ->
-      print_endline (String.trim status)
+      let w = List.filter (fun (w:Cluster_api.Pool_admin.worker_info) -> w.name = worker) workers in
+      let status = match w with
+        | [] -> "Not found"
+        | hd :: _ -> if hd.active then "Running" else "Paused"
+      in print_endline ((if terse then "" else worker ^ ": ") ^ status)
 
 let check_exit_status = function
   | Unix.WEXITED 0 -> ()
@@ -308,7 +318,7 @@ let show =
   let doc = "Show information about a service, pool or worker." in
   let info = Cmd.info "show" ~doc in
   Cmd.v info
-    Term.(const show $ Logging.cmdliner $ connect_addr $ terse $ Arg.value pool_pos)
+    Term.(const show $ Logging.cmdliner $ connect_addr $ terse $ Arg.value pool_pos $ worker)
 
 let pause =
   let doc = "Set a worker to be unavailable for further jobs." in
