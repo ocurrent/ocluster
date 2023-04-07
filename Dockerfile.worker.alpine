@@ -1,4 +1,4 @@
-FROM ocaml/opam:alpine-3.17-ocaml-4.14@sha256:e098c43469dc64a1b7367f694c0c0283fbb9540b7afa872531c052729a67f25f AS build
+FROM ocaml/opam:alpine-3.17-ocaml-4.14@sha256:d4e31100d5c7b899f2a34e115b9bdece648690aa9368b76772186f12138636b6 AS build
 RUN sudo apk update && sudo apk add libev capnproto m4 sqlite libgmpxx
 RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit -ni
 RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 99c704701437f5a9674b58cc5fbbb593653d0a3a && opam update
