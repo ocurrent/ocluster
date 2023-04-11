@@ -9,7 +9,7 @@ homepage: "https://github.com/ocurrent/ocluster"
 doc: "https://ocurrent.github.io/ocluster/"
 bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [
-  "dune" {>= "3.3"}
+  "dune" {>= "3.7"}
   "ocluster-api" {= version}
   "ocaml" {>= "4.12.0"}
   "capnp-rpc-lwt" {>= "1.2.3"}

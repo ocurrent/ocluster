@@ -1,4 +1,4 @@
-(lang dune 3.3)
+(lang dune 3.7)
 (name ocluster)
 (formatting disabled)
 (generate_opam_files true)
@@ -49,7 +49,7 @@
   (capnp-rpc-lwt (>= 1.2.3))
   (capnp-rpc-net (>= 1.2.3))
   (capnp-rpc-unix (>= 1.2.3))
-  (cmdliner (>= 1.1.0))
+  (cmdliner (>= 1.1.1))
   (conf-libev (<> :os "win32"))
   (digestif (>= 0.8))
   dune-build-info
@@ -68,8 +68,8 @@
   sqlite3
   (winsvc (and (>= 1.0.1) (= :os "win32")))
   (current_ocluster (and (= :version) :with-test))
-  (alcotest (and (>= 1.0.0) :with-test))
-  (alcotest-lwt (and (>= 1.0.1) :with-test))
+  (alcotest (and (>= 1.7.0) :with-test))
+  (alcotest-lwt (and (>= 1.7.0) :with-test))
   (mirage-crypto-rng (and (>= 0.11.0) :with-test))
   (mirage-crypto-rng-lwt (and (>= 0.11.0) :with-test))))
 
