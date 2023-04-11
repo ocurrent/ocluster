@@ -5,7 +5,6 @@ RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 15b38
 COPY --chown=opam ocluster-api.opam ocluster-worker.opam ocluster.opam /src/
 COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/
-RUN opam pin -yn ocluster-worker.$(opam show ocluster -f version) /src/ # until ocluster-worker is released
 WORKDIR /src
 RUN opam install -y --deps-only .
 ADD --chown=opam . .
