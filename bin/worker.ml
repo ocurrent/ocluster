@@ -127,6 +127,7 @@ let obuilder_prune_threshold =
   Arg.info
     ~doc:"If using OBuilder, this threshold is used to prune the stored builds if the free space falls below this (0-100)."
     ~docv:"PERCENTAGE"
+    ~docs:"OBUILDER"
     ["obuilder-prune-threshold"]
 
 let allow_push =
@@ -163,9 +164,23 @@ let additional_metrics =
     ["additional-metrics"]
 
 module Obuilder_config = struct
+  (** Parse cli arguments for Obuilder.Store_spec.t *)
   let v =
-    let make sandbox_config store = Some (Cluster_worker.Obuilder_config.v sandbox_config store) in
-    Term.(const make $ Obuilder.Sandbox.cmdliner $ Obuilder.Store_spec.v)
+    let open Obuilder.Store_spec in
+    Term.(const of_t
+          $ Arg.value @@ store ~docs:"OBUILDER" ["obuilder-store"]
+          $ Arg.value @@ rsync_mode_opt)
+
+  (** Parse cli arguments for t and initialise a [store]. *)
+  let cmdliner =
+    Term.(const Obuilder.Store_spec.to_store $ v)
+
+  let v =
+    let make native_conf docker_conf = function
+      | `Native, store -> Some (Cluster_worker.Obuilder_config.v (`Native native_conf) store)
+      | `Docker, store -> Some (Cluster_worker.Obuilder_config.v (`Docker docker_conf) store)
+    in
+    Term.(const make $ Obuilder.Native_sandbox.cmdliner $ Obuilder.Docker_sandbox.cmdliner $ cmdliner)
 end
 
 let worker_opts_t =

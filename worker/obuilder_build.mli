@@ -3,7 +3,9 @@ type t
 module Config : sig
   type t
 
-  val v : Obuilder.Sandbox.config -> Obuilder.Store_spec.t -> t
+  val v : [ `Native of Obuilder.Native_sandbox.config
+          | `Docker of Obuilder.Docker_sandbox.config ]
+          -> Obuilder.Store_spec.store Lwt.t -> t
 end
 
 val create : ?prune_threshold:float -> Config.t -> t Lwt.t

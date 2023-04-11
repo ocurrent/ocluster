@@ -4,11 +4,7 @@ type job_spec = [
   | `Custom of Cluster_api.Custom.recv
 ]
 
-module Obuilder_config : sig
-  type t
-
-  val v : Obuilder.Sandbox.config -> Obuilder.Store_spec.t -> t
-end
+module Obuilder_config = Obuilder_build.Config
 
 type build =
   switch:Lwt_switch.t ->

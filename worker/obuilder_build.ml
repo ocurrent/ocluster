@@ -6,22 +6,21 @@ type builder = Builder : (module Obuilder.BUILDER with type t = 'a) * 'a -> buil
 
 module Config = struct
   type t = {
-    store_spec : Obuilder.Store_spec.t;
-    sandbox_config : Obuilder.Sandbox.config;
+    store : Obuilder.Store_spec.store Lwt.t;
+    sandbox_config : [ `Native of Obuilder.Native_sandbox.config
+                     | `Docker of Obuilder.Docker_sandbox.config ]
   }
 
-  let v sandbox_config store_spec = { store_spec; sandbox_config }
+  let v sandbox_config store = { store; sandbox_config }
 end
 
 type t = {
   builder : builder;
-  config : Config.t;
+  root : string;
   mutable pruning : bool;
   cond : unit Lwt_condition.t;          (* Fires when we finish pruning *)
   prune_threshold : float option;
 }
-
-module Sandbox = Obuilder.Sandbox
 
 let ( / ) = Filename.concat
 
@@ -38,11 +37,21 @@ let log_to log_data tag msg =
   | `Output -> Log_data.write log_data msg
 
 let create ?prune_threshold config =
-  let { Config.store_spec; sandbox_config } = config in
-  Obuilder.Store_spec.to_store store_spec >>= fun (Store ((module Store), store)) ->
-  let module Builder = Obuilder.Builder(Store)(Sandbox)(Fetcher) in
-  Sandbox.create ~state_dir:(Store.state_dir store / "runc") sandbox_config >>= fun sandbox ->
-  let builder = Builder.v ~store ~sandbox in
+  let { Config.store; sandbox_config } = config in
+  store >>= fun (Obuilder.Store_spec.Store ((module Store), store)) ->
+  begin match sandbox_config with
+  | `Native conf ->
+     let module Builder = Obuilder.Builder (Store) (Obuilder.Native_sandbox) (Obuilder.Docker_extract) in
+     Obuilder.Native_sandbox.create ~state_dir:(Store.state_dir store / "sandbox") conf >|= fun sandbox ->
+     let builder = Builder.v ~store ~sandbox in
+     Builder ((module Builder), builder)
+  | `Docker conf ->
+     let module Builder = Obuilder.Docker_builder (Store) in
+     Obuilder.Docker_sandbox.create conf >|= fun sandbox ->
+     let builder = Builder.v ~store ~sandbox in
+     Builder ((module Builder), builder)
+  end
+  >>= fun (Builder ((module Builder), builder)) ->
   Log.info (fun f -> f "Performing OBuilder self-test…");
   Builder.healthcheck builder >|= function
   | Error (`Msg m) -> Fmt.failwith "Initial OBuilder healthcheck failed: %s" m
@@ -50,9 +59,9 @@ let create ?prune_threshold config =
     Log.info (fun f -> f "OBuilder self-test passed");
     {
       builder = Builder ((module Builder), builder);
+      root = Store.root store;
       pruning = false;
       prune_threshold;
-      config;
       cond = Lwt_condition.create ();
     }
 
@@ -76,12 +85,6 @@ let do_prune ~path ~prune_threshold t =
   in
   aux ()
 
-let store_path t =
-  match t.config.store_spec with
-  | `Btrfs path -> path
-  | `Rsync (path, _) -> path
-  | `Zfs pool -> "/" ^ pool
-
 (* Check the free space in [t]'s store.
    If less than [t.prune_threshold], spawn a prune operation (if not already running).
    If less than half that is remaining, also wait for it to finish.
@@ -90,7 +93,7 @@ let check_free_space t =
   match t.prune_threshold with
   | None -> Lwt.return_unit
   | Some prune_threshold ->
-    let path = store_path t in
+    let path = t.root in
     let rec aux () =
       let free = Df.free_space_percent path in
       Log.info (fun f -> f "OBuilder partition: %.0f%% free" free);
