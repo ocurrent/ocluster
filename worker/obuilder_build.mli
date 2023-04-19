@@ -8,7 +8,7 @@ module Config : sig
           -> Obuilder.Store_spec.store Lwt.t -> t
 end
 
-val create : ?prune_threshold:float -> Config.t -> t Lwt.t
+val create : ?prune_threshold:float -> ?prune_limit:int -> Config.t -> t Lwt.t
 
 val build : t ->
   switch:Lwt_switch.t ->
