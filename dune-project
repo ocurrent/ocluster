@@ -35,7 +35,7 @@
  (description "OCluster library for defining workers")
  (depends
   (ocluster-api (= :version))
-  (ocaml (>= 4.12.0))
+  (ocaml (>= 4.14.1))
   (capnp-rpc-lwt (>= 1.2.3))
   (cohttp-lwt-unix (>= 4.0))
   (digestif (>= 0.8))
@@ -53,11 +53,11 @@
  (depends
   (ocluster-api (= :version))
   (ocluster-worker (= :version))
-  (ocaml (>= 4.12.0))
+  (ocaml (>= 4.14.1))
   (capnp-rpc-lwt (>= 1.2.3))
   (capnp-rpc-net (>= 1.2.3))
   (capnp-rpc-unix (>= 1.2.3))
-  (cmdliner (>= 1.1.1))
+  (cmdliner (>= 1.2.0))
   (conf-libev (<> :os "win32"))
   (digestif (>= 0.8))
   dune-build-info
