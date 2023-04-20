@@ -3,7 +3,16 @@ opam-version: "2.0"
 synopsis: "Cap'n Proto API for OCluster"
 description: "OCaml bindings for the OCluster Cap'n Proto API."
 maintainer: ["talex5@gmail.com"]
-authors: ["talex5@gmail.com"]
+authors: [
+  "Antonin Décimo <antonin@tarides.com>"
+  "David Allsopp <david.allsopp@metastack.com>"
+  "Kate <kit.ty.kate@disroot.org>"
+  "Lucas Pluvinage <lucas@tarides.com>"
+  "Mark Elvers <mark.elvers@tunbury.org>"
+  "Patrick Ferris <patrick@sirref.org>"
+  "Thomas Leonard <talex5@gmail.com>"
+  "Tim McGilchrist <timmcgil@gmail.com>"
+]
 license: "Apache-2.0"
 homepage: "https://github.com/ocurrent/ocluster"
 doc: "https://ocurrent.github.io/ocluster/"
