@@ -1,7 +1,7 @@
-FROM ocaml/opam:alpine-3.17-ocaml-4.14@sha256:d4e31100d5c7b899f2a34e115b9bdece648690aa9368b76772186f12138636b6 AS build
+FROM ocaml/opam:alpine-3.17-ocaml-4.14@sha256:df87c00eb4b212b8b42e3cbf37b7729507bb398b4bf19c9df0e2d84d1c41e46d AS build
 RUN sudo apk update && sudo apk add libev capnproto m4 sqlite libgmpxx
 RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit -ni
-RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 15b381eeae1aa1c8b67b214ce1739344717aae89 && opam update
+RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard eb733d35a0a83a2635d25cd85e905661d145aead && opam update
 COPY --chown=opam ocluster-api.opam ocluster-worker.opam ocluster.opam /src/
 COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/
