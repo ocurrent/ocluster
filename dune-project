@@ -5,7 +5,15 @@
 
 (source (github ocurrent/ocluster))
 (documentation "https://ocurrent.github.io/ocluster/")
-(authors "talex5@gmail.com")
+(authors
+ "Antonin Décimo <antonin@tarides.com>"
+ "David Allsopp <david.allsopp@metastack.com>"
+ "Kate <kit.ty.kate@disroot.org>"
+ "Lucas Pluvinage <lucas@tarides.com>"
+ "Mark Elvers <mark.elvers@tunbury.org>"
+ "Patrick Ferris <patrick@sirref.org>"
+ "Thomas Leonard <talex5@gmail.com>"
+ "Tim McGilchrist <timmcgil@gmail.com>")
 (maintainers "talex5@gmail.com")
 (license "Apache-2.0")
 
