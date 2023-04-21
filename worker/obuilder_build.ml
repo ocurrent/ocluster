@@ -20,6 +20,7 @@ type t = {
   mutable pruning : bool;
   cond : unit Lwt_condition.t;          (* Fires when we finish pruning *)
   prune_threshold : float option;
+  prune_limit : int option;             (* Number of items to prune from obuilder when threshold is reached *)
 }
 
 let ( / ) = Filename.concat
@@ -36,7 +37,7 @@ let log_to log_data tag msg =
   | `Note -> Log_data.info log_data "\027[01;2m\027[01;35m%a %s\027[0m" pp_timestamp (Unix.gettimeofday ()) msg
   | `Output -> Log_data.write log_data msg
 
-let create ?prune_threshold config =
+let create ?prune_threshold ?prune_limit config =
   let { Config.store; sandbox_config } = config in
   store >>= fun (Obuilder.Store_spec.Store ((module Store), store)) ->
   begin match sandbox_config with
@@ -62,20 +63,20 @@ let create ?prune_threshold config =
       root = Store.root store;
       pruning = false;
       prune_threshold;
+      prune_limit;
       cond = Lwt_condition.create ();
     }
 
 (* Prune [t] until [path]'s free space rises above [prune_threshold]. *)
-let do_prune ~path ~prune_threshold t =
+let do_prune ~path ~prune_threshold ~prune_limit t =
   let Builder ((module Builder), builder) = t.builder in
   let rec aux () =
     let stop = Unix.gettimeofday () -. prune_margin |> Unix.gmtime in
-    let limit = 100 in
-    Builder.prune builder ~before:stop limit >>= fun n ->
+    Builder.prune builder ~before:stop prune_limit >>= fun n ->
     let free = Df.free_space_percent path in
     Log.info (fun f -> f "OBuilder partition: %.0f%% free after pruning %d items" free n);
     if free > prune_threshold then Lwt.return_unit      (* Space problem is fixed! *)
-    else if n < limit then (
+    else if n < prune_limit then (
       Log.warn (fun f -> f "Out of space, but nothing left to prune! (will wait and then retry)");
       Lwt_unix.sleep 600.0 >>= aux
     ) else (
@@ -90,9 +91,11 @@ let do_prune ~path ~prune_threshold t =
    If less than half that is remaining, also wait for it to finish.
    Returns once there is enough free space to proceed. *)
 let check_free_space t =
-  match t.prune_threshold with
-  | None -> Lwt.return_unit
-  | Some prune_threshold ->
+  match t.prune_threshold, t.prune_limit with
+  | None, None
+  | Some _, None
+  | None, Some _ -> Lwt.return_unit
+  | Some prune_threshold, Some prune_limit ->
     let path = t.root in
     let rec aux () =
       let free = Df.free_space_percent path in
@@ -102,7 +105,7 @@ let check_free_space t =
         t.pruning <- true;
         Lwt.async (fun () ->
             Lwt.finalize
-              (fun () -> do_prune ~path ~prune_threshold t)
+              (fun () -> do_prune ~path ~prune_threshold ~prune_limit t)
               (fun () ->
                  Lwt.pause () >|= fun () ->
                  t.pruning <- false;
