@@ -25,6 +25,7 @@ val run :
   ?prune_threshold:float ->
   ?docker_max_df_size:float ->
   ?obuilder_prune_threshold:float ->
+  ?obuilder_prune_item_threshold:int64 ->
   ?obuilder_prune_limit:int ->
   ?obuilder:Obuilder_config.t ->
   ?additional_metrics:(string * Uri.t) list ->
