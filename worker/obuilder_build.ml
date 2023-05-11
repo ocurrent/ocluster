@@ -107,8 +107,7 @@ let check_free_space t =
       Log.info (fun f -> f "OBuilder partition: %.0f%% free, %Li items" free count);
       (* If we're low on space, or over the threshold number of items spawn a pruning thread. *)
       if ((prune_threshold > 0. && free < prune_threshold) ||
-          (prune_item_threshold < Int64.max_int && count > prune_item_threshold)) &&
-         t.pruning = false then (
+          (prune_item_threshold < Int64.max_int && count > prune_item_threshold)) && t.pruning = false then (
         t.pruning <- true;
         Lwt.async (fun () ->
             Lwt.finalize
