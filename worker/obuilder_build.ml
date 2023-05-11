@@ -68,7 +68,7 @@ let create ?prune_threshold ?prune_item_threshold ?prune_limit config =
     }
 
 (* Prune [t] until free space rises above [prune_threshold]
-   or number of items falls below count. *)
+   or number of items falls below [prune_item_threshold]. *)
 let do_prune ~prune_threshold ~prune_item_threshold ~prune_limit t =
   let Builder ((module Builder), builder) = t.builder in
   let rec aux () =
