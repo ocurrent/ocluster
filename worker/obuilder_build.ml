@@ -94,12 +94,9 @@ let do_prune ~prune_threshold ~prune_item_threshold ~prune_limit t =
    If less than half that is remaining, also wait for it to finish.
    Returns once there is enough free space to proceed. *)
 let check_free_space t =
-  let remove_option x d = match x with
-  | None -> d
-  | Some x -> x in
-  let prune_limit = remove_option t.prune_limit 100 in
-  let prune_threshold = remove_option t.prune_threshold 0. in
-  let prune_item_threshold = remove_option t.prune_item_threshold Int64.max_int in
+  let prune_limit = Option.value t.prune_limit ~default:100 in
+  let prune_threshold = Option.value t.prune_threshold ~default:0. in
+  let prune_item_threshold = Option.value t.prune_item_threshold ~default:Int64.max_int in
   if prune_threshold = 0. && prune_item_threshold = Int64.max_int then
     Lwt.return_unit (* No limits have been set *)
   else
