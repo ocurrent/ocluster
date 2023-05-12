@@ -22,7 +22,7 @@
  (synopsis "Cap'n Proto API for OCluster")
  (description "OCaml bindings for the OCluster Cap'n Proto API.")
  (depends
-  (ocaml (>= 4.12.0))
+  (ocaml (>= 4.14.1))
   (capnp-rpc-lwt (>= 1.2.3))
   fmt
   (lwt (>= 5.6.1))
@@ -88,7 +88,7 @@
   "Creates a stage in an OCurrent pipeline for submitting jobs to OCluster.")
  (depends
   (ocluster-api (= :version))
-  (ocaml (>= 4.12.0))
+  (ocaml (>= 4.14.1))
   (capnp-rpc-unix (>= 1.2.3))
   (current (>= 0.6.4))
   (current_git (>= 0.6.4))
