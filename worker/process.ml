@@ -13,7 +13,7 @@ let send_to ch contents =
        Lwt_io.close ch
     )
     (fun () -> Lwt.return (Ok ()))
-    (fun ex -> Lwt.return (Error (`Msg (Printexc.to_string ex))))
+    (fun ex -> Lwt.return (Fmt.error_msg "%a" Fmt.exn ex))
 
 let exec ~label ~log ~switch ?env ?(stdin="") ?(stderr=`FD_copy Unix.stdout) ?(is_success=((=) 0)) cmd =
   Log.info (fun f -> f "Exec(%s): %a" label Fmt.(list ~sep:sp (quote string)) cmd);
@@ -35,15 +35,15 @@ let exec ~label ~log ~switch ?env ?(stdin="") ?(stderr=`FD_copy Unix.stdout) ?(i
   | Unix.WEXITED n when is_success n ->
     begin match stdin_result with
       | Ok () -> Ok ()
-      | Error (`Msg msg) -> Error (`Msg (Fmt.str "Failed sending input to %s: %s" label msg))
+      | Error (`Msg msg) -> Fmt.error_msg "Failed sending input to %s: %s" label msg
     end
   | Unix.WEXITED n -> Error (`Exit_code n)
-  | Unix.WSIGNALED x -> Error (`Msg (Fmt.str "%s failed with signal %a" label Fmt.Dump.signal x))
-  | Unix.WSTOPPED x -> Error (`Msg (Fmt.str "%s stopped with signal %a" label Fmt.Dump.signal x))
+  | Unix.WSIGNALED x -> Fmt.error_msg "%s failed with signal %a" label Fmt.Dump.signal x
+  | Unix.WSTOPPED x -> Fmt.error_msg "%s stopped with signal %a" label Fmt.Dump.signal x
 
 let check_call ~label ~log ~switch ?env ?stdin ?stderr ?is_success cmd =
   exec ~label ~log ~switch ?env ?stdin ?stderr ?is_success cmd >|= function
   | Ok () -> Ok ()
   | Error `Cancelled -> Error `Cancelled
-  | Error (`Exit_code n) -> Error (`Msg (Fmt.str "%s failed with exit-code %d" label n))
+  | Error (`Exit_code n) -> Fmt.error_msg "%s failed with exit-code %d" label n
   | Error (`Msg _) as e -> e
