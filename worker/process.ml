@@ -15,12 +15,6 @@ let send_to ch contents =
     (fun () -> Lwt.return (Ok ()))
     (fun ex -> Lwt.return (Error (`Msg (Printexc.to_string ex))))
 
-let pp_signal f x =
-  let open Sys in
-  if x = sigkill then Fmt.string f "kill"
-  else if x = sigterm then Fmt.string f "term"
-  else Fmt.int f x
-
 let exec ~label ~log ~switch ?env ?(stdin="") ?(stderr=`FD_copy Unix.stdout) ?(is_success=((=) 0)) cmd =
   Log.info (fun f -> f "Exec(%s): %a" label Fmt.(list ~sep:sp (quote string)) cmd);
   let cmd = "", Array.of_list cmd in
@@ -44,8 +38,8 @@ let exec ~label ~log ~switch ?env ?(stdin="") ?(stderr=`FD_copy Unix.stdout) ?(i
       | Error (`Msg msg) -> Error (`Msg (Fmt.str "Failed sending input to %s: %s" label msg))
     end
   | Unix.WEXITED n -> Error (`Exit_code n)
-  | Unix.WSIGNALED x -> Error (`Msg (Fmt.str "%s failed with signal %d" label x))
-  | Unix.WSTOPPED x -> Error (`Msg (Fmt.str "%s stopped with signal %a" label pp_signal x))
+  | Unix.WSIGNALED x -> Error (`Msg (Fmt.str "%s failed with signal %a" label Fmt.Dump.signal x))
+  | Unix.WSTOPPED x -> Error (`Msg (Fmt.str "%s stopped with signal %a" label Fmt.Dump.signal x))
 
 let check_call ~label ~log ~switch ?env ?stdin ?stderr ?is_success cmd =
   exec ~label ~log ~switch ?env ?stdin ?stderr ?is_success cmd >|= function
