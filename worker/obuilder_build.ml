@@ -16,10 +16,10 @@ end
 
 type t = {
   builder : builder;
-  root : string;
   mutable pruning : bool;
   cond : unit Lwt_condition.t;          (* Fires when we finish pruning *)
   prune_threshold : float option;
+  prune_item_threshold : int64 option;  (* Threshold number of items to hold in obuilder store *)
   prune_limit : int option;             (* Number of items to prune from obuilder when threshold is reached *)
 }
 
@@ -37,7 +37,7 @@ let log_to log_data tag msg =
   | `Note -> Log_data.info log_data "\027[01;2m\027[01;35m%a %s\027[0m" pp_timestamp (Unix.gettimeofday ()) msg
   | `Output -> Log_data.write log_data msg
 
-let create ?prune_threshold ?prune_limit config =
+let create ?prune_threshold ?prune_item_threshold ?prune_limit config =
   let { Config.store; sandbox_config } = config in
   store >>= fun (Obuilder.Store_spec.Store ((module Store), store)) ->
   begin match sandbox_config with
@@ -60,22 +60,25 @@ let create ?prune_threshold ?prune_limit config =
     Log.info (fun f -> f "OBuilder self-test passed");
     {
       builder = Builder ((module Builder), builder);
-      root = Store.root store;
       pruning = false;
       prune_threshold;
+      prune_item_threshold;
       prune_limit;
       cond = Lwt_condition.create ();
     }
 
-(* Prune [t] until [path]'s free space rises above [prune_threshold]. *)
-let do_prune ~path ~prune_threshold ~prune_limit t =
+(* Prune [t] until free space rises above [prune_threshold]
+   or number of items falls below [prune_item_threshold]. *)
+let do_prune ~prune_threshold ~prune_item_threshold ~prune_limit t =
   let Builder ((module Builder), builder) = t.builder in
   let rec aux () =
     let stop = Unix.gettimeofday () -. prune_margin |> Unix.gmtime in
     Builder.prune builder ~before:stop prune_limit >>= fun n ->
-    let free = Df.free_space_percent path in
-    Log.info (fun f -> f "OBuilder partition: %.0f%% free after pruning %d items" free n);
-    if free > prune_threshold then Lwt.return_unit      (* Space problem is fixed! *)
+    Builder.df builder >>= fun free ->
+    let count = Builder.count builder in
+    Log.info (fun f -> f "OBuilder partition: %.0f%% free, %Li items after pruning %d items" free count n);
+    if free > prune_threshold && count < prune_item_threshold
+    then Lwt.return_unit      (* Space problem is fixed! *)
     else if n < prune_limit then (
       Log.warn (fun f -> f "Out of space, but nothing left to prune! (will wait and then retry)");
       Lwt_unix.sleep 600.0 >>= aux
@@ -86,26 +89,29 @@ let do_prune ~path ~prune_threshold ~prune_limit t =
   in
   aux ()
 
-(* Check the free space in [t]'s store.
-   If less than [t.prune_threshold], spawn a prune operation (if not already running).
+(* Check the free space and/or number of items in [t]'s store.
+   If less than [t.prune_threshold] or items > [t.prune_item_threshold], spawn a prune operation (if not already running).
    If less than half that is remaining, also wait for it to finish.
    Returns once there is enough free space to proceed. *)
 let check_free_space t =
-  match t.prune_threshold, t.prune_limit with
-  | None, None
-  | Some _, None
-  | None, Some _ -> Lwt.return_unit
-  | Some prune_threshold, Some prune_limit ->
-    let path = t.root in
+  let prune_limit = Option.value t.prune_limit ~default:100 in
+  let prune_threshold = Option.value t.prune_threshold ~default:0. in
+  let prune_item_threshold = Option.value t.prune_item_threshold ~default:Int64.max_int in
+  if prune_threshold = 0. && prune_item_threshold = Int64.max_int then
+    Lwt.return_unit (* No limits have been set *)
+  else
+    let Builder ((module Builder), builder) = t.builder in
     let rec aux () =
-      let free = Df.free_space_percent path in
-      Log.info (fun f -> f "OBuilder partition: %.0f%% free" free);
-      (* If we're low on space, spawn a pruning thread. *)
-      if free < prune_threshold && t.pruning = false then (
+      Builder.df builder >>= fun free ->
+      let count = Builder.count builder in
+      Log.info (fun f -> f "OBuilder partition: %.0f%% free, %Li items" free count);
+      (* If we're low on space, or over the threshold number of items spawn a pruning thread. *)
+      if ((prune_threshold > 0. && free < prune_threshold) ||
+          (prune_item_threshold < Int64.max_int && count > prune_item_threshold)) && not t.pruning then (
         t.pruning <- true;
         Lwt.async (fun () ->
             Lwt.finalize
-              (fun () -> do_prune ~path ~prune_threshold ~prune_limit t)
+              (fun () -> do_prune ~prune_threshold ~prune_item_threshold ~prune_limit t)
               (fun () ->
                  Lwt.pause () >|= fun () ->
                  t.pruning <- false;
