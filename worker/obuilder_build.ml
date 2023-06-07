@@ -42,7 +42,7 @@ let create ?prune_threshold ?prune_item_threshold ?prune_limit config =
   store >>= fun (Obuilder.Store_spec.Store ((module Store), store)) ->
   begin match sandbox_config with
   | `Native conf ->
-     let module Builder = Obuilder.Builder (Store) (Obuilder.Native_sandbox) (Obuilder.Docker_extract) in
+     let module Builder = Obuilder.Builder (Store) (Obuilder.Native_sandbox) (Fetcher) in
      Obuilder.Native_sandbox.create ~state_dir:(Store.state_dir store / "sandbox") conf >|= fun sandbox ->
      let builder = Builder.v ~store ~sandbox in
      Builder ((module Builder), builder)
