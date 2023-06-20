@@ -1,6 +1,7 @@
 ### dev
 
 - Support OBuilder Docker backend on Windows and Linux (@MisterDA #143)
+- Adopt the OCaml Code of Conduct (@rikusilvola)
 
 ### v0.2.1 (2023-03-03)
 
