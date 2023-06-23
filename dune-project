@@ -14,7 +14,7 @@
  "Patrick Ferris <patrick@sirref.org>"
  "Thomas Leonard <talex5@gmail.com>"
  "Tim McGilchrist <timmcgil@gmail.com>")
-(maintainers "talex5@gmail.com")
+(maintainers "Tim McGilchrist <timmcgil@gmail.com>")
 (license "Apache-2.0")
 
 (package
