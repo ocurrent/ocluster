@@ -11,7 +11,7 @@ Clients say which pool should handle their requests.
 At the moment, two build types are provided: building a Dockerfile, or building an OBuilder spec.
 In either case, the build may done in the context of some Git commit.
 The scheduler tries to schedule similar builds on the same machine, to benefit from caching."""
-maintainer: ["talex5@gmail.com"]
+maintainer: ["Tim McGilchrist <timmcgil@gmail.com>"]
 authors: [
   "Antonin Décimo <antonin@tarides.com>"
   "David Allsopp <david.allsopp@metastack.com>"
