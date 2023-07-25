@@ -139,3 +139,7 @@ let build t ~switch ~log ~spec ~src_dir ~secrets =
 let healthcheck t =
   let Builder ((module Builder), builder) = t.builder in
   Builder.healthcheck builder
+
+let cache_stats t =
+  let Builder ((module Builder), builder) = t.builder in
+  Builder.cache_stats builder

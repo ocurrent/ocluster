@@ -37,6 +37,14 @@ module Metrics = struct
   let unhealthy =
     let help = "Number of unhealthy workers" in
     Gauge.v ~help ~namespace ~subsystem "unhealthy"
+
+  let cache_hits =
+    let help = "Number of OBuilder cache hits" in
+    Gauge.v ~help ~namespace ~subsystem "cache_hits"
+
+  let cache_misses =
+    let help = "Number of OBuilder cache misses" in
+    Gauge.v ~help ~namespace ~subsystem "cache_misses"
 end
 
 let buildkit_env =
@@ -282,6 +290,10 @@ let check_health t ~last_healthcheck ~queue = function
       aux ~active:true
     )
 
+let cache_stats = function
+  | None -> 0, 0     (* Not using OBuilder *)
+  | Some obuilder -> Obuilder_build.cache_stats obuilder
+
 let loop ~switch ?obuilder t queue =
   let last_healthcheck = ref (Unix.gettimeofday ()) in
   let rec loop () =
@@ -336,6 +348,9 @@ let loop ~switch ?obuilder t queue =
               (fun () ->
                  t.in_use <- t.in_use - 1;
                  Prometheus.Gauge.set Metrics.running_jobs (float_of_int t.in_use);
+                 let h, m = cache_stats obuilder in
+                 Prometheus.Gauge.set Metrics.cache_hits (float_of_int h);
+                 Prometheus.Gauge.set Metrics.cache_misses (float_of_int m);
                  Lwt_switch.turn_off switch >>= fun () ->
                  Lwt_condition.broadcast t.cond ();
                  Lwt.return_unit)
