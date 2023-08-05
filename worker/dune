@@ -13,7 +13,7 @@
 (rule
  (deps fetcher.docker.ml)
  (target fetcher.ml)
- (enabled_if (<> %{system} macosx))
+ (enabled_if (and (<> %{system} macosx) (<> %{system} freebsd)))
  (action (copy %{deps} %{target})))
 
 (library
