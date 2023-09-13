@@ -18,3 +18,5 @@ val build : t ->
   secrets:(string * string) list -> (string, [ `Cancelled | `Msg of string ]) Lwt_result.t
 
 val healthcheck : t -> (unit, [> `Msg of string]) Lwt_result.t
+
+val cache_stats : t -> int * int
