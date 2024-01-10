@@ -18,7 +18,7 @@ module Spec : sig
   }
 
   type options = {
-    triggering_build_args : string list; (** "--build-arg" arguments, changing these arguments triggers an OCurrent rebuild *)
+    build_args : string list; (** "--build-arg" arguments, changing these arguments triggers an OCurrent rebuild *)
     nontriggering_build_args : string list; (** Changing these arguments does not trigger a rebuild *)
     squash : bool;
     buildkit: bool;

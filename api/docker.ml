@@ -36,7 +36,7 @@ module Spec = struct
   }
 
   type options = {
-    triggering_build_args : string list;
+    build_args : string list;
     nontriggering_build_args : string list;
     squash : bool;
     buildkit: bool;
@@ -50,7 +50,7 @@ module Spec = struct
   }
 
   let defaults = {
-    triggering_build_args = [];
+    build_args = [];
     nontriggering_build_args = [];
     squash = false;
     buildkit = false;
@@ -66,8 +66,8 @@ module Spec = struct
       | `Contents contents -> Dockerfile.contents_set dockerfile_b contents
       | `Path path -> Dockerfile.path_set dockerfile_b path
     end;
-    let { triggering_build_args; nontriggering_build_args; squash; buildkit; include_git } = options in
-    DB.triggering_build_args_set_list b triggering_build_args |> ignore;
+    let { build_args; nontriggering_build_args; squash; buildkit; include_git } = options in
+    DB.build_args_set_list b build_args |> ignore;
     DB.nontriggering_build_args_set_list b nontriggering_build_args |> ignore;
     DB.squash_set b squash;
     DB.buildkit_set b buildkit;
@@ -92,12 +92,12 @@ module Spec = struct
     let target = R.push_target_get r in
     let user = R.push_user_get r in
     let password = R.push_password_get r in
-    let triggering_build_args = R.triggering_build_args_get_list r in
+    let build_args = R.build_args_get_list r in
     let nontriggering_build_args = R.nontriggering_build_args_get_list r in
     let squash = R.squash_get r in
     let buildkit = R.buildkit_get r in
     let include_git = R.include_git_get r in
-    let options = { triggering_build_args; nontriggering_build_args; squash; buildkit; include_git } in
+    let options = { build_args; nontriggering_build_args; squash; buildkit; include_git } in
     let push_to =
       match target, user, password with
       | "", "", "" -> None
