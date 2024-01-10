@@ -37,6 +37,7 @@ module Spec = struct
 
   type options = {
     build_args : string list;
+    nontriggering_build_args : string list;
     squash : bool;
     buildkit: bool;
     include_git : bool [@default true];
@@ -50,6 +51,7 @@ module Spec = struct
 
   let defaults = {
     build_args = [];
+    nontriggering_build_args = [];
     squash = false;
     buildkit = false;
     include_git = false;
@@ -64,8 +66,9 @@ module Spec = struct
       | `Contents contents -> Dockerfile.contents_set dockerfile_b contents
       | `Path path -> Dockerfile.path_set dockerfile_b path
     end;
-    let { build_args; squash; buildkit; include_git } = options in
+    let { build_args; nontriggering_build_args; squash; buildkit; include_git } = options in
     DB.build_args_set_list b build_args |> ignore;
+    DB.nontriggering_build_args_set_list b nontriggering_build_args |> ignore;
     DB.squash_set b squash;
     DB.buildkit_set b buildkit;
     DB.include_git_set b include_git;
@@ -90,10 +93,11 @@ module Spec = struct
     let user = R.push_user_get r in
     let password = R.push_password_get r in
     let build_args = R.build_args_get_list r in
+    let nontriggering_build_args = R.nontriggering_build_args_get_list r in
     let squash = R.squash_get r in
     let buildkit = R.buildkit_get r in
     let include_git = R.include_git_get r in
-    let options = { build_args; squash; buildkit; include_git } in
+    let options = { build_args; nontriggering_build_args; squash; buildkit; include_git } in
     let push_to =
       match target, user, password with
       | "", "", "" -> None
