@@ -21,10 +21,10 @@ struct DockerBuild {
   pushUser     @3 :Text;
   pushPassword @4 :Text;
 
-  triggeringBuildArgs    @5 :List(Text);
+  buildArgs    @5 :List(Text);
   nontriggeringBuildArgs    @6 :List(Text);
   # Options to pass to `docker build` using `--build-arg`.
-  # Triggering args trigger OCurrent rebuilds on changing, nontriggering args do not.
+  # buildArgs trigger OCurrent rebuilds on changing, nontriggeringBuildArgs do not.
 
   squash       @7 :Bool;
   # Squash the image layers together using `--squash`.
