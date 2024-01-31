@@ -1,6 +1,9 @@
-### dev
+### v0.3.0 (2024-01-31)
 
 - Support OBuilder Docker backend on Windows and Linux (@MisterDA #143)
+- Support OBuilder FreeBSD worker (@tmcgilchrist #236)
+- Specify upper bound on number of items in OBuilder store (@mtelvers #229)
+- Add Prometheus statistics for OBuilder cache hit rate (@mtelvers #238)
 
 ### v0.2.1 (2023-03-03)
 
