@@ -1,26 +1,26 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Raw (current_ocluster.Current_ocluster.Raw)</title><link rel="stylesheet" href="../../../_odoc_support/odoc.css"/><meta charset="utf-8"/><meta name="generator" content="odoc 2.2.0"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><script src="../../../_odoc_support/highlight.pack.js"></script><script>hljs.initHighlightingOnLoad();</script></head><body class="odoc"><nav class="odoc-nav"><a href="../index.html">Up</a> – <a href="../../index.html">current_ocluster</a> &#x00BB; <a href="../index.html">Current_ocluster</a> &#x00BB; Raw</nav><header class="odoc-preamble"><h1>Module <code><span>Current_ocluster.Raw</span></code></h1></header><div class="odoc-content"><div class="odoc-spec"><div class="spec value anchored" id="val-build"><a href="#val-build" class="anchor"></a><code><span><span class="keyword">val</span> build : 
-  <span>?level:<span class="xref-unresolved">Current</span>.Level.t <span class="arrow">&#45;&gt;</span></span>
-  <span>?cache_hint:string <span class="arrow">&#45;&gt;</span></span>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Raw (current_ocluster.Current_ocluster.Raw)</title><meta charset="utf-8"/><link rel="stylesheet" href="../../../odoc.support/odoc.css"/><meta name="generator" content="odoc 2.4.0"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><script src="../../../odoc.support/highlight.pack.js"></script><script>hljs.initHighlightingOnLoad();</script></head><body class="odoc"><nav class="odoc-nav"><a href="../index.html">Up</a> – <a href="../../index.html">current_ocluster</a> &#x00BB; <a href="../index.html">Current_ocluster</a> &#x00BB; Raw</nav><header class="odoc-preamble"><h1>Module <code><span>Current_ocluster.Raw</span></code></h1></header><div class="odoc-content"><div class="odoc-spec"><div class="spec value anchored" id="val-build"><a href="#val-build" class="anchor"></a><code><span><span class="keyword">val</span> build : 
+  <span><span class="optlabel">?level</span>:<span class="xref-unresolved">Current</span>.Level.t <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?cache_hint</span>:string <span class="arrow">&#45;&gt;</span></span>
   <span><a href="../index.html#type-t">t</a> <span class="arrow">&#45;&gt;</span></span>
-  <span>pool:string <span class="arrow">&#45;&gt;</span></span>
-  <span>src:<span><span class="xref-unresolved">Current_git</span>.Commit_id.t list</span> <span class="arrow">&#45;&gt;</span></span>
-  <span>options:<a href="../../../ocluster-api/Cluster_api/Docker/Spec/index.html#type-options">Cluster_api.Docker.Spec.options</a> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">pool</span>:string <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">src</span>:<span><span class="xref-unresolved">Current_git</span>.Commit_id.t list</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">options</span>:<a href="../../../ocluster-api/Cluster_api/Docker/Spec/index.html#type-options">Cluster_api.Docker.Spec.options</a> <span class="arrow">&#45;&gt;</span></span>
   <span><span>[ <span>`Contents of string</span> <span><span>| `Path</span> of string</span> ]</span> <span class="arrow">&#45;&gt;</span></span>
   <span>unit <span class="xref-unresolved">Current</span>.Primitive.t</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-build_and_push"><a href="#val-build_and_push" class="anchor"></a><code><span><span class="keyword">val</span> build_and_push : 
-  <span>?level:<span class="xref-unresolved">Current</span>.Level.t <span class="arrow">&#45;&gt;</span></span>
-  <span>?cache_hint:string <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?level</span>:<span class="xref-unresolved">Current</span>.Level.t <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?cache_hint</span>:string <span class="arrow">&#45;&gt;</span></span>
   <span><a href="../index.html#type-t">t</a> <span class="arrow">&#45;&gt;</span></span>
-  <span>push_target:<a href="../../../ocluster-api/Cluster_api/Docker/Image_id/index.html#type-t">Cluster_api.Docker.Image_id.t</a> <span class="arrow">&#45;&gt;</span></span>
-  <span>pool:string <span class="arrow">&#45;&gt;</span></span>
-  <span>src:<span><span class="xref-unresolved">Current_git</span>.Commit_id.t list</span> <span class="arrow">&#45;&gt;</span></span>
-  <span>options:<a href="../../../ocluster-api/Cluster_api/Docker/Spec/index.html#type-options">Cluster_api.Docker.Spec.options</a> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">push_target</span>:<a href="../../../ocluster-api/Cluster_api/Docker/Image_id/index.html#type-t">Cluster_api.Docker.Image_id.t</a> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">pool</span>:string <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">src</span>:<span><span class="xref-unresolved">Current_git</span>.Commit_id.t list</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">options</span>:<a href="../../../ocluster-api/Cluster_api/Docker/Spec/index.html#type-options">Cluster_api.Docker.Spec.options</a> <span class="arrow">&#45;&gt;</span></span>
   <span><span>[ <span>`Contents of string</span> <span><span>| `Path</span> of string</span> ]</span> <span class="arrow">&#45;&gt;</span></span>
   <span>string <span class="xref-unresolved">Current</span>.Primitive.t</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-build_obuilder"><a href="#val-build_obuilder" class="anchor"></a><code><span><span class="keyword">val</span> build_obuilder : 
-  <span>?level:<span class="xref-unresolved">Current</span>.Level.t <span class="arrow">&#45;&gt;</span></span>
-  <span>?cache_hint:string <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?level</span>:<span class="xref-unresolved">Current</span>.Level.t <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?cache_hint</span>:string <span class="arrow">&#45;&gt;</span></span>
   <span><a href="../index.html#type-t">t</a> <span class="arrow">&#45;&gt;</span></span>
-  <span>pool:string <span class="arrow">&#45;&gt;</span></span>
-  <span>src:<span><span class="xref-unresolved">Current_git</span>.Commit_id.t list</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">pool</span>:string <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">src</span>:<span><span class="xref-unresolved">Current_git</span>.Commit_id.t list</span> <span class="arrow">&#45;&gt;</span></span>
   <span><a href="../../../ocluster-api/Cluster_api/Obuilder_job/Spec/index.html#type-t">Cluster_api.Obuilder_job.Spec.t</a> <span class="arrow">&#45;&gt;</span></span>
   <span>unit <span class="xref-unresolved">Current</span>.Primitive.t</span></span></code></div></div></div></body></html>
