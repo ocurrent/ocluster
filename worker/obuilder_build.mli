@@ -20,3 +20,7 @@ val build : t ->
 val healthcheck : t -> (unit, [> `Msg of string]) Lwt_result.t
 
 val cache_stats : t -> int * int
+
+val purge : t -> int Lwt.t
+
+val backend : t -> [`Native of Obuilder.Native_sandbox.config | `Docker of Obuilder.Docker_sandbox.config ]

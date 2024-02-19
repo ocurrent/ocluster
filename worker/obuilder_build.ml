@@ -21,6 +21,8 @@ type t = {
   prune_threshold : float option;
   prune_item_threshold : int64 option;  (* Threshold number of items to hold in obuilder store *)
   prune_limit : int option;             (* Number of items to prune from obuilder when threshold is reached *)
+  sandbox_config : [ `Native of Obuilder.Native_sandbox.config
+                   | `Docker of Obuilder.Docker_sandbox.config ]
 }
 
 let ( / ) = Filename.concat
@@ -65,6 +67,7 @@ let create ?prune_threshold ?prune_item_threshold ?prune_limit config =
       prune_item_threshold;
       prune_limit;
       cond = Lwt_condition.create ();
+      sandbox_config;
     }
 
 (* Prune [t] until free space rises above [prune_threshold]
@@ -143,3 +146,13 @@ let healthcheck t =
 let cache_stats t =
   let Builder ((module Builder), builder) = t.builder in
   Builder.cache_stats builder
+
+let purge t =
+  let Builder ((module Builder), builder) = t.builder in
+  let before = Unix.gettimeofday () +. prune_margin |> Unix.gmtime in
+  (* set a future time and a big number to ensure everything is deleted *)
+  Builder.prune builder ~before Int.max_int >>= fun n ->
+  Lwt.return n
+
+let backend t =
+  t.sandbox_config
