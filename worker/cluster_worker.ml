@@ -220,7 +220,7 @@ let check_docker_partition t =
         if max_df_size < gb then Error `Disk_space_low
         else Ok ()
 
-let rec maybe_prune t queue =
+let rec maybe_prune obuilder t queue =
   check_docker_partition t >>= function
   | Ok () -> Lwt.return_unit
   | Error `Disk_space_low ->
@@ -236,6 +236,13 @@ let rec maybe_prune t queue =
       (fun () ->
          Lwt_process.exec ("", [| "docker"; "system"; "prune"; "-af" |]) >>= function
          | Unix.WEXITED 0 ->
+           (match obuilder with
+           | None -> Lwt.return 0
+           | Some obuilder ->
+             match Obuilder_build.backend obuilder with
+             | `Native _ -> Lwt.return 0
+             | `Docker _ -> Obuilder_build.purge obuilder) >>= fun n ->
+           Log.info (fun f -> f "%i items prune from Obuilder" n);
            Lwt_process.exec ("", [| "docker"; "builder"; "prune"; "-af" |])
          | e -> Lwt.return e
       )
@@ -249,12 +256,12 @@ let rec maybe_prune t queue =
         | Error `Disk_space_low ->
           Log.warn (fun f -> f "Disk-space still low after pruning! Will retry in one hour.");
           Unix.sleep (60 * 60);
-          maybe_prune t queue
+          maybe_prune obuilder t queue
       end
     | _ ->
       Log.warn (fun f -> f "docker prune command failed! Will retry in one hour.");
       Unix.sleep (60 * 60);
-      maybe_prune t queue
+      maybe_prune obuilder t queue
 
 let healthcheck obuilder =
   let t0 = Unix.gettimeofday () in
@@ -306,7 +313,7 @@ let loop ~switch ?obuilder t queue =
         Log.info (fun f -> f "At capacity. Waiting for a build to finish before requesting more…");
         Lwt_condition.wait t.cond >>= loop
       ) else (
-        maybe_prune t queue >>= fun () ->
+        maybe_prune obuilder t queue >>= fun () ->
         check_health t ~last_healthcheck ~queue obuilder >>= fun () ->
         let outcome, set_outcome = Lwt.wait () in
         let log = Log_data.create () in

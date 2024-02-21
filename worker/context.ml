@@ -197,7 +197,7 @@ let build_context t ~log ~tmpdir descr =
         if include_git descr then (
           let cmd, is_success =
             if Sys.win32 then
-              ["robocopy"; clone / ".git"; tmpdir / ".git"; "/COPY:DATSO"; "/E"; "/R:0"; "/DCOPY:T"],
+              ["robocopy"; clone / ".git"; tmpdir / ".git"; "/COPY:DATSO"; "/E"; "/R:0"; "/DCOPY:T"; "/NDL"; "/NFL"],
               fun s -> s = 1
             else
               ["cp"; "-a"; clone / ".git"; tmpdir / ".git"],
