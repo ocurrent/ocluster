@@ -213,3 +213,5 @@ let build_obuilder ?level ?label ?cache_hint t ~pool ~src spec =
   let> spec = spec
   and> src = src in
   Raw.build_obuilder ?level ?cache_hint t ~pool ~src spec
+
+let connection { connection; _ } = connection

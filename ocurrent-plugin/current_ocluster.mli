@@ -80,6 +80,8 @@ val build_obuilder :
 (** [build_obuilder t ~pool ~src spec] builds [spec] in context [src] using pool [pool] within build cluster [t].
     Note: all commits in [src] must be in the same repository. *)
 
+val connection : t -> Connection.t
+
 module Raw : sig
   val build : 
     ?level:Current.Level.t ->
