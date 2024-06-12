@@ -4,49 +4,6 @@ open Capnp_rpc_lwt
 module Log_data = Log_data
 module Process = Process
 
-module Metrics = struct
-  open Prometheus
-
-  let namespace = "ocluster"
-  let subsystem = "worker"
-
-  let jobs_accepted =
-    let help = "Number of jobs accepted in total" in
-    Counter.v ~help ~namespace ~subsystem "jobs_accepted_total"
-
-  let job_time =
-    let help = "Time jobs ran for" in
-    Summary.v_label ~label_name:"result" ~help ~namespace ~subsystem "job_time_seconds"
-
-  let docker_push_time =
-    let help = "Time uploading to Docker Hub" in
-    Summary.v ~help ~namespace ~subsystem "docker_push_time_seconds"
-
-  let docker_prune_time =
-    let help = "Time spent pruning Docker cache" in
-    Summary.v ~help ~namespace ~subsystem "docker_prune_time_seconds"
-
-  let running_jobs =
-    let help = "Number of jobs currently running" in
-    Gauge.v ~help ~namespace ~subsystem "running_jobs"
-
-  let healthcheck_time =
-    let help = "Time to perform last healthcheck" in
-    Gauge.v ~help ~namespace ~subsystem "healthcheck_time_seconds"
-
-  let unhealthy =
-    let help = "Number of unhealthy workers" in
-    Gauge.v ~help ~namespace ~subsystem "unhealthy"
-
-  let cache_hits =
-    let help = "Number of OBuilder cache hits" in
-    Gauge.v ~help ~namespace ~subsystem "cache_hits"
-
-  let cache_misses =
-    let help = "Number of OBuilder cache misses" in
-    Gauge.v ~help ~namespace ~subsystem "cache_misses"
-end
-
 let buildkit_env =
   let orig = Unix.environment () |> Array.to_list in
   "DOCKER_BUILDKIT=1" :: orig |> Array.of_list
@@ -310,7 +267,7 @@ let loop ~switch ?obuilder t queue =
         check_health t ~last_healthcheck ~queue obuilder >>= fun () ->
         let outcome, set_outcome = Lwt.wait () in
         let log = Log_data.create () in
-        Log.info (fun f -> f "Requesting a new job…");
+        Log.info (fun f -> f "Requesting a new job… (%i running)" t.in_use);
         let switch = Lwt_switch.create () in
         let pop =
           Capability.with_ref (Cluster_api.Job.local ~switch ~outcome ~stream_log_data:(Log_data.stream log)) @@ fun job ->
@@ -318,7 +275,16 @@ let loop ~switch ?obuilder t queue =
         in
         t.cancel <- (fun () -> Lwt.cancel pop);
         pop >>= fun request ->
-        t.in_use <- t.in_use + 1;
+        let module R = Cluster_api.Raw.Reader.JobDescr in
+        let cache_hint = R.cache_hint_get request in
+        let weights = [
+          (Str.regexp {|.*tezos.*|}, 2);
+          (Str.regexp {|.*octez.*|}, 3);
+        ] in
+        let weight = List.fold_left (fun a (re, w) -> if Str.string_match re cache_hint 0 then w else a) 1 weights in
+        t.in_use <- t.in_use + weight;
+        Log.info (fun f -> f "Cache_hint %s" cache_hint);
+        Log.info (fun f -> f "Job weight %i" weight);
         Prometheus.Gauge.set Metrics.running_jobs (float_of_int t.in_use);
         Prometheus.Counter.inc_one Metrics.jobs_accepted;
         Lwt.async (fun () ->
@@ -333,6 +299,7 @@ let loop ~switch ?obuilder t queue =
                    (fun (outcome, metric_label) ->
                       let t1 = Unix.gettimeofday () in
                       Prometheus.Summary.observe (Metrics.job_time metric_label) (t1 -. t0);
+                      Log.info (fun f -> f "Build duration: %fs" (t1 -. t0));
                       Log_data.close log;
                       Lwt.wakeup set_outcome outcome;
                       Lwt.return_unit)
@@ -346,7 +313,7 @@ let loop ~switch ?obuilder t queue =
                       Lwt.return_unit)
               )
               (fun () ->
-                 t.in_use <- t.in_use - 1;
+                 t.in_use <- t.in_use - weight;
                  Prometheus.Gauge.set Metrics.running_jobs (float_of_int t.in_use);
                  let h, m = cache_stats obuilder in
                  Prometheus.Gauge.set Metrics.cache_hits (float_of_int h);
@@ -501,7 +468,7 @@ let self_update ~update t =
        Lwt_result.fail (`Msg (Printexc.to_string ex))
     )
 
-let run ?switch ?build ?(allow_push=[]) ~healthcheck_period ?prune_threshold ?docker_max_df_size ?obuilder_prune_threshold ?obuilder_prune_item_threshold ?obuilder_prune_limit ?obuilder ?(additional_metrics=[]) ~update ~capacity ~name ~state_dir registration_service =
+let run ?switch ?build ?(allow_push=[]) ?(healthcheck_period = 600.0) ?prune_threshold ?docker_max_df_size ?(obuilder_prune_threshold = 30.0) ?(obuilder_prune_limit = 100) ?obuilder ?(additional_metrics=[]) ~update ~capacity ~name ~state_dir registration_service =
   begin match prune_threshold, docker_max_df_size with
     | None, None -> Log.info (fun f -> f "Prune threshold not set and docker max df size is not. Will not check for low disk-space!")
     | None, Some size -> Log.info (fun f -> f "Pruning docker whenever the memory used exceeds %3.2fGB" size)
@@ -510,7 +477,7 @@ let run ?switch ?build ?(allow_push=[]) ~healthcheck_period ?prune_threshold ?do
   end;
   begin match obuilder with
     | None -> Lwt.return_none
-    | Some config -> Obuilder_build.create ?prune_threshold:obuilder_prune_threshold ?prune_item_threshold:obuilder_prune_item_threshold ?prune_limit:obuilder_prune_limit config >|= Option.some
+    | Some config -> Obuilder_build.create ~prune_threshold:obuilder_prune_threshold ~prune_limit:obuilder_prune_limit config >|= Option.some
   end >>= fun obuilder ->
   let build =
     match build with
