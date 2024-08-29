@@ -20,6 +20,7 @@
    fpath
    logs
    lwt.unix
+   lwt_retry
    ocluster-api
    prometheus-app
    obuilder

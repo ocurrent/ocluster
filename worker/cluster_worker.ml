@@ -70,9 +70,21 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; auth } =
     Lwt_mutex.with_lock docker_push_lock @@ fun () ->
     Lwt_io.with_temp_dir ~prefix:"build-worker-" ~suffix:"-docker" @@ fun config_dir ->
     let docker args = "docker" :: "--config" :: config_dir :: args in
+    let docker_tag () =
+      Process.check_call ~label:"docker-tag" ~switch ~log @@ docker ["tag"; "--"; hash; target]
+    in
+    let docker_push () =
+      let retry_attempts = 5 in
+      let push () =
+        Process.check_call ~label:"docker-push" ~switch ~log @@ docker ["push"; "--"; target] >|=
+        Result.map_error (function `Cancelled -> `Fatal `Cancelled | `Msg m -> `Retry (`Msg m))
+      in
+      Lwt_retry.(push |> on_error |> with_sleep |> n_times retry_attempts) >|=
+      Result.map_error (function `Retry err | `Fatal err -> err)
+    in
     let tag_and_push () =
-      Process.check_call ~label:"docker-tag" ~switch ~log @@ docker ["tag"; "--"; hash; target] >>!= fun () ->
-      Process.check_call ~label:"docker-push" ~switch ~log @@ docker ["push"; "--"; target] >>!= fun () ->
+      docker_tag () >>!= fun () ->
+      docker_push () >>!= fun () ->
       Lwt_process.pread_line ("", [| "docker"; "image"; "inspect"; "-f"; "{{ range index .RepoDigests }}{{ . }} {{ end }}"; "--"; target |]) >>= function
       | "" -> Lwt_result.fail (`Msg "Failed to read RepoDigests for newly-pushed image!")
       | ids ->
