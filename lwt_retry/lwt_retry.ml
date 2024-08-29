@@ -3,7 +3,7 @@ open Lwt.Syntax
 let default_sleep_duration n' =
   let base_sleep_time = 2.0 in
   let n = Int.to_float n' in
-  n *. base_sleep_time *. Float.pow 1.5 n
+  n *. base_sleep_time *. Float.pow 2.0 n
 
 type ('retry, 'fatal) error =
   [ `Retry of 'retry

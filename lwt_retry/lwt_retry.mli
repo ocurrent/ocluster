@@ -71,8 +71,8 @@ val with_sleep :
     added after computing each [n]th retryable attempt based on [duration n].
 
     @param duration the optional sleep duration. This defaults to an exponential
-    backoff computed as n * 2 * (1.5 ^ n), which gives the approximate sequence
-    0s -> 3s -> 9s -> 20.25 -> 40.5s -> 75.9s -> 136.7 -> ...
+    backoff computed as n * 2 * (2 ^ n), which gives the sequence
+    [ [0.; 4.; 16.; 48.; 128.; 320.; 768.; 1792.; ...] ].
 
     Examples
     {[
