@@ -509,5 +509,6 @@ let () =
         test_case "clients" clients;
       ];
       "plugin", Test_plugin.suite;
+      "lwt_retry", Test_lwt_retry.suite;
     ]
   end

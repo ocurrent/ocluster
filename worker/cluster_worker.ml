@@ -56,8 +56,13 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; auth } =
   let repo = Cluster_api.Docker.Image_id.repo target in
   let target = Cluster_api.Docker.Image_id.to_string target in
   let pp_auth = Fmt.option (Fmt.using fst (Fmt.fmt " as user %S")) in
-  Log.info (fun f -> f "Push %S to %S%a" hash target pp_auth auth);
-  Log_data.info log "Pushing %S to %S%a" hash target pp_auth auth;
+  let pp_retry_failure = Lwt_retry.pp_error
+      ~retry:(fun f _ -> Fmt.pf f "Push exhausted retries")
+      ~fatal:(fun f _ -> Fmt.pf f "Push was canceled")
+  in
+  let log_info msg = Log.info (fun f -> f "%s" msg); Log_data.info log "%s" msg
+  in
+  log_info @@ Fmt.str "Pushing %S to %S%a" hash target pp_auth auth;
   (* "docker push" rather stupidly requires us to tag the image locally with the same
      name that we're trying to push to before we can push. However, until we push we
      don't know whether the user has permission to access that repository. For example,
@@ -70,9 +75,30 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; auth } =
     Lwt_mutex.with_lock docker_push_lock @@ fun () ->
     Lwt_io.with_temp_dir ~prefix:"build-worker-" ~suffix:"-docker" @@ fun config_dir ->
     let docker args = "docker" :: "--config" :: config_dir :: args in
+    let docker_tag () =
+      Process.check_call ~label:"docker-tag" ~switch ~log @@ docker ["tag"; "--"; hash; target]
+    in
+    let docker_push () =
+      let retries = 5 in
+      let log_retryable_error (`Msg m) n = log_info @@
+        Fmt.str "Push attempt %d/%d failed with retryable error %S. Retrying in %.0f seconds..."
+          n (retries + 1) m (Lwt_retry.default_sleep_duration n);
+        (`Msg m)
+      in
+      let push () =
+        Process.check_call ~label:"docker-push" ~switch ~log @@ docker ["push"; "--"; target] >|=
+        Result.map_error (function `Cancelled -> `Fatal `Cancelled | `Msg m -> `Retry (`Msg m))
+      in
+      Lwt_retry.(on_error push |> map_retry log_retryable_error
+                 |> with_sleep |> n_times retries) >|=
+      Result.map_error begin fun ((`Retry err | `Fatal err) as result, n) ->
+        log_info @@ Fmt.str "%a after %d attempts." pp_retry_failure result n;
+        err
+      end
+    in
     let tag_and_push () =
-      Process.check_call ~label:"docker-tag" ~switch ~log @@ docker ["tag"; "--"; hash; target] >>!= fun () ->
-      Process.check_call ~label:"docker-push" ~switch ~log @@ docker ["push"; "--"; target] >>!= fun () ->
+      docker_tag () >>!= fun () ->
+      docker_push () >>!= fun () ->
       Lwt_process.pread_line ("", [| "docker"; "image"; "inspect"; "-f"; "{{ range index .RepoDigests }}{{ . }} {{ end }}"; "--"; target |]) >>= function
       | "" -> Lwt_result.fail (`Msg "Failed to read RepoDigests for newly-pushed image!")
       | ids ->

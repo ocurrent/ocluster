@@ -1,7 +1,7 @@
 (test
   (name test)
   (package ocluster)
-  (modules test custom mock_builder mock_network test_plugin)
+  (modules test custom mock_builder mock_network test_plugin test_lwt_retry)
   (libraries
     alcotest-lwt
     capnp-rpc-net
@@ -9,6 +9,7 @@
     cluster_scheduler
     cluster_worker
     current_ocluster
+    lwt_retry
     db
     fmt.tty
     logs.fmt
