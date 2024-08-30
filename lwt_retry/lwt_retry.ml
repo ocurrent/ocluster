@@ -23,38 +23,42 @@ let equal_error ~retry ~fatal a b =
   | `Fatal a', `Fatal b' -> fatal a' b'
   | _ -> false
 
-type ('ok, 'retry, 'fatal) attempt = ('ok, ('retry, 'fatal) error) result
-
-let is_retryable = function
-  | Error (`Retry _) -> true
-  | _ -> false
+type ('ok, 'retry, 'fatal) attempt = ('ok, ('retry, 'fatal) error * int) result
 
 let on_error
-    (f : unit -> ('ok, 'retry, 'fatal) attempt Lwt.t)
+    (f : unit -> ('ok, ('retry, 'fatal) error) result Lwt.t)
   : ('ok, 'retry, 'fatal) attempt Lwt_stream.t
   =
-  let stop = ref false in
-  let attempt () =
-    if !stop then
-      Lwt.return_none
-    else
-      let+ result = f () in
-      stop := not (is_retryable result);
-      Some result
-  in
-  Lwt_stream.from attempt
-
-let numbered attempts : (int * _) Lwt_stream.t =
   let i = ref 0 in
-  let indexes = Lwt_stream.from_direct (fun () -> let n = !i in incr i; Some n) in
-  Lwt_stream.combine indexes attempts
+  let stop = ref false in
+  Lwt_stream.from begin fun () ->
+    incr i;
+    let+ result = f () in
+    if !stop then None else
+      match result with
+      | Error (`Retry _ as retry) -> Some (Error (retry, !i))
+      | Error (`Fatal _ as fatal) -> stop := true; Some (Error (fatal, !i))
+      | Ok _ as ok -> stop := true; Some ok
+  end
 
-let with_sleep ?(duration=default_sleep_duration) attempts =
+let map_retry
+    (f : 'retry -> int -> 'a)
+    (attempts : (_, 'retry, _) attempt Lwt_stream.t)
+  : (_, 'a, _) attempt Lwt_stream.t =
   attempts
-  |> numbered
-  |> Lwt_stream.map_s (fun (attempt_number, attempt_result) ->
-      let+ () = Lwt_unix.sleep @@ duration attempt_number in
-      attempt_result)
+  |> Lwt_stream.map begin Result.map_error (function
+      | (`Retry r, n) -> `Retry (f r n), n
+      | (`Fatal _, _) as fatal -> fatal)
+  end
+
+let with_sleep ?(duration=default_sleep_duration) (attempts : _ attempt Lwt_stream.t) : _ attempt Lwt_stream.t =
+  attempts
+  |> Lwt_stream.map_s begin function
+    | Ok ok -> Lwt.return_ok ok
+    | Error (err, n) ->
+      let* () = Lwt_unix.sleep @@ duration n in
+      Lwt.return_error (err, n)
+  end
 
 let n_times n attempts =
   (* The first attempt is a try, and REtries start counting from n + 1 *)

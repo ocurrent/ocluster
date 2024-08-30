@@ -18,7 +18,7 @@ let attempt
       ~fatal:(Alcotest.equal fatal)
   in
   let error = Alcotest.testable pp eq in
-  Alcotest.result ok error
+  Alcotest.(result ok (pair error int))
 
 let attempt_u = Alcotest.(attempt unit unit unit)
 
@@ -60,7 +60,7 @@ let test_retries _switch () =
   in
 
   let msg = "expected 3 retry errors" in
-  let expected = List.init 3 (fun _ -> Error (`Retry ())) in
+  let expected = List.init 3 (fun i -> Error (`Retry (), i + 1)) in
   let+ actual = Lwt_stream.nget 3 strm in
   Alcotest.(check' (list attempt_u)) ~msg ~expected ~actual
 
@@ -82,7 +82,7 @@ let test_retries_before_fatal_error _switch () =
   Alcotest.(check' int) ~msg ~expected ~actual;
 
   let msg = "expected fatal error" in
-  let expected = Error (`Fatal ()) in
+  let expected = Error (`Fatal (), retries_before_fatal + 1) in
   let* actual = Lwt_stream.next strm in
   Alcotest.(check' attempt_u) ~msg ~expected ~actual;
 
@@ -119,7 +119,7 @@ let test_retries_before_success _switch () =
 let test_n_times_0_runs_once _switch () =
   let operation () = Lwt.return_error (`Retry ()) in
   let msg = "expected a retry error" in
-  let expected = Error (`Retry ()) in
+  let expected = Error (`Retry (), 1) in
   let+ actual = Retry.(operation |> on_error |> n_times 0) in
   Alcotest.(check' attempt_u) ~msg ~expected ~actual
 
@@ -133,15 +133,16 @@ let test_n_times_fatal _switch () =
       Lwt.return_error (`Fatal ())
   in
   let msg = "expected fatal error message" in
-  let expected = Error (`Fatal ()) in
+  let expected = Error (`Fatal (), 4) in
   let+ actual = Retry.(operation |> on_error |> n_times 5) in
   Alcotest.(check' attempt_u) ~msg ~expected ~actual
 
 let test_n_times_exhaustion _switch () =
+  let retries = 5 in
   let operation () = Lwt.return_error (`Retry ()) in
   let msg = "expected exhaustion error message" in
-  let expected = Error (`Retry ()) in
-  let+ actual = Retry.(operation |> on_error |> n_times 5) in
+  let expected = Error (`Retry (), retries + 1) in
+  let+ actual = Retry.(operation |> on_error |> n_times retries) in
   Alcotest.(check' attempt_u) ~msg ~expected ~actual
 
 let test_n_times_success _switch () =
