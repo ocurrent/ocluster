@@ -409,7 +409,8 @@ let default_build ?obuilder ~switch ~log ~src ~secrets = function
              | Ok path -> Lwt_result.return path
              | Error e -> Lwt_result.fail e
          end >>!= fun dockerpath ->
-         let { Cluster_api.Docker.Spec.build_args; squash; buildkit; include_git = _ } = options in
+         let { Cluster_api.Docker.Spec.build_args; nontriggering_build_args; squash; buildkit; include_git = _ } = options in
+         let build_args = build_args @ nontriggering_build_args in
          let args =
            List.concat_map (fun x -> ["--build-arg"; x]) build_args
            @ (if squash then ["--squash"] else [])
