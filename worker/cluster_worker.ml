@@ -81,7 +81,7 @@ let docker_push ~switch ~log t hash { Cluster_api.Docker.Spec.target; auth } =
     let docker_push () =
       let retries = 5 in
       let log_retryable_error (`Msg m) n = log_info @@
-        Fmt.str "Push attempt %d/%d failed with retryable error %S. Retrying in %f seconds..."
+        Fmt.str "Push attempt %d/%d failed with retryable error %S. Retrying in %.0f seconds..."
           n (retries + 1) m (Lwt_retry.default_sleep_duration n);
         (`Msg m)
       in
