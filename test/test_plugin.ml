@@ -200,7 +200,7 @@ let cancel_rate_limit () =
     (fun _ -> failwith "Should have failed!")
     (function
       | Lwt.Canceled -> Lwt.return_unit
-      | ex -> Lwt.fail ex)
+      | ex -> Lwt.reraise ex)
   >>= fun () ->
   (* Finish connecting to the scheduler. *)
   let sched =
@@ -221,7 +221,7 @@ let cancel_rate_limit () =
     (fun _ -> failwith "Should have failed!")
     (function
       | Lwt.Canceled -> Lwt.return_unit
-      | ex -> Lwt.fail ex)
+      | ex -> Lwt.reraise ex)
   >>= fun () ->
   Lwt.return_unit
 

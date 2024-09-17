@@ -553,7 +553,7 @@ let run ?switch ?build ?(allow_push=[]) ?(healthcheck_period = 600.0) ?prune_thr
               | _, Some switch when not (Lwt_switch.is_on switch) -> Lwt.return `Cancelled
               | Some problem, _ ->
                 Log.info (fun f -> f "Worker loop failed (probably because queue connection failed): %a" Fmt.exn ex);
-                Lwt.fail (Failure (Fmt.to_to_string Capnp_rpc.Exception.pp problem))    (* Will retry *)
+                Fmt.failwith "%a" Capnp_rpc.Exception.pp problem    (* Will retry *)
               | None, _ ->
                 Lwt.return (`Crash ex)
            )
@@ -566,6 +566,6 @@ let run ?switch ?build ?(allow_push=[]) ?(healthcheck_period = 600.0) ?prune_thr
   in
   reconnect () >>= function
   | `Cancelled -> Lwt.return_unit
-  | `Crash ex -> Lwt.fail ex
+  | `Crash ex -> Lwt.reraise ex
 
 module Obuilder_config = Obuilder_build.Config
