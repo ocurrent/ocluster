@@ -126,9 +126,8 @@ let submit ~job ~pool ~action ~cache_hint ?src ?secrets ~urgent t ~priority ~swi
             | Lwt.Canceled as ex ->
               if !stage = `Rate_limit then Prometheus.Gauge.dec_one Metrics.queue_rate_limit
               else Log.warn (fun f -> f "Cancelled at unexpected point!");
-              Lwt.fail ex
-            | ex ->
-              Lwt.fail ex
+              Lwt.reraise ex
+            | ex -> Lwt.reraise ex
           )
       in
       limiter_thread := Some use_thread;
@@ -139,7 +138,7 @@ let submit ~job ~pool ~action ~cache_hint ?src ?secrets ~urgent t ~priority ~swi
         Lwt.pause () >>= fun () ->
         if Capability.problem sched = None then (
           (* The job failed but we're still connected to the scheduler. Report the error. *)
-          Lwt.fail_with (Fmt.str "%a" Capnp_rpc.Exception.pp err)
+          Fmt.failwith "%a" Capnp_rpc.Exception.pp err
         ) else (
           limiter_thread := None;
           begin match !stage with
