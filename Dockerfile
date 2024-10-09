@@ -1,7 +1,8 @@
-FROM ocaml/opam:debian-12-ocaml-4.14@sha256:650f6b9780c41f4ab594930957aa25012c60114d97638686678eb6979aa7df87 AS build
+# syntax=docker/dockerfile:1
+FROM ocaml/opam:debian-12-ocaml-4.14@sha256:be38063c43f00b0627de62144f24dc8c9929504f0db4774343d7bffc62777073 AS build
+RUN sudo ln -f /usr/bin/opam-2.2 /usr/bin/opam && opam init --reinit -ni
 RUN sudo apt-get update && sudo apt-get install libev-dev capnproto libcapnp-dev m4 pkg-config libsqlite3-dev libgmp-dev -y --no-install-recommends
-RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit -ni
-RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 76d09264e920a27527de605cc64ef1d28ec353cd && opam update
+RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 1b4da5019e5ea60af76c94aacc672a7e9659a832 && opam update
 COPY --chown=opam ocluster-api.opam ocluster-worker.opam ocluster.opam /src/
 COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/
