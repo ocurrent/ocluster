@@ -1,7 +1,8 @@
-FROM ocaml/opam:alpine-3.17-ocaml-4.14@sha256:df87c00eb4b212b8b42e3cbf37b7729507bb398b4bf19c9df0e2d84d1c41e46d AS build
+# syntax=docker/dockerfile:1
+FROM ocaml/opam:alpine-3.20-ocaml-4.14@sha256:1946904456dca358d7031ac517900714ce71981defc577f6dad16bd1a5be1108 AS build
+RUN sudo ln -f /usr/bin/opam-2.2 /usr/bin/opam && opam init --reinit -ni
 RUN sudo apk update && sudo apk add libev capnproto m4 sqlite libgmpxx
-RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit -ni
-RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 47a1176c71e6b07f26b724409a88340f8bac3a42 && opam update
+RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 1b4da5019e5ea60af76c94aacc672a7e9659a832 && opam update
 COPY --chown=opam ocluster-api.opam ocluster-worker.opam ocluster.opam /src/
 COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/
@@ -11,7 +12,7 @@ ADD --chown=opam . .
 RUN opam exec -- dune subst
 RUN opam exec -- dune build ./_build/install/default/bin/ocluster-worker
 
-FROM alpine:3.17
+FROM alpine:3.20
 RUN apk update && apk add docker libev curl gnupg git sqlite
 WORKDIR /var/lib/ocluster-worker
 ENTRYPOINT ["/usr/local/bin/ocluster-worker"]
