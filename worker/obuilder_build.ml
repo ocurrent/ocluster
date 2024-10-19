@@ -6,6 +6,7 @@ module Config = struct
   type t = {
     store : Obuilder.Store_spec.store Lwt.t;
     sandbox_config : [ `Native of Obuilder.Native_sandbox.config
+                     | `Qemu of Obuilder.Qemu_sandbox.config
                      | `Docker of Obuilder.Docker_sandbox.config ]
   }
 
@@ -39,6 +40,11 @@ let create ?(prune_threshold = 30.0) ?(prune_limit = 100) config =
   | `Native conf ->
      let module Builder = Obuilder.Builder (Store) (Obuilder.Native_sandbox) (Fetcher) in
      Obuilder.Native_sandbox.create ~state_dir:(Store.state_dir store / "sandbox") conf >|= fun sandbox ->
+     let builder = Builder.v ~store ~sandbox in
+     Builder ((module Builder), builder)
+  | `Qemu conf ->
+     let module Builder = Obuilder.Builder (Store) (Obuilder.Qemu_sandbox) (Obuilder.Qemu_snapshot) in
+     Obuilder.Qemu_sandbox.create conf >|= fun sandbox ->
      let builder = Builder.v ~store ~sandbox in
      Builder ((module Builder), builder)
   | `Docker conf ->
