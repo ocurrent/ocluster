@@ -91,7 +91,7 @@ let build t ~switch ~log ~spec ~src_dir ~secrets =
   else Lwt.return ()) >>= fun () ->
   let log = log_to log in
   let Builder ((module Builder), builder) = t.builder in
-  let shell = Builder.shell in
+  let shell = Builder.shell builder in
   let context = Obuilder.Context.v ~switch ~log ~src_dir ?shell ~secrets () in
   Builder.build builder context spec
 
