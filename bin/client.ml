@@ -196,9 +196,17 @@ let build_args =
   Arg.value @@
   Arg.(opt_all string) [] @@
   Arg.info
-    ~doc:"Docker build argument."
+    ~doc:"Docker build argument; triggers OCurrent rebuild on change."
     ~docv:"ARG"
     ["build-arg"]
+
+let nontriggering_build_args =
+  Arg.value @@
+  Arg.(opt_all string) [] @@
+  Arg.info
+    ~doc:"Docker build argument; doesn't trigger OCurrent rebuild on change."
+    ~docv:"ARG"
+    ["nontriggering-build-arg"]
 
 let secrets =
   (Arg.value @@
@@ -246,10 +254,10 @@ let push_to =
   Term.(const make $ push_to $ push_user $ push_password_file)
 
 let build_options =
-  let make build_args squash buildkit include_git =
-    { Cluster_api.Docker.Spec.build_args; squash; buildkit; include_git }
+  let make build_args nontriggering_build_args squash buildkit include_git =
+    { Cluster_api.Docker.Spec.build_args; nontriggering_build_args; squash; buildkit; include_git }
   in
-  Term.(const make $ build_args $ squash $ buildkit $ include_git)
+  Term.(const make $ build_args $ nontriggering_build_args $ squash $ buildkit $ include_git)
 
 let submit_options_common =
   let make submission_path pool repository commits cache_hint urgent secrets =

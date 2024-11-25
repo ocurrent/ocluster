@@ -49,7 +49,15 @@ module Op = struct
     let digest t = Yojson.Safe.to_string (to_yojson t)
   end
 
-  module Value = Current.String
+  module Value = struct
+    type t = {
+      nontriggering_build_args : string list;
+    } [@@deriving to_yojson]
+
+    let digest t = Yojson.Safe.to_string (to_yojson t)
+  end
+
+  module Outcome = Current.String
 
   (* Convert a list of commits in the same repository to a [(repo, hashes)] pair.
      Raises an exception if there are commits from different repositories. *)
@@ -80,7 +88,7 @@ module Op = struct
         | Some line -> line
         | None -> ""
 
-  let build t job { Key.action; src; pool } =
+  let run t job { Key.action; src; pool } { Value.nontriggering_build_args } =
     let action =
       match action with
       | `Docker { dockerfile; options; push_target } ->
@@ -91,9 +99,13 @@ module Op = struct
             )
         in
         begin match dockerfile with
-          | `Contents content -> Current.Job.write job (Fmt.str "@.Dockerfile:@.@.\o033[34m%s\o033[0m@.@." content)
+          | `Contents content ->
+            Current.Job.write job (Fmt.str "@.Dockerfile:@.@.\o033[34m%s\o033[0m@.@." content)
           | `Path _ -> ()
         end;
+        let options =
+          { options with nontriggering_build_args }
+        in
         Cluster_api.Submission.docker_build ?push_to ~options dockerfile
       | `Obuilder { spec = `Contents spec } ->
         Current.Job.write job (Fmt.str "@.OBuilder spec:@.@.\o033[34m%s\o033[0m@.@." spec);
@@ -129,7 +141,7 @@ module Op = struct
     Capability.with_ref build_job @@ fun build_job ->
     Connection.run_job ~job build_job
 
-  let pp f {Key.action; src; pool } =
+  let pp f ({Key.action; src; pool }, _) =
     match action with
     | `Docker { dockerfile = `Path path; _ } ->
       Fmt.pf f "@[<v2>Build %s using %s in@,%a@]"
@@ -141,9 +153,10 @@ module Op = struct
         (Fmt.Dump.list Git.Commit_id.pp) src
 
   let auto_cancel = true
+  let latched = true
 end
 
-module Build = Current_cache.Make(Op)
+module Build = Current_cache.Generic(Op)
 
 open Current.Syntax
 
@@ -167,10 +180,18 @@ module Raw = struct
     | Some _ -> { t with level }
     | None -> t
 
+  let split_triggering_build_args options =
+    let nontriggering_build_args = options.Cluster_api.Docker.Spec.nontriggering_build_args in
+    let options = { options with nontriggering_build_args = [] } in
+    (options, nontriggering_build_args)
+
   let build_and_push ?level ?cache_hint t ~push_target ~pool ~src ~options dockerfile =
     let t = with_hint ~cache_hint t in
     let t = with_level ~level t in
-    Build.get t { Op.Key.action = `Docker { dockerfile; options; push_target = Some push_target }; src; pool }
+    let options, nontriggering_build_args = split_triggering_build_args options in
+    Build.run t
+      { Op.Key.action = `Docker { dockerfile; options; push_target = Some push_target }; src; pool }
+      { Op.Value.nontriggering_build_args }
     |> Current.Primitive.map_result @@ function
     | Ok "" -> Error (`Msg "No output image (push auth not configured)")
     | Ok x -> Ok x
@@ -179,7 +200,10 @@ module Raw = struct
   let build ?level ?cache_hint t ~pool ~src ~options dockerfile =
     let t = with_hint ~cache_hint t in
     let t = with_level ~level t in
-    Build.get t { Op.Key.action = `Docker {dockerfile; options; push_target = None}; src; pool }
+    let options, nontriggering_build_args = split_triggering_build_args options in
+    Build.run t
+      { Op.Key.action = `Docker {dockerfile; options; push_target = None}; src; pool }
+      { Op.Value.nontriggering_build_args }
     |> Current.Primitive.map_result (Result.map (function
         | "" -> ()
         | x -> Fmt.failwith "BUG: got a RepoID (%S) but we didn't ask to push!" x
@@ -188,7 +212,9 @@ module Raw = struct
   let build_obuilder ?level ?cache_hint t ~pool ~src spec =
     let t = with_hint ~cache_hint t in
     let t = with_level ~level t in
-    Build.get t { Op.Key.action = `Obuilder spec; src; pool }
+    Build.run t
+      { Op.Key.action = `Obuilder spec; src; pool }
+      { Op.Value.nontriggering_build_args = [] }
     |> Current.Primitive.map_result (Result.map (fun (_ : string) -> ()))
 end
 
