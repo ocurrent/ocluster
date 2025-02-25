@@ -1,4 +1,4 @@
-(lang dune 3.7)
+(lang dune 3.17)
 (name ocluster)
 (formatting disabled)
 (generate_opam_files true)
@@ -22,10 +22,10 @@
  (synopsis "Cap'n Proto API for OCluster")
  (description "OCaml bindings for the OCluster Cap'n Proto API.")
  (depends
-  (ocaml (>= 4.14.1))
+  (ocaml (>= 4.14))
   (capnp-rpc-lwt (>= 1.2.3))
   fmt
-  (lwt (>= 5.6.1))
+  (lwt (>= 5.9.0))
   ppx_deriving
   ppx_deriving_yojson))
 
@@ -35,14 +35,14 @@
  (description "OCluster library for defining workers")
  (depends
   (ocluster-api (= :version))
-  (ocaml (>= 4.14.1))
+  (ocaml (>= 4.14))
   (capnp-rpc-lwt (>= 1.2.3))
   (cohttp-lwt-unix (>= 4.0))
   (digestif (>= 0.8))
   (extunix (>= 0.4.1))
   fpath
   logs
-  (lwt (>= 5.6.1))
+  (lwt (>= 5.9.0))
   (obuilder (>= 0.5.1))
   (prometheus-app (>= 1.2))))
 
@@ -53,18 +53,18 @@
  (depends
   (ocluster-api (= :version))
   (ocluster-worker (= :version))
-  (ocaml (>= 4.14.1))
+  (ocaml (>= 4.14))
   (capnp-rpc-lwt (>= 1.2.3))
   (capnp-rpc-net (>= 1.2.3))
   (capnp-rpc-unix (>= 1.2.3))
-  (cmdliner (>= 1.2.0))
+  (cmdliner (>= 1.3.0))
   (conf-libev (<> :os "win32"))
   (digestif (>= 0.8))
   dune-build-info
   fmt
   fpath
   logs
-  (lwt (>= 5.6.1))
+  (lwt (>= 5.9.0))
   lwt-dllist
   (mirage-crypto (>= 0.8.5))
   (obuilder (>= 0.5.1))
@@ -88,14 +88,14 @@
   "Creates a stage in an OCurrent pipeline for submitting jobs to OCluster.")
  (depends
   (ocluster-api (= :version))
-  (ocaml (>= 4.14.1))
+  (ocaml (>= 4.14))
   (capnp-rpc-unix (>= 1.2.3))
   (current (>= 0.6.4))
   (current_git (>= 0.6.4))
   duration
   fmt
   logs
-  (lwt (>= 5.6.1))
+  (lwt (>= 5.9.0))
   ppx_deriving
   ppx_deriving_yojson
   (prometheus (>= 1.2))

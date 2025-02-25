@@ -1,19 +1,36 @@
-FROM ocaml/opam:alpine-3.17-ocaml-4.14@sha256:df87c00eb4b212b8b42e3cbf37b7729507bb398b4bf19c9df0e2d84d1c41e46d AS build
-RUN sudo apk update && sudo apk add libev capnproto m4 sqlite libgmpxx
-RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit -ni
-RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 47a1176c71e6b07f26b724409a88340f8bac3a42 && opam update
-COPY --chown=opam ocluster-api.opam ocluster-worker.opam ocluster.opam /src/
-COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
+# syntax=docker/dockerfile:1
+FROM ocaml/opam:alpine-3.21-ocaml-4.14@sha356:fa88fe4bd0452aa7ef1b57e66f4bf750518f4bcbb04dd97e2551f56b97c53ce3 AS build
+RUN sudo ln -sf /usr/bin/opam-2.3 /usr/bin/opam && opam init --reinit -ni
+RUN --mount=type=cache,target=/var/cache/apk,sharing=locked \
+    sudo ln -s /var/cache/apk /etc/apk/cache && \
+    sudo apk -U upgrade && sudo apk add \
+    libev \
+    capnproto \
+    m4 \
+    sqlite \
+    libgmpxx
+RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 94514fa0d0e38616b994c0cd54c1623fd40eb357 && opam update
+COPY --chown=opam --link ocluster-api.opam ocluster-worker.opam ocluster.opam /src/
+COPY --chown=opam --link obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/
 WORKDIR /src
-RUN opam install -y --deps-only .
+RUN --mount=type=cache,target=/home/opam/.opam/download-cache,sharing=locked,uid=1000,gid=1000 \
+    opam install -y --deps-only .
 ADD --chown=opam . .
 RUN opam exec -- dune subst
 RUN opam exec -- dune build ./_build/install/default/bin/ocluster-worker
 
-FROM alpine:3.17
-RUN apk update && apk add docker libev curl gnupg git sqlite
+FROM alpine:3.21
+RUN --mount=type=cache,target=/var/cache/apk,sharing=locked \
+    ln -s /var/cache/apk /etc/apk/cache && \
+    apk -U upgrade && apk add \
+    docker \
+    libev \
+    curl \
+    gnupg \
+    git \
+    sqlite
 WORKDIR /var/lib/ocluster-worker
 ENTRYPOINT ["/usr/local/bin/ocluster-worker"]
 ENV PROGRESS_NO_TRUNC=1
-COPY --from=build /src/_build/install/default/bin/ocluster-worker /usr/local/bin/
+COPY --from=build --link /src/_build/install/default/bin/ocluster-worker /usr/local/bin/
