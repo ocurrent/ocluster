@@ -14,7 +14,7 @@ let or_die = function
 
 let check_exit_status = function
   | Unix.WEXITED 0 -> ()
-  | Unix.WEXITED x -> Fmt.failwith "Sub-process failed with exit code %d" x
+  | Unix.WEXITED x -> Fmt.failwith "Sub-process failed with exit code %a" Logging.pp_exit_status x
   | Unix.WSIGNALED x -> Fmt.failwith "Sub-process failed with signal %a" Fmt.Dump.signal x
   | Unix.WSTOPPED x -> Fmt.failwith "Sub-process stopped with signal %a" Fmt.Dump.signal x
 
