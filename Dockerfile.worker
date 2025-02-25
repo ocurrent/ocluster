@@ -1,19 +1,42 @@
-FROM ocaml/opam:ubuntu-22.04-ocaml-4.14@sha256:41ce765f59ecde9d8525ec58e0da7cd1317f3798d2c4951186aeef2ce804fad5 AS build
-RUN sudo apt-get update && sudo apt-get install libev-dev capnproto libcapnp-dev m4 pkg-config libsqlite3-dev libgmp-dev -y --no-install-recommends
-RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit -ni
-RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 47a1176c71e6b07f26b724409a88340f8bac3a42 && opam update
-COPY --chown=opam ocluster-api.opam ocluster-worker.opam ocluster.opam /src/
-COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
+# syntax=docker/dockerfile:1
+FROM ocaml/opam:ubuntu-24.04-ocaml-4.14@sha256:2d1cbef1dc7c5573385f4ee837af6875deae9d7af5aea10565a130fa1ec7ec65 AS build
+RUN sudo ln -sf /usr/bin/opam-2.3 /usr/bin/opam && opam init --reinit -ni
+RUN sudo rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/keep-cache
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    sudo apt update && sudo apt-get --no-install-recommends install -y \
+    capnproto \
+    libcapnp-dev \
+    libev-dev \
+    libgmp-dev \
+    libsqlite3-dev \
+    m4 \
+    pkg-config
+RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 94514fa0d0e38616b994c0cd54c1623fd40eb357 && opam update
+COPY --chown=opam --link ocluster-api.opam ocluster-worker.opam ocluster.opam /src/
+COPY --chown=opam --link obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/
 WORKDIR /src
-RUN opam install -y --deps-only .
+RUN --mount=type=cache,target=/home/opam/.opam/download-cache,sharing=locked,uid=1000,gid=1000 \
+    opam install -y --deps-only .
 ADD --chown=opam . .
 RUN opam exec -- dune subst
 RUN opam exec -- dune build ./_build/install/default/bin/ocluster-worker
 
-FROM ubuntu:jammy-20221130
-RUN apt-get update && apt-get install docker.io libev4 curl gnupg2 git libsqlite3-dev ca-certificates netbase -y --no-install-recommends
+FROM ubuntu:24.04
+RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt update && apt-get --no-install-recommends install -y \
+    ca-certificates \
+    curl \
+    docker.io \
+    git \
+    gnupg2 \
+    libev4 \
+    libsqlite3-dev \
+    netbase
 WORKDIR /var/lib/ocluster-worker
 ENTRYPOINT ["/usr/local/bin/ocluster-worker"]
 ENV PROGRESS_NO_TRUNC=1
-COPY --from=build /src/_build/install/default/bin/ocluster-worker /usr/local/bin/
+COPY --from=build --link /src/_build/install/default/bin/ocluster-worker /usr/local/bin/
