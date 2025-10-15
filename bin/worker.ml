@@ -185,11 +185,12 @@ module Obuilder_config = struct
     Term.(const Obuilder.Store_spec.to_store $ v)
 
   let v =
-    let make native_conf docker_conf = function
+    let make native_conf docker_conf qemu_conf = function
       | `Native, store -> Some (Cluster_worker.Obuilder_config.v (`Native native_conf) store)
+      | `Qemu, store -> Some (Cluster_worker.Obuilder_config.v (`Qemu qemu_conf) store)
       | `Docker, store -> Some (Cluster_worker.Obuilder_config.v (`Docker docker_conf) store)
     in
-    Term.(const make $ Obuilder.Native_sandbox.cmdliner $ Obuilder.Docker_sandbox.cmdliner $ cmdliner)
+    Term.(const make $ Obuilder.Native_sandbox.cmdliner $ Obuilder.Docker_sandbox.cmdliner $ Obuilder.Qemu_sandbox.cmdliner $ cmdliner)
 end
 
 let worker_opts_t =

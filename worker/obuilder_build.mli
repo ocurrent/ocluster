@@ -4,6 +4,7 @@ module Config : sig
   type t
 
   val v : [ `Native of Obuilder.Native_sandbox.config
+          | `Qemu of Obuilder.Qemu_sandbox.config
           | `Docker of Obuilder.Docker_sandbox.config ]
           -> Obuilder.Store_spec.store Lwt.t -> t
 end
