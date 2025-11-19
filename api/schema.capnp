@@ -5,11 +5,11 @@ struct DockerBuild {
     contents   @0 :Text;
     # The contents of the Dockerfile to build.
 
-    path       @5 :Text;
+    path       @1 :Text;
     # The path of the Dockerfile within the context.
   }
 
-  pushTarget   @1 :Text;
+  pushTarget   @2 :Text;
   # If set, the builder will "docker push" to this target on success.
   # The format is "repo:tag". The tag is not optional.
   # You'll probably want to provide pushUser and pushPassword too when using this.
@@ -18,21 +18,23 @@ struct DockerBuild {
   # RepoId hash to tag it in the final repository yourself.
   # Example value: "myorg/staging:job-123"
 
-  pushUser     @2 :Text;
-  pushPassword @3 :Text;
+  pushUser     @3 :Text;
+  pushPassword @4 :Text;
 
-  buildArgs    @4 :List(Text);
+  buildArgs    @5 :List(Text);
+  nontriggeringBuildArgs    @6 :List(Text);
   # Options to pass to `docker build` using `--build-arg`.
+  # buildArgs trigger OCurrent rebuilds on changing, nontriggeringBuildArgs do not.
 
-  squash       @6 :Bool;
+  squash       @7 :Bool;
   # Squash the image layers together using `--squash`.
 
-  buildkit     @7 :Bool;
+  buildkit     @8 :Bool;
   # Use BuildKit for the build.
   # Note: buildkit builds shared caches, so clients using such builds must all
   # trust each other not to poison the caches.
 
-  includeGit   @8 :Bool;
+  includeGit   @9 :Bool;
   # If set, include the .git directory in the build context.
 }
 
