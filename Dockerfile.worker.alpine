@@ -1,7 +1,7 @@
 FROM ocaml/opam:alpine-ocaml-4.14 AS build
 RUN sudo apk update && sudo apk add libev capnproto m4 sqlite libgmpxx
 RUN sudo ln -f /usr/bin/opam-2.4 /usr/bin/opam && opam init --reinit -ni
-RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 5d3f0d1d655199e596a1e785e69fae8fad78cad3 && opam update
+RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 4c9d80b7312698c8f185350873cbec03fdf0471a && opam update
 COPY --chown=opam ocluster-api.opam ocluster-worker.opam ocluster.opam /src/
 COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/
