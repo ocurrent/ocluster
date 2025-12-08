@@ -6,6 +6,9 @@ COPY --chown=opam ocluster-api.opam ocluster-worker.opam ocluster.opam /src/
 COPY --chown=opam obuilder/obuilder.opam obuilder/obuilder-spec.opam /src/obuilder/
 RUN opam pin -yn /src/obuilder/
 WORKDIR /src
+RUN echo '(lang dune 3.0)' | \
+    tee obuilder/dune-project | \
+    tee ./dune-project
 RUN opam install -y --deps-only .
 ADD --chown=opam . .
 RUN opam exec -- dune subst
