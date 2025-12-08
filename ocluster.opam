@@ -11,7 +11,7 @@ Clients say which pool should handle their requests.
 At the moment, two build types are provided: building a Dockerfile, or building an OBuilder spec.
 In either case, the build may done in the context of some Git commit.
 The scheduler tries to schedule similar builds on the same machine, to benefit from caching."""
-maintainer: ["Tim McGilchrist <timmcgil@gmail.com>"]
+maintainer: ["Mark Elvers <mark.elvers@tunbury.org>"]
 authors: [
   "Antonin Décimo <antonin@tarides.com>"
   "David Allsopp <david.allsopp@metastack.com>"
@@ -27,7 +27,7 @@ homepage: "https://github.com/ocurrent/ocluster"
 doc: "https://ocurrent.github.io/ocluster/"
 bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [
-  "dune" {>= "3.7"}
+  "dune" {>= "3.20"}
   "ocluster-api" {= version}
   "ocluster-worker" {= version}
   "ocaml" {>= "4.14.1"}
@@ -74,3 +74,4 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/ocurrent/ocluster.git"
+x-maintenance-intent: ["(latest)"]

@@ -1,7 +1,8 @@
-(lang dune 3.7)
+(lang dune 3.20)
 (name ocluster)
 (formatting disabled)
 (generate_opam_files true)
+(maintenance_intent "(latest)")
 
 (source (github ocurrent/ocluster))
 (documentation "https://ocurrent.github.io/ocluster/")
@@ -14,7 +15,7 @@
  "Patrick Ferris <patrick@sirref.org>"
  "Thomas Leonard <talex5@gmail.com>"
  "Tim McGilchrist <timmcgil@gmail.com>")
-(maintainers "Tim McGilchrist <timmcgil@gmail.com>")
+(maintainers "Mark Elvers <mark.elvers@tunbury.org>")
 (license "Apache-2.0")
 
 (package
