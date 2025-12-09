@@ -19,7 +19,7 @@ homepage: "https://github.com/ocurrent/ocluster"
 doc: "https://ocurrent.github.io/ocluster/"
 bug-reports: "https://github.com/ocurrent/ocluster/issues"
 depends: [
-  "dune" {>= "3.20"}
+  "dune" {>= "3.7"}
   "ocluster-api" {= version}
   "ocaml" {>= "4.14.1"}
   "capnp-rpc-unix" {>= "1.2.3"}
@@ -51,4 +51,5 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/ocurrent/ocluster.git"
+available: arch != "x86_32"
 x-maintenance-intent: ["(latest)"]
