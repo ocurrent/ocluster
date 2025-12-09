@@ -1,8 +1,7 @@
-(lang dune 3.20)
+(lang dune 3.7)
 (name ocluster)
 (formatting disabled)
 (generate_opam_files true)
-(maintenance_intent "(latest)")
 
 (source (github ocurrent/ocluster))
 (documentation "https://ocurrent.github.io/ocluster/")
