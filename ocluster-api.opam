@@ -2,7 +2,7 @@
 opam-version: "2.0"
 synopsis: "Cap'n Proto API for OCluster"
 description: "OCaml bindings for the OCluster Cap'n Proto API."
-maintainer: ["Tim McGilchrist <timmcgil@gmail.com>"]
+maintainer: ["Mark Elvers <mark.elvers@tunbury.org>"]
 authors: [
   "Antonin Décimo <antonin@tarides.com>"
   "David Allsopp <david.allsopp@metastack.com>"
@@ -42,3 +42,5 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/ocurrent/ocluster.git"
+available: arch != "x86_32"
+x-maintenance-intent: ["(latest)"]

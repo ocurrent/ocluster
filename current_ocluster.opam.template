@@ -1,0 +1,2 @@
+available: arch != "x86_32"
+x-maintenance-intent: ["(latest)"]
