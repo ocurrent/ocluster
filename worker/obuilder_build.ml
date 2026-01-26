@@ -7,7 +7,8 @@ module Config = struct
     store : Obuilder.Store_spec.store Lwt.t;
     sandbox_config : [ `Native of Obuilder.Native_sandbox.config
                      | `Qemu of Obuilder.Qemu_sandbox.config
-                     | `Docker of Obuilder.Docker_sandbox.config ]
+                     | `Docker of Obuilder.Docker_sandbox.config
+                     | `Hcs of Obuilder.Hcs_sandbox.config ]
   }
 
   let v sandbox_config store = { store; sandbox_config }
@@ -52,6 +53,11 @@ let create ?(prune_threshold = 30.0) ?(prune_limit = 100) config =
      Obuilder.Docker_sandbox.create conf >|= fun sandbox ->
      let builder = Builder.v ~store ~sandbox in
      Builder ((module Builder), builder)
+  | `Hcs conf ->
+     let module Builder = Obuilder.Builder (Store) (Obuilder.Hcs_sandbox) (Obuilder.Hcs_fetch) in
+     Obuilder.Hcs_sandbox.create ~state_dir:(Store.state_dir store / "sandbox") conf >|= fun sandbox ->
+     let builder = Builder.v ~store ~sandbox in
+     Builder ((module Builder), builder)
   end
   >>= fun (Builder ((module Builder), builder)) ->
   Log.info (fun f -> f "Performing OBuilder self-test…");
@@ -92,7 +98,7 @@ let build t ~switch ~log ~spec ~src_dir ~secrets =
   let log = log_to log in
   let Builder ((module Builder), builder) = t.builder in
   let shell = Builder.shell builder in
-  let context = Obuilder.Context.v ~switch ~log ~src_dir ?shell ~secrets () in
+  let context = Obuilder.Context.v ~switch ~log ~src_dir ~shell ~secrets () in
   Builder.build builder context spec
 
 let healthcheck t =
