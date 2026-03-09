@@ -21,7 +21,7 @@ depends: [
   "dune" {>= "3.7"}
   "ocluster-api" {= version}
   "ocaml" {>= "4.14.1"}
-  "capnp-rpc-lwt" {>= "1.2.3"}
+  "capnp-rpc-lwt" {>= "1.2.3" & < "2.0"}
   "cohttp-lwt-unix" {>= "4.0"}
   "digestif" {>= "0.8"}
   "extunix" {>= "0.4.1"}
