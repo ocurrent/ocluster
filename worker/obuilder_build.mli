@@ -5,7 +5,8 @@ module Config : sig
 
   val v : [ `Native of Obuilder.Native_sandbox.config
           | `Qemu of Obuilder.Qemu_sandbox.config
-          | `Docker of Obuilder.Docker_sandbox.config ]
+          | `Docker of Obuilder.Docker_sandbox.config
+          | `Hcs of Obuilder.Hcs_sandbox.config ]
           -> Obuilder.Store_spec.store Lwt.t -> t
 end
 
