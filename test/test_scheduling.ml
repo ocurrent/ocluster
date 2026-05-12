@@ -867,12 +867,12 @@ let%expect_test "persist_pause" =
   Pool.release w1;
   Lwt.return_unit
 
-let pp_forget =
+let pp_forget f x =
   let pp_forget_error f = function
     | `Still_connected -> Fmt.string f "still connected"
     | `Unknown_worker -> Fmt.string f "unknown worker"
   in
-  Fmt.(result ~ok:(const string "ok")) ~error:pp_forget_error
+  Fmt.(result ~ok:(const string "ok")) ~error:pp_forget_error f x
 
 (* Forgetting workers. *)
 let%expect_test "forget" =
