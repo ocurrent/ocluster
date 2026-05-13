@@ -43,7 +43,7 @@
   fpath
   logs
   (lwt (>= 5.7.0))
-  (obuilder (>= 0.6.0))
+  (obuilder (>= 0.7.0))
   (prometheus-app (>= 1.2))))
 
 (package
@@ -67,7 +67,7 @@
   (lwt (>= 5.7.0))
   lwt-dllist
   (mirage-crypto (>= 0.8.5))
-  (obuilder (>= 0.6.0))
+  (obuilder (>= 0.7.0))
   (ppx_expect (>= v0.14.1))
   ppx_sexp_conv
   prometheus
