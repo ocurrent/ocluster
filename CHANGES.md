@@ -1,3 +1,17 @@
+### v0.4.0 (2026-05-13)
+
+- Fix test compilation in release mode (@avsm #262, reviewed by @mtelvers)
+- Update Dockerfile.worker and Dockerfile.worker.alpine base images (@mtelvers #261 #260)
+- Constrain capnp-rpc-* < 2.0 (@mtelvers #259)
+- Add HCS backend support for Windows containers (@mtelvers #258)
+- Add x-maintenance-intent to opam metadata (@mtelvers #257)
+- Add QEMU backend (@mtelvers #253, reviewed by @shonfeder)
+- Improve Lwt exception handling (@MisterDA #250, reviewed by @shonfeder)
+- Update bundled obuilder; mark it as vendored (@shonfeder #247, reviewed by @mtelvers)
+- Retry on failed docker push, with new Lwt_retry utility (@shonfeder #246, reviewed by @mtelvers)
+- Update base image and opam SHA (@mtelvers #245)
+- Async delete in worker prune path (@mtelvers #243)
+
 ### v0.3.0 (2024-01-31)
 
 - Support OBuilder Docker backend on Windows and Linux (@MisterDA #143)
