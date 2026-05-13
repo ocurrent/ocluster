@@ -42,8 +42,8 @@
   (extunix (>= 0.4.1))
   fpath
   logs
-  (lwt (>= 5.6.1))
-  (obuilder (>= 0.5.1))
+  (lwt (>= 5.7.0))
+  (obuilder (>= 0.6.0))
   (prometheus-app (>= 1.2))))
 
 (package
@@ -64,10 +64,10 @@
   fmt
   fpath
   logs
-  (lwt (>= 5.6.1))
+  (lwt (>= 5.7.0))
   lwt-dllist
   (mirage-crypto (>= 0.8.5))
-  (obuilder (>= 0.5.1))
+  (obuilder (>= 0.6.0))
   (ppx_expect (>= v0.14.1))
   ppx_sexp_conv
   prometheus
@@ -95,7 +95,7 @@
   duration
   fmt
   logs
-  (lwt (>= 5.6.1))
+  (lwt (>= 5.7.0))
   ppx_deriving
   ppx_deriving_yojson
   (prometheus (>= 1.2))
