@@ -173,23 +173,42 @@ let additional_metrics =
     ["additional-metrics"]
 
 module Obuilder_config = struct
-  (** Parse cli arguments for Obuilder.Store_spec.t *)
-  let v =
-    let open Obuilder.Store_spec in
+  (** Parse cli arguments for [Obuilder.Store_spec.t option].
+
+      OBuilder support is optional: without [--obuilder-store] the worker still
+      handles Docker jobs and rejects OBuilder ones. We therefore can't use
+      [Obuilder.Store_spec.of_t] directly, as it raises [Failure] when no store
+      is given. *)
+  let spec =
+    let of_t store rsync_mode =
+      match store, rsync_mode with
+      | None, None -> Ok None                       (* No OBuilder support. *)
+      | None, Some _ ->
+        Error "--rsync-mode requires --obuilder-store=rsync:/path"
+      | Some (`Rsync _), None ->
+        Error "--obuilder-store=rsync:/path also requires --rsync-mode"
+      | Some (`Rsync _), Some _ ->
+        Ok (Some (Obuilder.Store_spec.of_t store rsync_mode))
+      | Some _, Some _ ->
+        Error "--rsync-mode can only be used with --obuilder-store=rsync:/path"
+      | Some _, None -> Ok (Some (Obuilder.Store_spec.of_t store None))
+    in
+    Term.term_result' @@
     Term.(const of_t
-          $ Arg.value @@ store ~docs:"OBUILDER" ["obuilder-store"]
-          $ Arg.value @@ rsync_mode_opt)
+          $ Arg.value @@ Obuilder.Store_spec.store ~docs:"OBUILDER" ["obuilder-store"]
+          $ Arg.value @@ Obuilder.Store_spec.rsync_mode_opt)
 
-  (** Parse cli arguments for t and initialise a [store]. *)
+  (** Parse cli arguments for t and initialise a [store], if requested. *)
   let cmdliner =
-    Term.(const Obuilder.Store_spec.to_store $ v)
+    Term.(const (Option.map Obuilder.Store_spec.to_store) $ spec)
 
   let v =
-    let make native_conf docker_conf qemu_conf hcs_conf = function
-      | `Native, store -> Some (Cluster_worker.Obuilder_config.v (`Native native_conf) store)
-      | `Qemu, store -> Some (Cluster_worker.Obuilder_config.v (`Qemu qemu_conf) store)
-      | `Docker, store -> Some (Cluster_worker.Obuilder_config.v (`Docker docker_conf) store)
-      | `Hcs, store -> Some (Cluster_worker.Obuilder_config.v (`Hcs hcs_conf) store)
+    let make native_conf docker_conf qemu_conf hcs_conf =
+      Option.map (function
+          | `Native, store -> Cluster_worker.Obuilder_config.v (`Native native_conf) store
+          | `Qemu, store -> Cluster_worker.Obuilder_config.v (`Qemu qemu_conf) store
+          | `Docker, store -> Cluster_worker.Obuilder_config.v (`Docker docker_conf) store
+          | `Hcs, store -> Cluster_worker.Obuilder_config.v (`Hcs hcs_conf) store)
     in
     Term.(const make $ Obuilder.Native_sandbox.cmdliner $ Obuilder.Docker_sandbox.cmdliner $ Obuilder.Qemu_sandbox.cmdliner $ Obuilder.Hcs_sandbox.cmdliner $ cmdliner)
 end

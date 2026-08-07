@@ -104,6 +104,10 @@ cache partition (e.g. `/var/lib/docker` for Docker builds) before the worker
 will prune things (e.g. with `docker system prune -af`).
 If not given, then the worker will not monitor free space.
 
+Such a worker handles Docker jobs only, and rejects OBuilder ones.
+To take OBuilder jobs too, add `--obuilder-store` (e.g. `--obuilder-store=btrfs:/var/lib/ocluster-worker/obuilder`);
+see `ocluster-worker --help` for the available store types.
+
 The builder connects to the scheduler and waits for jobs.
 You should see `worker [INFO] Requesting a new job…` in the worker log,
 and `Registered new worker "my-host"` in the scheduler log.
