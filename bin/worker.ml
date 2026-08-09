@@ -176,22 +176,22 @@ module Obuilder_config = struct
   (** Parse cli arguments for [Obuilder.Store_spec.t option].
 
       OBuilder support is optional: without [--obuilder-store] the worker still
-      handles Docker jobs and rejects OBuilder ones. We therefore can't use
-      [Obuilder.Store_spec.of_t] directly, as it raises [Failure] when no store
-      is given. *)
+      handles Docker jobs and rejects OBuilder ones. Only that case is handled
+      here; a store that is given is validated by
+      [Obuilder.Store_spec.of_t]. *)
   let spec =
     let of_t store rsync_mode =
       match store, rsync_mode with
       | None, None -> Ok None                       (* No OBuilder support. *)
       | None, Some _ ->
         Error "--rsync-mode requires --obuilder-store=rsync:/path"
-      | Some (`Rsync _), None ->
-        Error "--obuilder-store=rsync:/path also requires --rsync-mode"
-      | Some (`Rsync _), Some _ ->
-        Ok (Some (Obuilder.Store_spec.of_t store rsync_mode))
-      | Some _, Some _ ->
-        Error "--rsync-mode can only be used with --obuilder-store=rsync:/path"
-      | Some _, None -> Ok (Some (Obuilder.Store_spec.of_t store None))
+      | Some _, _ ->
+        (* Which stores need an rsync-mode is OBuilder's business, not ours.
+           of_t signals a bad combination by raising, so present that as a
+           command-line error rather than an uncaught exception. *)
+        (match Obuilder.Store_spec.of_t store rsync_mode with
+         | store -> Ok (Some store)
+         | exception Failure m -> Error m)
     in
     Term.term_result' @@
     Term.(const of_t
