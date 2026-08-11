@@ -23,6 +23,7 @@
    lwt_retry
    ocluster-api
    prometheus-app
+   prometheus-lwt
    obuilder
    extunix
    str))

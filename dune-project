@@ -44,7 +44,8 @@
   logs
   (lwt (>= 5.7.0))
   (obuilder (>= 0.7.0))
-  (prometheus-app (>= 1.2))))
+  (prometheus-app (>= 1.4))
+  (prometheus-lwt (>= 1.4))))
 
 (package
  (name ocluster)
@@ -70,8 +71,9 @@
   (obuilder (>= 0.7.0))
   (ppx_expect (>= v0.14.1))
   ppx_sexp_conv
-  prometheus
-  (prometheus-app (>= 1.2))
+  (prometheus (>= 1.4))
+  (prometheus-app (>= 1.4))
+  (prometheus-lwt (>= 1.4))
   (psq (>= 0.2.1))
   sqlite3
   (winsvc (and (>= 1.0.1) (= :os "win32")))
@@ -98,6 +100,6 @@
   (lwt (>= 5.7.0))
   ppx_deriving
   ppx_deriving_yojson
-  (prometheus (>= 1.2))
+  (prometheus (>= 1.4))
   (current_github (and (>= 0.6.4) :with-test))
   (current_web (and (>= 0.6.4) :with-test))))

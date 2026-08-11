@@ -1,3 +1,12 @@
+### unreleased
+
+- Support Prometheus 1.4 (@mtelvers #265)
+  Prometheus 1.4 splits the Lwt-typed functions out of the `prometheus` core
+  into a new `prometheus-lwt` package and deprecates the originals. Migrate to
+  `Prometheus_lwt.CollectorRegistry.collect` and
+  `Prometheus_lwt.Summary.observe_time`, which takes its clock from
+  `Prometheus.init` rather than an explicit `gettime` argument.
+
 ### v0.4.0 (2026-05-13)
 
 - Fix test compilation in release mode (@avsm #262, reviewed by @mtelvers)

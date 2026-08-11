@@ -14,7 +14,8 @@
     fmt.tty
     logs.fmt
     lwt.unix
-    prometheus-app))
+    prometheus-app
+    prometheus-lwt))
 
 (library
   (name ocluster_expect_tests)
@@ -28,4 +29,5 @@
     fmt.tty
     logs.fmt
     lwt.unix
-    prometheus-app))
+    prometheus-app
+    prometheus-lwt))
