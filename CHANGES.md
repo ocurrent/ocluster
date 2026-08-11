@@ -1,11 +1,9 @@
 ### unreleased
 
-- Support Prometheus 1.4 (@mtelvers #265)
-  Prometheus 1.4 splits the Lwt-typed functions out of the `prometheus` core
-  into a new `prometheus-lwt` package and deprecates the originals. Migrate to
-  `Prometheus_lwt.CollectorRegistry.collect` and
-  `Prometheus_lwt.Summary.observe_time`, which takes its clock from
-  `Prometheus.init` rather than an explicit `gettime` argument.
+- Migrate to Prometheus 1.4 and the new prometheus-lwt package (@mtelvers #265)
+- Update the vendored obuilder to v0.7.0-27-g0ad23d4 (@mtelvers #265)
+- Move all three Dockerfiles to one opam-repository SHA, with opam 2.5 (@mtelvers #265)
+- Fix the scheduler Docker image build (@mtelvers #265)
 
 ### v0.4.0 (2026-05-13)
 
