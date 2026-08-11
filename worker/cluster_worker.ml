@@ -137,7 +137,7 @@ let build ~switch ~log t descr =
         match push_to with
         | None -> Lwt_result.return ""
         | Some target ->
-          Prometheus.Summary.time Metrics.docker_push_time Unix.gettimeofday
+          Prometheus_lwt.Summary.observe_time Metrics.docker_push_time
             (fun () -> docker_push ~switch ~log t hash target)
       end
     | Obuilder_build { spec = `Contents spec } ->
@@ -215,7 +215,7 @@ let rec maybe_prune t queue =
     in
     drain () >>= fun () ->
     Log.info (fun f -> f "All jobs finished. Pruning…");
-    Prometheus.Summary.time Metrics.docker_prune_time Unix.gettimeofday
+    Prometheus_lwt.Summary.observe_time Metrics.docker_prune_time
       (fun () ->
          Lwt_process.exec ("", [| "docker"; "system"; "prune"; "-af" |]) >>= function
          | Unix.WEXITED 0 ->
@@ -458,7 +458,7 @@ let collect_external_metric uri =
 
 let metrics = function
   | `Agent ->
-    Prometheus.CollectorRegistry.(collect default) >>= fun data ->
+    Prometheus_lwt.CollectorRegistry.(collect default) >>= fun data ->
     let content_type = "text/plain; version=0.0.4; charset=utf-8" in
     Lwt_result.return (content_type, Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data)
   | `Host ->

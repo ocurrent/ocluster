@@ -1,3 +1,10 @@
+### unreleased
+
+- Migrate to Prometheus 1.4 and the new prometheus-lwt package (@mtelvers #265)
+- Update the vendored obuilder to v0.7.0-27-g0ad23d4 (@mtelvers #265)
+- Move all three Dockerfiles to one opam-repository SHA, with opam 2.5 (@mtelvers #265)
+- Fix the scheduler Docker image build (@mtelvers #265)
+
 ### v0.4.0 (2026-05-13)
 
 - Fix test compilation in release mode (@avsm #262, reviewed by @mtelvers)

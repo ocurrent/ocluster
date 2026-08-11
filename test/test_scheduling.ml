@@ -60,7 +60,7 @@ let run fn =
     Fake_time.now := 1.0;
     fn () >>= fun () ->
     Lwt.pause () >>= fun () ->
-    Prometheus.CollectorRegistry.(collect default) >|= fun data ->
+    Prometheus_lwt.CollectorRegistry.(collect default) >|= fun data ->
     Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data
     |> String.split_on_char '\n'
     |> List.iter (fun line ->

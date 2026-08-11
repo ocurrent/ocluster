@@ -228,7 +228,7 @@ let cancel_rate_limit () =
 let test_case name fn =
   Alcotest_lwt.test_case name `Quick @@ fun _ () ->
   fn () >>= fun () ->
-  Prometheus.CollectorRegistry.(collect default) >|= fun data ->
+  Prometheus_lwt.CollectorRegistry.(collect default) >|= fun data ->
   Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data
   |> String.split_on_char '\n'
   |> List.iter (fun line ->

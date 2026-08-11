@@ -31,7 +31,7 @@ depends: [
   "lwt" {>= "5.7.0"}
   "ppx_deriving"
   "ppx_deriving_yojson"
-  "prometheus" {>= "1.2"}
+  "prometheus" {>= "1.4"}
   "current_github" {>= "0.6.4" & with-test}
   "current_web" {>= "0.6.4" & with-test}
   "odoc" {with-doc}
