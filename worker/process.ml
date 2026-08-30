@@ -41,9 +41,15 @@ let exec ~label ~log ~switch ?env ?(stdin="") ?(stderr=`FD_copy Unix.stdout) ?(i
   | Unix.WSIGNALED x -> Fmt.error_msg "%s failed with signal %a" label Fmt.Dump.signal x
   | Unix.WSTOPPED x -> Fmt.error_msg "%s stopped with signal %a" label Fmt.Dump.signal x
 
+let pp_exit_status f n =
+  if Sys.win32 && n < 0 then
+    Fmt.pf f "0x%08lx" (Int32.of_int n)
+  else
+    Fmt.int f n
+
 let check_call ~label ~log ~switch ?env ?stdin ?stderr ?is_success cmd =
   exec ~label ~log ~switch ?env ?stdin ?stderr ?is_success cmd >|= function
   | Ok () -> Ok ()
   | Error `Cancelled -> Error `Cancelled
-  | Error (`Exit_code n) -> Fmt.error_msg "%s failed with exit-code %d" label n
+  | Error (`Exit_code n) -> Fmt.error_msg "%s failed with exit-code %a" label pp_exit_status n
   | Error (`Msg _) as e -> e

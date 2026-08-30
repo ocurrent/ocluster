@@ -1,3 +1,9 @@
+let pp_exit_status f n =
+  if Sys.win32 && n < 0 then
+    Fmt.pf f "0x%08lx" (Int32.of_int n)
+  else
+    Fmt.int f n
+
 let pp_timestamp f x =
   let open Unix in
   let tm = localtime x in
